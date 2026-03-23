@@ -1,0 +1,104 @@
+# -----------------------------
+# 🔐 Environment Variables
+# -----------------------------
+.env
+.env.*
+!.env.example
+
+# -----------------------------
+# 📦 Node Modules
+# -----------------------------
+node_modules/
+backend/node_modules/
+frontend/node_modules/
+
+# -----------------------------
+# 🧾 Logs
+# -----------------------------
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# -----------------------------
+# 🗂️ Build / Dist
+# -----------------------------
+dist/
+build/
+frontend/dist/
+backend/dist/
+
+# -----------------------------
+# ⚙️ Cache / Temp
+# -----------------------------
+.cache/
+.tmp/
+.temp/
+coverage/
+
+# -----------------------------
+# 🧠 OS Files
+# -----------------------------
+.DS_Store
+Thumbs.db
+
+# -----------------------------
+# 🧪 Testing
+# -----------------------------
+coverage/
+.nyc_output/
+
+# -----------------------------
+# 🐳 Docker
+# -----------------------------
+docker-compose.override.yml
+
+# -----------------------------
+# 🔄 Vite / Frontend
+# -----------------------------
+frontend/.vite/
+frontend/node_modules/.vite/
+*.local
+
+# -----------------------------
+# 📁 Uploads / Static Files
+# -----------------------------
+uploads/
+public/uploads/
+
+# -----------------------------
+# 🧵 Redis / Queue
+# -----------------------------
+dump.rdb
+appendonly.aof
+
+# -----------------------------
+# 🧰 IDE / Editor Files
+# -----------------------------
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# -----------------------------
+# 🔑 Secrets / Keys
+# -----------------------------
+*.pem
+*.key
+*.crt
+
+# -----------------------------
+# 📊 Database
+# -----------------------------
+*.sqlite
+*.db
+
+# -----------------------------
+# 🧾 Misc
+# -----------------------------
+*.tgz
+*.zip
