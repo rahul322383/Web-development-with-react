@@ -75,16 +75,16 @@ const findYearEndSummary = async (employeeId, year) =>
 
 
 
-const findUserByEmail = async (email) => User.findOne({ where: { email } });
-  findUsers,
-  findUserById,
-  findUserByEmail,
-  createUser,
+const findUserByEmail = async (email) => 
+  User.findOne({ where: { email } });
+
+
 
 module.exports = {
   findUsers,
   findUserById,
   createUser,
+  findUserByEmail,
   updateUserById,
   softDeleteUser,
   findOrCreateRole,

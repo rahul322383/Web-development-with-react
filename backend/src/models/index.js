@@ -9,7 +9,7 @@ const YearEndModel = require('./yearEndSummary.model');
 
 // 🔥 PASS BOTH sequelize + DataTypes
 const User = UserModel(sequelize, DataTypes);
-const Leave = LeaveModel(sequelize, DataTypes);
+const LeaveRequest = LeaveModel(sequelize, DataTypes);
 const Expense = ExpenseModel(sequelize, DataTypes);
 const Payroll = PayrollModel(sequelize, DataTypes);
 const YearEnd = YearEndModel(sequelize, DataTypes);
@@ -17,7 +17,7 @@ const YearEnd = YearEndModel(sequelize, DataTypes);
 module.exports = {
   sequelize,
   User,
-  Leave,
+  LeaveRequest,
   Expense,
   Payroll,
   YearEnd

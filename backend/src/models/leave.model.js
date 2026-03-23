@@ -15,14 +15,16 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.BIGINT.UNSIGNED,
         allowNull: false
       },
-      startDate: {
-        type: DataTypes.DATEONLY,
-        allowNull: false
-      },
-      endDate: {
-        type: DataTypes.DATEONLY,
-        allowNull: false
-      },
+     startDate: {
+  type: DataTypes.DATEONLY,
+  allowNull: false,
+  field: 'start_date'
+},
+endDate: {
+  type: DataTypes.DATEONLY,
+  allowNull: false,
+  field: 'end_date'
+},
       reason: {
         type: DataTypes.STRING(300),
         allowNull: true
@@ -43,6 +45,7 @@ module.exports = (sequelize, DataTypes) => {
     },
     {
       tableName: 'leave_requests',
+      underscored: true,
       indexes: [
         { fields: ['employee_id', 'status'] },
         { fields: ['manager_id', 'status'] },

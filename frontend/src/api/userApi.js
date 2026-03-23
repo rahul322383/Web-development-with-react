@@ -53,11 +53,11 @@ export const userApi = {
     }
   },
 
-  // ✅ Dashboard summary
+
   getDashboardSummary: async () => {
     try {
       const response = await axiosInstance.get('/users/dashboard/summary');
-      return response.data.data || response.data;
+      return response.data;
     } catch (error) {
       throw error.response?.data || error.message;
     }
