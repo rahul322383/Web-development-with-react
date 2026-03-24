@@ -703,14 +703,10 @@ export const Dashboard = () => {
       setLoading(true);
             const response = await userApi.getDashboardSummary();
       
-      // The response is already the data object from the API
-      console.log("Dashboard data:", response); // For debugging
-      
-      // Handle the actual response structure
+
       if (response && response.success && response.data) {
         const { summary: summaryData, charts, users } = response.data;
-        
-        // Process summary data
+     
         setSummary({
           totalEmployees: summaryData.totalUsers || 0,
           activeEmployees: users?.data?.filter(user => user.isActive).length || 0,
@@ -726,9 +722,9 @@ export const Dashboard = () => {
           salaryPaid: summaryData.salaryPaid || 0,
           departments: getUniqueDepartments(users?.data || []).length,
           newHiresThisMonth: getNewHiresThisMonth(users?.data || []),
-          resignationsThisMonth: 0, // Not provided in current response
+          resignationsThisMonth: 0,   
           attendanceRate: calculateAttendanceRate(summaryData),
-          overtime: 0 // Not provided in current response
+          overtime: 0 
         });
 
         // Process chart data

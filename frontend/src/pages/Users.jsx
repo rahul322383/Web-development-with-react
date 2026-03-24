@@ -452,10 +452,7 @@ export const Users = () => {
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      const response = await userApi.getUsers();
-      console.log('Users API Response:', response);
-      
-      // Handle response - it's already an array
+      const response = await userApi.getUsers(); // Handle response - it's already an array
       if (Array.isArray(response)) {
         setUsers(response);
         setPagination({

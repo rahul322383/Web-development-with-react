@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { 
@@ -11,10 +12,8 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { authApi } from '../api/authApi';
 import { useAuth } from '../context/AuthContext';
 
-// Custom Input Component
 const Input = ({ 
   label, 
   type = 'text', 
@@ -24,6 +23,7 @@ const Input = ({
   showPasswordToggle,
   onTogglePassword,
   showPassword,
+  autoComplete,
   ...props 
 }) => {
   const [isFocused, setIsFocused] = useState(false);
@@ -33,10 +33,17 @@ const Input = ({
     setHasValue(!!props.value);
   }, [props.value]);
 
+  const getAutoComplete = () => {
+    if (autoComplete) return autoComplete;
+    if (type === 'email') return 'email';
+    if (type === 'password') return 'current-password';
+    if (label.toLowerCase().includes('name')) return 'name';
+    return 'off';
+  };
+
   return (
     <div className="relative">
       <div className="relative">
-        {/* Icon */}
         {Icon && (
           <div className="absolute left-4 top-1/2 -translate-y-1/2 z-10">
             <Icon className={`w-5 h-5 transition-colors duration-200 ${
@@ -49,11 +56,11 @@ const Input = ({
           </div>
         )}
 
-        {/* Input */}
         <input
           type={showPassword ? 'text' : type}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
+          autoComplete={getAutoComplete()}
           className={`
             w-full px-4 py-4 bg-white dark:bg-slate-900
             border-2 rounded-2xl outline-none transition-all duration-200
@@ -73,7 +80,6 @@ const Input = ({
           {...props}
         />
 
-        {/* Floating Label */}
         <label
           className={`
             absolute left-12 transition-all duration-200 pointer-events-none
@@ -89,7 +95,6 @@ const Input = ({
           {props.required && <span className="text-rose-500 ml-1">*</span>}
         </label>
 
-        {/* Password Toggle */}
         {showPasswordToggle && (
           <button
             type="button"
@@ -105,7 +110,6 @@ const Input = ({
         )}
       </div>
 
-      {/* Error Message */}
       {error && touched && (
         <motion.p
           initial={{ opacity: 0, y: -10 }}
@@ -123,7 +127,7 @@ const Input = ({
 // Main Login Component
 export const Login = () => {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, isAuthenticated, loading: authLoading } = useAuth();
   
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -133,6 +137,22 @@ export const Login = () => {
   });
   const [touched, setTouched] = useState({});
   const [errors, setErrors] = useState({});
+
+  // Clean redirect logic - no setTimeout, no extra state
+  useEffect(() => {
+    if (!authLoading && isAuthenticated) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [isAuthenticated, authLoading, navigate]);
+
+  // Show loader while checking authentication
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+      </div>
+    );
+  }
 
   // Validation
   const validateField = (name, value) => {
@@ -151,8 +171,6 @@ export const Login = () => {
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
-    
-    // Real-time validation
     const error = validateField(name, value);
     setErrors(prev => ({ ...prev, [name]: error }));
   };
@@ -167,10 +185,10 @@ export const Login = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    // Mark all fields as touched
+    if (loading) return;
+    
     setTouched({ email: true, password: true });
     
-    // Validate all fields
     const emailError = validateField('email', formData.email);
     const passwordError = validateField('password', formData.password);
     
@@ -187,13 +205,14 @@ export const Login = () => {
       
       if (result.success) {
         toast.success('Login successful!');
-        navigate('/dashboard');
+        setLoading(false);
+        // useEffect will handle navigation when isAuthenticated becomes true
       } else {
         toast.error(result.error?.response?.data?.message || 'Login failed. Please check your credentials.');
+        setLoading(false);
       }
     } catch (error) {
       toast.error(error.response?.data?.message || 'Login failed. Please check your credentials.');
-    } finally {
       setLoading(false);
     }
   };
@@ -273,6 +292,7 @@ export const Login = () => {
                 icon={Mail}
                 error={errors.email}
                 touched={touched.email}
+                autoComplete="email"
                 required
               />
 
@@ -290,6 +310,7 @@ export const Login = () => {
                 showPasswordToggle
                 showPassword={showPassword}
                 onTogglePassword={() => setShowPassword(!showPassword)}
+                autoComplete="current-password"
                 required
               />
 
