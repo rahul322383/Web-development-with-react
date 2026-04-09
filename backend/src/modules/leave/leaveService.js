@@ -8,7 +8,7 @@ const { cursorPaginate } = require('../../utils/pagination');
 const { logAuditEvent } = require('../../utils/auditLogger');
 const { clearCacheKeys } = require('../../utils/cache');
 const { LeaveRequest, LeaveBalance } = require('../../database/initModels');
-
+ 
 // 📌 Calculate leave days
 const calculateRequestedDays = (startDate, endDate) => {
   const start = new Date(startDate);
@@ -93,6 +93,18 @@ if (!employee || !employee.managerId) {
   }
 };
 
+const listTeamLeaves = async (managerId) => {
+  try {
+    const data = await leaveRepository.listTeamLeaves(managerId);
+
+    return {
+      success: true,
+      data
+    };
+  } catch (error) {
+    return { success: false, message: error.message };
+  }
+}
 
 const managerDecision = async ({
   managerId,
@@ -123,7 +135,7 @@ const managerDecision = async ({
       // ✅ Authorization (Manager OR Admin/HR)
       if (
         leaveRequest.managerId !== managerId &&
-        !['Admin', 'HR'].includes(role)
+        !['Admin', 'HR', 'Manager'].includes(role)
       ) {
         throw new Error('Not authorized to review this request');
       }
@@ -165,12 +177,16 @@ const managerDecision = async ({
           transaction
         );
       }
+      const actionMap = {
+        Approved: 'APPROVE',
+        Rejected: 'REJECT'
+      };
 
       // ✅ Audit Log
       await logAuditEvent({
         userId: managerId,
         moduleName: 'Leave',
-        actionType: status.toUpperCase(),
+         actionType: actionMap[status],
         oldData: { status: 'Pending' },
         newData: { status, decisionNote },
         ipAddress
@@ -285,8 +301,93 @@ const yearlyLeaveReset = async (year) => {
     return { success: false, message: error.message };
   }
 };
+// 📌 Additional functions for leaveRepository (moved from controller for better separation of concerns)
+// leave delete and update functions are added in repository to be used in service layer for better transaction management and code organization.
 
+// delete and update functions for leave requests
+
+const deleteLeaveRequest = (id, transaction) =>
+  LeaveRequest.destroy({
+    where: { id },
+    transaction
+  });
+
+const updateLeaveRequest = (id, data, transaction) =>
+  LeaveRequest.update(data, {
+    where: { id },
+    transaction
+  });
+
+const findLeaveRequestById = (id, transaction) =>
+  LeaveRequest.findByPk(id, { transaction });
+
+const findLeaveBalance = (employeeId, year, transaction) =>
+  LeaveBalance.findOne({
+    where: { employeeId, year },
+    transaction
+  });
+
+const updateLeaveBalance = (employeeId, year, data, transaction) =>
+  LeaveBalance.update(data, {
+    where: { employeeId, year },
+    transaction
+  }); 
+
+const createLeaveBalance = async (payload, transaction) => LeaveBalance.create(payload, { transaction });
+
+const createLeaveRequest = async (payload, transaction) => LeaveRequest.create(payload, { transaction });  
+
+//find employee function is added in repository to be used in service layer for better transaction management and code organization.
+
+const findEmployee = async (id) => User.findByPk(id);
+const getLeaveStats = async ({ year }) => {
+  try {
+    const stats = await leaveRepository.getLeaveStats({ year });
+
+    return {
+      success: true,
+      data: stats
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error.message
+    };
+  }
+};
+
+// get dashboard summary function is added in repository to be used in service layer for better transaction management and code organization.
+
+const getDashboardSummary = async ({ userId, year }) => {
+  const selectedYear = year || new Date().getFullYear();
+
+  const leaveBalance = await LeaveBalance.findOne({
+    where: { employeeId: userId, year: selectedYear }
+  });
+
+  const recentLeaves = await LeaveRequest.findAll({
+    where: { employeeId: userId },
+    limit: 5,
+    order: [['createdAt', 'DESC']]
+  });
+
+  return {
+    leaveBalance,
+    recentLeaves
+  };
+};
 module.exports = {
+  getDashboardSummary,
+  listTeamLeaves,
+  findEmployee,
+  findLeaveBalance,
+  getLeaveStats,
+  createLeaveBalance,
+  updateLeaveBalance,
+  createLeaveRequest,
+  deleteLeaveRequest,
+  updateLeaveRequest,
+  findLeaveRequestById,
   applyForLeave,
   managerDecision,
   listMyLeaves,
