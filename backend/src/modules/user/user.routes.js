@@ -10,7 +10,7 @@ const router = express.Router();
 router.use(authenticate);
 
 router.get('/dashboard/summary', authorize('Employee', 'Manager', 'HR', 'Finance', 'Admin'), userController.getDashboardSummary);
-router.get('/', authorize('HR', 'Admin'), userController.listUsers);
+router.get('/', authorize('HR', 'Admin', 'Manager'), userController.listUsers);
 router.get('/:id', authorize('HR', 'Admin', 'Manager'), userController.getUserById);
 router.post('/', authorize('HR', 'Admin'), validate(createUserSchema), userController.createUser);
 router.patch('/:id', authorize('HR', 'Admin'), validate(updateUserSchema), userController.updateUser);
