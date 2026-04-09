@@ -77,6 +77,7 @@ const applyLeave = asyncHandler(async (req, res) => {
 const reviewLeave = asyncHandler(async (req, res) => {
   const result = await leaveService.managerDecision({
     managerId: req.user.id,
+    role: req.user.role,
     requestId: Number(req.params.id),
     status: req.body.status,
     decisionNote: req.body.decisionNote,
