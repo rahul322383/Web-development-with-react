@@ -86,42 +86,7 @@ const reviewLeave = asyncHandler(async (req, res) => {
   res.status(200).json(result);
 });
 
-/**
- * My Leaves (Pagination)
- */
-// const listMyLeaves = asyncHandler(async (req, res) => {
-//   const result = await leaveService.listMyLeaves({
-//     employeeId: req.user.id,
-//     cursor: req.query.cursor ? Number(req.query.cursor) : null,
-//     limit: Math.min(Number(req.query.limit || 20), 100)
-//   });
-//   res.status(200).json(result);
-// });
 
-/**
- * Pending Leaves for Manager
- */
-// const listPendingForManager = asyncHandler(async (req, res) => {
-//   const result = await leaveService.listPendingLeavesForManager(req.user.id);
-//   res.status(200).json(result);
-// });
-
-/**
- * Leave Balance
- */
-// const getLeaveBalance = asyncHandler(async (req, res) => {
-//   const data = await leaveService.getMyLeaveBalance(req.user.id);
-
-//   res.status(200).json({
-//     success: true,
-//     message: 'Leave balance fetched successfully',
-//     data
-//   });
-// });
-
-/**
- * Get Single Leave Request
- */
 const getLeaveById = asyncHandler(async (req, res) => {
   const result = await leaveService.getLeaveById(Number(req.params.id));
 
@@ -184,20 +149,6 @@ const getLeaveStats = asyncHandler(async (req, res) => {
   });
 });
 
-/**
- * Reset Leave Balances (Admin)
- */
-// const resetLeaveBalances = asyncHandler(async (req, res) => {
-//   await leaveService.resetAllLeaveBalances({
-//     totalAnnual: req.body.totalAnnual,
-//     year: req.body.year
-//   });
-
-//   res.status(200).json({
-//     success: true,
-//     message: 'Leave balances reset successfully'
-//   });
-// });
 
 
 module.exports = {
