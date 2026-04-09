@@ -39,6 +39,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
     const baseNavigation = [
       { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, roles: ['Admin', 'Manager', 'Employee'] },
       { name: 'Pending Leaves', href: '/pending-leave', icon: LayoutDashboard, roles: ['Admin', 'Manager', 'HR'] },
+      { name: 'Approved Leaves', href: '/approved-leave', icon: LayoutDashboard, roles: ['Admin', 'Manager', 'HR'] },
       { name: 'Users', href: '/users', icon: Users, roles: ['Admin', 'Manager'] },
       { name: 'Leave', href: '/leave', icon: Calendar, roles: ['Admin', 'Manager', 'Employee'] },
       { name: 'Expenses', href: '/expenses', icon: Receipt, roles: ['Admin', 'Manager', 'Employee'] },
@@ -60,8 +61,11 @@ export const Sidebar = ({ isOpen, onClose }) => {
     { name: 'Pricing', href: '/pricing', icon: CreditCard },
     { name: 'Demo', href: '/demo', icon: PlayCircle },
     { name: 'About', href: '/about', icon: Info },
-    { name: 'Blog', href: '/blog', icon: BookOpen },
-    { name: 'Careers', href: '/careers', icon: Briefcase }
+    {name : 'Contact', href: '/contact', icon: Info },
+    { name : 'Help', href: '/help', icon: HelpCircle },
+    { name: 'Privacy', href: '/privacy', icon: Shield },
+    { name: 'Terms', href: '/terms', icon: Scale },
+    { name: 'Security', href: '/security', icon: Lock }
   ];
 
   // Footer links for non-authenticated users

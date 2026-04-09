@@ -19,6 +19,7 @@ import { Expenses } from "./pages/Expenses";
 import { Payroll } from "./pages/Payroll";
 import { Notifications } from "./pages/Notifications";
 import  PendingLeaves from "./leave/pending-leave"
+import ApprovedLeaves from "./leave/approved-leave"
 
 // Public Pages
 import HomePage from "./pages/home";
@@ -117,6 +118,11 @@ function AppRoutes() {
       <Route path="/pending-leave" element={
         <ProtectedRoute>
           <PendingLeaves />
+        </ProtectedRoute>
+      } />
+      <Route path="/approved-leave" element={
+        <ProtectedRoute>
+          <ApprovedLeaves />
         </ProtectedRoute>
       } />
 

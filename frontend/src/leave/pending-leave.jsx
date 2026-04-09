@@ -65,9 +65,6 @@ const fetchPendingLeaves = useCallback(async () => {
 
   try {
     const response = await leaveApi.getPendingLeaves();
-
-    console.log("API RESPONSE:", response);
-
     setPendingLeaves(response?.data || []);
   } catch (err) {
     console.error("ERROR:", err);
