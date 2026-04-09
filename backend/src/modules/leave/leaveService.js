@@ -7,6 +7,7 @@ const leaveRepository = require('./leaveRepository');
 const { cursorPaginate } = require('../../utils/pagination');
 const { logAuditEvent } = require('../../utils/auditLogger');
 const { clearCacheKeys } = require('../../utils/cache');
+const { LeaveRequest, LeaveBalance } = require('../../database/initModels');
 
 // 📌 Calculate leave days
 const calculateRequestedDays = (startDate, endDate) => {
@@ -92,36 +93,66 @@ if (!employee || !employee.managerId) {
   }
 };
 
-// 🚀 Manager Decision (Approve / Reject)
-const managerDecision = async ({ managerId, requestId, status, decisionNote, ipAddress }) => {
+
+const managerDecision = async ({
+  managerId,
+  role,
+  requestId,
+  status,
+  decisionNote,
+  ipAddress
+}) => {
   try {
+    // ✅ Validate status
+    if (!['Approved', 'Rejected'].includes(status)) {
+      throw new Error('Invalid status value');
+    }
+
     return await sequelize.transaction(async (transaction) => {
 
-      const leaveRequest = await leaveRepository.findLeaveRequestById(requestId);
+      // ✅ Lock row to prevent race condition
+      const leaveRequest = await LeaveRequest.findByPk(requestId, {
+        transaction,
+        lock: transaction.LOCK.UPDATE
+      });
+
       if (!leaveRequest) {
-        return { success: false, message: 'Leave request not found' };
+        throw new Error('Leave request not found');
       }
 
-      if (leaveRequest.managerId !== managerId) {
-        return { success: false, message: 'Not authorized to review this request' };
+      // ✅ Authorization (Manager OR Admin/HR)
+      if (
+        leaveRequest.managerId !== managerId &&
+        !['Admin', 'HR'].includes(role)
+      ) {
+        throw new Error('Not authorized to review this request');
       }
 
+      // ✅ Already processed check
       if (leaveRequest.status !== 'Pending') {
-        return { success: false, message: 'Leave request already processed' };
+        throw new Error('Leave request already processed');
       }
 
+      // ✅ Update leave request
       await leaveRepository.updateLeaveRequest(
         requestId,
         { status, decisionNote },
         transaction
       );
 
+      // ✅ If Approved → Update Balance
+      let year;
       if (status === 'Approved') {
-        const year = new Date(leaveRequest.startDate).getFullYear();
-        const balance = await leaveRepository.findLeaveBalance(leaveRequest.employeeId, year);
+        year = new Date(leaveRequest.startDate).getFullYear();
+
+        const balance = await leaveRepository.findLeaveBalance(
+          leaveRequest.employeeId,
+          year,
+          transaction
+        );
 
         if (!balance || balance.remaining < leaveRequest.daysRequested) {
-          return { success: false, message: 'Insufficient balance at approval time' };
+          throw new Error('Insufficient balance at approval time');
         }
 
         await leaveRepository.updateLeaveBalance(
@@ -135,21 +166,30 @@ const managerDecision = async ({ managerId, requestId, status, decisionNote, ipA
         );
       }
 
+      // ✅ Audit Log
       await logAuditEvent({
         userId: managerId,
         moduleName: 'Leave',
-        actionType: 'APPROVE',
+        actionType: status.toUpperCase(),
         oldData: { status: 'Pending' },
         newData: { status, decisionNote },
         ipAddress
       });
 
+      // ✅ Cache clear (use correct year always)
+      const cacheYear =
+        year || new Date(leaveRequest.startDate).getFullYear();
+
       await clearCacheKeys([
-        `dashboard_summary:${leaveRequest.employeeId}:${new Date().getFullYear()}`,
-        `dashboard_summary:${managerId}:${new Date().getFullYear()}`
+        `dashboard_summary:${leaveRequest.employeeId}:${cacheYear}`,
+        `dashboard_summary:${managerId}:${cacheYear}`
       ]);
 
-      const updatedRequest = await leaveRepository.findLeaveRequestById(requestId);
+      // ✅ Fetch updated record
+      const updatedRequest = await leaveRepository.findLeaveRequestById(
+        requestId,
+        transaction
+      );
 
       return {
         success: true,
@@ -157,6 +197,7 @@ const managerDecision = async ({ managerId, requestId, status, decisionNote, ipA
         data: updatedRequest
       };
     });
+
   } catch (error) {
     return {
       success: false,
@@ -164,7 +205,6 @@ const managerDecision = async ({ managerId, requestId, status, decisionNote, ipA
     };
   }
 };
-
 // 📄 List My Leaves
 const listMyLeaves = async ({ employeeId, cursor, limit }) => {
   try {
