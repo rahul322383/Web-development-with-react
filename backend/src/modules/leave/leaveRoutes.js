@@ -11,7 +11,7 @@ router.use(authenticate);
 router.post('/', authorize('Employee', 'Manager', 'HR', 'Finance', 'Admin'), validate(applyLeaveSchema), leaveController.applyLeave);
 router.get('/my', authorize('Employee', 'Manager', 'HR', 'Finance', 'Admin'), leaveController.listMyLeaves);
 router.get('/balance', authorize('Employee', 'Manager', 'HR', 'Finance', 'Admin'), leaveController.getLeaveBalance);
-router.get('/pending-manager', authorize('Manager'), leaveController.listPendingForManager);
-router.patch('/:id/review', authorize('Manager'), validate(leaveDecisionSchema), leaveController.reviewLeave);
+router.get('/pending-manager', authorize('Manager', 'Admin' ,'HR'), leaveController.listPendingForManager);
+router.patch('/:id/review', authorize('Manager', 'Admin', 'HR'), validate(leaveDecisionSchema), leaveController.reviewLeave);
 
 module.exports = router;
