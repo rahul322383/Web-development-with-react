@@ -12,6 +12,15 @@ router.post('/', authorize('Employee', 'Manager', 'HR', 'Finance', 'Admin'), val
 router.get('/my', authorize('Employee', 'Manager', 'HR', 'Finance', 'Admin'), leaveController.listMyLeaves);
 router.get('/balance', authorize('Employee', 'Manager', 'HR', 'Finance', 'Admin'), leaveController.getLeaveBalance);
 router.get('/pending-manager', authorize('Manager', 'Admin' ,'HR'), leaveController.listPendingForManager);
-router.patch('/review/:id', authorize('Manager', 'Admin', 'HR'), validate(leaveDecisionSchema), leaveController.reviewLeave);
+router.patch('/:id/review', authorize('Manager', 'Admin', 'HR'), validate(leaveDecisionSchema), leaveController.reviewLeave);
 
-module.exports = router;
+
+
+router.get('/team', authorize('Manager', 'Admin', 'HR'), leaveController.listTeamLeaves);
+router.get('/dashboard-summary', authorize('Employee', 'Manager', 'HR', 'Finance', 'Admin'), leaveController.getDashboardSummary);
+router.get('/stats', authorize('Admin', 'HR', 'Manager'), leaveController.getLeaveStats);
+// router.post('/reset-balances', authorize('Admin'), validate(resetBalancesSchema), leaveController.resetLeaveBalances);
+
+router.get('/:id', authorize('Employee', 'Manager', 'HR', 'Finance', 'Admin'), leaveController.getLeaveById);
+router.patch('/cancel/:id', authorize('Employee', 'Manager', 'HR', 'Finance', 'Admin'), leaveController.cancelLeave);
+module.exports = router; 
