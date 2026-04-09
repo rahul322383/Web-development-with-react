@@ -3,7 +3,7 @@ import React, { useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
-import MainLayout from "./components/layout/layout";
+import Layout from "./components/layout/layout";
 import { ProtectedRoute } from "./routes/ProtectedRoute";
 import { PublicRoute } from "./routes/PublicRoute";
 
@@ -18,6 +18,7 @@ import { Leave } from "./pages/Leave";
 import { Expenses } from "./pages/Expenses";
 import { Payroll } from "./pages/Payroll";
 import { Notifications } from "./pages/Notifications";
+import  PendingLeaves from "./leave/pending-leave"
 
 // Public Pages
 import HomePage from "./pages/home";
@@ -82,7 +83,7 @@ function AppRoutes() {
   return (
 <Routes>
   {/* Layout Wrapper */}
-  <Route element={<MainLayout />}>
+  <Route element={<Layout />}>
     
     {/* Public Routes */}
     <Route path="/" element={<HomePage />} />
@@ -113,6 +114,12 @@ function AppRoutes() {
         <Leave />
       </ProtectedRoute>
     } />
+      <Route path="/pending-leave" element={
+        <ProtectedRoute>
+          <PendingLeaves />
+        </ProtectedRoute>
+      } />
+
 
     <Route path="/expenses" element={
       <ProtectedRoute>

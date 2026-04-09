@@ -180,7 +180,7 @@ export const leaveApi = {
 };
 
 // Helper to cancel ongoing requests
-export const cancelLeaveRequests = (requestId) => {
+export const cancelLeaveRequest = (requestId) => {
   const controller = abortControllers.get(requestId);
   if (controller) {
     controller.abort();
