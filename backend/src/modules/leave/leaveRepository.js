@@ -2,21 +2,31 @@ const { Op } = require('sequelize');
 const { LeaveRequest, LeaveBalance, User } = require('../../database/initModels');
 
 const findEmployee = async (id) => User.findByPk(id);
-
-const findLeaveBalance = async (employeeId, year) =>
-  LeaveBalance.findOne({ where: { employeeId, year } });
+const findLeaveBalance = (employeeId, year, transaction) =>
+  LeaveBalance.findOne({
+    where: { employeeId, year },
+    transaction
+  });
 
 const createLeaveBalance = async (payload, transaction) => LeaveBalance.create(payload, { transaction });
 
-const updateLeaveBalance = async (employeeId, year, payload, transaction) =>
-  LeaveBalance.update(payload, { where: { employeeId, year }, transaction });
+const updateLeaveBalance = (employeeId, year, data, transaction) =>
+  LeaveBalance.update(data, {
+    where: { employeeId, year },
+    transaction
+  });
 
 const createLeaveRequest = async (payload, transaction) => LeaveRequest.create(payload, { transaction });
 
-const findLeaveRequestById = async (id) => LeaveRequest.findByPk(id);
+const findLeaveRequestById = (id, transaction) =>
+  LeaveRequest.findByPk(id, { transaction });
 
-const updateLeaveRequest = async (id, payload, transaction) =>
-  LeaveRequest.update(payload, { where: { id }, transaction });
+const updateLeaveRequest = (id, data, transaction) =>
+  LeaveRequest.update(data, {
+    where: { id },
+    transaction
+  });
+
 
 const listEmployeeLeavesWithCursor = async ({ employeeId, cursor, limit }) => {
   const where = { employeeId };
