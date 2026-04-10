@@ -27,6 +27,6 @@ router.get('/my', authorize('Employee', 'Manager', 'HR', 'Finance', 'Admin'), ex
 router.get('/pending-manager', authorize('Manager'), expenseController.listPendingManager);
 router.get('/pending-finance', authorize('Finance'), expenseController.listPendingFinance);
 router.patch('/:id/manager-review', authorize('Manager'), validate(managerDecisionSchema), expenseController.managerReviewExpense);
-router.patch('/:id/finance-review', authorize('Finance'), validate(financeDecisionSchema), expenseController.financeReviewExpense);
+router.patch('/:id/finance-review', authorize('Finance', 'Admin', 'Manager'), validate(financeDecisionSchema), expenseController.financeReviewExpense);
 
 module.exports = router;
