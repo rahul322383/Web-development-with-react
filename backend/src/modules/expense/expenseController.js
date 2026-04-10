@@ -8,7 +8,8 @@ const submitExpense = asyncHandler(async (req, res) => {
     receiptBuffer: req.file?.buffer,
     ipAddress: req.ip
   });
-  res.status(201).json(result);
+
+  return res.status(result.success ? 201 : 400).json(result);
 });
 
 const managerReviewExpense = asyncHandler(async (req, res) => {
