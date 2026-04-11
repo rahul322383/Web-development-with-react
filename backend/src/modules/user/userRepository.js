@@ -9,6 +9,8 @@ const {
   Payroll,
   YearEndSummary
 } = require('../../database/initModels');
+const sequelize = require('../../database/sequelize');
+
 
 const findUsers = async ({ limit, offset, search }) => {
   const where = search
@@ -33,8 +35,7 @@ const findUsers = async ({ limit, offset, search }) => {
 
 const findUserById = async (id) =>
   User.findByPk(id, {
-    attributes: { exclude: ['passwordHash'] },
-    include: [{ model: Role, attributes: ['name'] }]
+    attributes: { exclude: ['passwordHash'] }
   });
 
 const createUser = async (payload, transaction) => User.create(payload, { transaction });
@@ -78,9 +79,18 @@ const findYearEndSummary = async (employeeId, year) =>
 const findUserByEmail = async (email) => 
   User.findOne({ where: { email } });
 
+const getUsersByDepartment = (department) =>
+  User.findAll({
+    where: { department },
+    attributes: {
+      exclude: ['passwordHash', 'deletedAt']
+    },
+    order: [['createdAt', 'DESC']]
+  });
 
 
 module.exports = {
+  getUsersByDepartment,
   findUsers,
   findUserById,
   createUser,
