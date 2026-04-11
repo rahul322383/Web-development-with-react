@@ -12,6 +12,12 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         unique: true
       },
+      role:{
+        type: DataTypes.STRING(20),
+        allowNull: false,
+        // defaultValue: 'Employee'
+      },
+      
       firstName: {
         type: DataTypes.STRING(80),
         allowNull: false
