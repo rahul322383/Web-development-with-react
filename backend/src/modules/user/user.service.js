@@ -12,6 +12,7 @@ const {
   Expense,
   Payroll
 } = require('../../database/initModels');
+const { get } = require('./user.routes');
 
 
 const listUsers = async (query) => {
@@ -85,24 +86,64 @@ const createUser = async (payload, actor, ipAddress) =>
 
     return userRepository.findUserById(createdUser.id);
   });
+ 
+
 
 const updateUser = async (id, payload, actor, ipAddress) => {
-  const existing = await getUserById(id);
-  await userRepository.updateUserById(id, payload);
+  return sequelize.transaction(async (transaction) => {
 
-  await clearCacheKeys([`dashboard_summary:${id}:${new Date().getFullYear()}`]);
+    // 1. Check existing user
+    const existing = await getUserById(id, transaction);
+    if (!existing) {
+      return res .status(404).json({ success: false, message: 'User not found' });
+    }
 
-  await logAuditEvent({
-    userId: actor.id,
-    moduleName: 'User',
-    actionType: 'UPDATE',
-    oldData: existing,
-    newData: payload,
-    ipAddress
+    // 2. Map payload to DB fields (important)
+    const mappedPayload = {
+      employee_code: payload.employeeCode,
+      first_name: payload.firstName,
+      last_name: payload.lastName,
+      email: payload.email,
+      manager_id: payload.managerId,
+      department: payload.department,
+      base_salary: payload.baseSalary,
+      is_active: payload.isActive,
+      role: payload.role   // ✅ direct update now
+    };
+    
+
+    // remove undefined values
+    Object.keys(mappedPayload).forEach(
+      key => mappedPayload[key] === undefined && delete mappedPayload[key]
+    );
+
+    // 3. Update user
+    await userRepository.updateUserById(id, mappedPayload, transaction);
+
+    // 4. Fetch updated user
+    const updatedUser = await userRepository.findUserById(id, transaction);
+
+
+    // 5. Clear cache
+    await clearCacheKeys([
+      `dashboard_summary:${id}:${new Date().getFullYear()}`
+    ]);
+
+    // 6. Audit log
+    await logAuditEvent({
+      userId: actor.id,
+      moduleName: 'User',
+      actionType: 'UPDATE',
+      oldData: existing.toJSON ? existing.toJSON() : existing,
+      newData: updatedUser.toJSON ? updatedUser.toJSON() : updatedUser,
+      ipAddress,
+      transaction
+    });
+
+    return updatedUser;
   });
-
-  return userRepository.findUserById(id);
 };
+
 
 const deleteUser = async (id, actor, ipAddress) => {
   const existing = await getUserById(id);
@@ -124,322 +165,6 @@ const deleteUser = async (id, actor, ipAddress) => {
 
 
 
-
-// const getDashboardSummary = async ({ year, page = 1, limit = 10 }) => {
-//   const start = `${year}-01-01`;
-//   const end = `${year}-12-31`;
-
-//   const offset = (page - 1) * limit;
-
-//   const [
-//     totalUsers,
-//     approvedLeaves,
-//     expensesClaimed,
-//     salaryPaid,
-//     monthlyLeaves,
-//     monthlyExpenses,
-//     monthlySalary,
-//     usersData
-//   ] = await Promise.all([
-
-//     // 👥 TOTAL USERS COUNT
-//     User.count(),
-
-//     // 📅 LEAVES
-//     LeaveRequest.count({
-//       where: {
-//         status: 'Approved',
-//         startDate: { [Op.between]: [start, end] }
-//       }
-//     }),
-
-//     // 💸 EXPENSES
-//     Expense.sum('amount', {
-//       where: {
-//         managerApprovalStatus: 'Approved',
-//         financeApprovalStatus: 'Approved',
-//         createdAt: { [Op.between]: [start, end] }
-//       }
-//     }),
-
-//     // 💰 SALARY
-//     Payroll.sum('net_salary', {
-//       where: {
-//         status: { [Op.in]: ['Processed', 'Locked'] },
-//         processedAt: { [Op.between]: [start, end] }
-//       }
-//     }),
-
-//     // 📊 MONTHLY LEAVES
-//     LeaveRequest.findAll({
-//       attributes: [
-//         [fn('MONTH', col('start_date')), 'month'],
-//         [fn('COUNT', col('id')), 'count']
-//       ],
-//       where: {
-//         status: 'Approved',
-//         startDate: { [Op.between]: [start, end] }
-//       },
-//       group: [fn('MONTH', col('start_date'))],
-//       raw: true
-//     }),
-
-//     // 📊 MONTHLY EXPENSES
-//     Expense.findAll({
-//       attributes: [
-//         [fn('MONTH', col('created_at')), 'month'],
-//         [fn('SUM', col('amount')), 'total']
-//       ],
-//       where: {
-//         managerApprovalStatus: 'Approved',
-//         financeApprovalStatus: 'Approved',
-//         createdAt: { [Op.between]: [start, end] }
-//       },
-//       group: [fn('MONTH', col('created_at'))],
-//       raw: true
-//     }),
-
-//     // 📊 MONTHLY SALARY
-//     Payroll.findAll({
-//       attributes: [
-//         [fn('MONTH', col('processed_at')), 'month'],
-//         [fn('SUM', col('net_salary')), 'total']
-//       ],
-//       where: {
-//         status: { [Op.in]: ['Processed', 'Locked'] },
-//         processedAt: { [Op.between]: [start, end] }
-//       },
-//       group: [fn('MONTH', col('processed_at'))],
-//       raw: true
-//     }),
-
-//     // 👥 USERS LIST (NEW 🔥)
-//     User.findAndCountAll({
-//       attributes: { exclude: ['passwordHash'] },
-//       limit: Number(limit),
-//       offset: Number(offset),
-//       order: [['createdAt', 'DESC']]
-//     })
-//   ]);
-
-//   // 🧼 Safe values
-//   const safeExpenses = Number(expensesClaimed || 0);
-//   const safeSalary = Number(salaryPaid || 0);
-
-//   // 📊 Format monthly
-//   const formatMonthly = (data, key) => {
-//     const map = {};
-//     data.forEach(item => {
-//       map[item.month] = Number(item[key]);
-//     });
-
-//     return Array.from({ length: 12 }, (_, i) => ({
-//       month: i + 1,
-//       value: map[i + 1] || 0
-//     }));
-//   };
-
-//   return {
-//     summary: {
-//       totalUsers,
-//       approvedLeaves,
-//       expensesClaimed: safeExpenses,
-//       salaryPaid: safeSalary
-//     },
-
-//     charts: {
-//       leaves: formatMonthly(monthlyLeaves, 'count'),
-//       expenses: formatMonthly(monthlyExpenses, 'total'),
-//       salary: formatMonthly(monthlySalary, 'total')
-//     },
-
-//     // 👇 NEW USERS RESPONSE
-//     users: {
-//       data: usersData.rows,
-//       pagination: {
-//         total: usersData.count,
-//         page: Number(page),
-//         limit: Number(limit),
-//         totalPages: Math.ceil(usersData.count / limit)
-//       }
-//     }
-//   };
-// };
-
-// const getDashboardSummary = async ({ year, page = 1, limit = 10 }) => {
-//   const start = `${year}-01-01`;
-//   const end = `${year}-12-31`;
-
-//   const offset = (page - 1) * limit;
-
-//   const [
-//     totalUsers,
-//     approvedLeaves,
-//     pendingLeaves,
-//     rejectedLeaves,
-//     newLeaves,
-//     expensesClaimed,
-//     salaryPaid,
-//     monthlyLeaves,
-//     monthlyExpenses,
-//     monthlySalary,
-//     usersData
-//   ] = await Promise.all([
-
-//     // 👥 USERS COUNT
-//     User.count(),
-
-//     // ✅ APPROVED LEAVES
-//     LeaveRequest.count({
-//       where: {
-//         status: 'Approved',
-//         startDate: { [Op.between]: [start, end] }
-//       }
-//     }),
-
-//     // 🟡 PENDING LEAVES
-//     LeaveRequest.count({
-//       where: {
-//         status: 'Pending',
-//         startDate: { [Op.between]: [start, end] }
-//       }
-//     }),
-
-//     // ❌ REJECTED (CANCELLED)
-//     LeaveRequest.count({
-//       where: {
-//         status: 'Rejected',
-//         startDate: { [Op.between]: [start, end] }
-//       }
-//     }),
-
-//     // 🆕 NEWLY APPLIED (last 7 days)
-//     LeaveRequest.count({
-//       where: {
-//         createdAt: {
-//           [Op.gte]: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-//         }
-//       }
-//     }),
-
-//     // 💸 EXPENSES
-//     Expense.sum('amount', {
-//       where: {
-//         managerApprovalStatus: 'Approved',
-//         financeApprovalStatus: 'Approved',
-//         createdAt: { [Op.between]: [start, end] }
-//       }
-//     }),
-
-//     // 💰 SALARY
-//     Payroll.sum('net_salary', {
-//       where: {
-//         status: { [Op.in]: ['Processed', 'Locked'] },
-//         processedAt: { [Op.between]: [start, end] }
-//       }
-//     }),
-
-//     // 📊 MONTHLY LEAVES
-//     LeaveRequest.findAll({
-//       attributes: [
-//         [fn('MONTH', col('start_date')), 'month'],
-//         [fn('COUNT', col('id')), 'count']
-//       ],
-//       where: {
-//         status: 'Approved',
-//         startDate: { [Op.between]: [start, end] }
-//       },
-//       group: [fn('MONTH', col('start_date'))],
-//       raw: true
-//     }),
-
-//     // 📊 MONTHLY EXPENSES
-//     Expense.findAll({
-//       attributes: [
-//         [fn('MONTH', col('created_at')), 'month'],
-//         [fn('SUM', col('amount')), 'total']
-//       ],
-//       where: {
-//         managerApprovalStatus: 'Approved',
-//         financeApprovalStatus: 'Approved',
-//         createdAt: { [Op.between]: [start, end] }
-//       },
-//       group: [fn('MONTH', col('created_at'))],
-//       raw: true
-//     }),
-
-//     // 📊 MONTHLY SALARY
-//     Payroll.findAll({
-//       attributes: [
-//         [fn('MONTH', col('processed_at')), 'month'],
-//         [fn('SUM', col('net_salary')), 'total']
-//       ],
-//       where: {
-//         status: { [Op.in]: ['Processed', 'Locked'] },
-//         processedAt: { [Op.between]: [start, end] }
-//       },
-//       group: [fn('MONTH', col('processed_at'))],
-//       raw: true
-//     }),
-
-//     // 👥 USERS LIST
-//     User.findAndCountAll({
-//       attributes: { exclude: ['passwordHash'] },
-//       limit: Number(limit),
-//       offset: Number(offset),
-//       order: [['createdAt', 'DESC']]
-//     })
-//   ]);
-
-//   // 🧼 Safe numbers
-//   const safeExpenses = Number(expensesClaimed || 0);
-//   const safeSalary = Number(salaryPaid || 0);
-
-//   // 📊 Format monthly
-//   const formatMonthly = (data, key) => {
-//     const map = {};
-//     data.forEach(item => {
-//       map[item.month] = Number(item[key]);
-//     });
-
-//     return Array.from({ length: 12 }, (_, i) => ({
-//       month: i + 1,
-//       value: map[i + 1] || 0
-//     }));
-//   };
-
-//   return {
-//     summary: {
-//       totalUsers,
-//       approvedLeaves,
-//       pendingLeaves,
-//       rejectedLeaves,
-//       newLeaves,
-//       expensesClaimed: safeExpenses,
-//       salaryPaid: safeSalary
-//     },
-
-//     charts: {
-//       leaves: formatMonthly(monthlyLeaves, 'count'),
-//       expenses: formatMonthly(monthlyExpenses, 'total'),
-//       salary: formatMonthly(monthlySalary, 'total')
-//     },
-
-//     users: {
-//       data: usersData.rows,
-//       pagination: {
-//         total: usersData.count,
-//         page: Number(page),
-//         limit: Number(limit),
-//         totalPages: Math.ceil(usersData.count / limit)
-//       }
-//     }
-//   };
-// };
-
-
-
-
 const getDashboardSummary = async ({ year, page = 1, limit = 10 }) => {
   try {
     const start = `${year}-01-01`;
@@ -454,13 +179,16 @@ const getDashboardSummary = async ({ year, page = 1, limit = 10 }) => {
       salaryPaid,
       monthlyLeaves,
       usersData,
-      allLeavesList
+      allLeavesList,
+      expensesList,
+      monthlyExpenses,
+      monthlySalary
     ] = await Promise.all([
 
-      // 👥 USERS COUNT
+      // 👥 TOTAL USERS
       User.count(),
 
-      // 🔥 SINGLE QUERY FOR LEAVE COUNTS
+      // 📊 LEAVE STATUS COUNTS
       LeaveRequest.findAll({
         attributes: [
           'status',
@@ -482,7 +210,7 @@ const getDashboardSummary = async ({ year, page = 1, limit = 10 }) => {
         }
       }),
 
-      // 💸 EXPENSES
+      // 💸 TOTAL EXPENSES
       Expense.sum('amount', {
         where: {
           managerApprovalStatus: 'Approved',
@@ -491,7 +219,7 @@ const getDashboardSummary = async ({ year, page = 1, limit = 10 }) => {
         }
       }),
 
-      // 💰 SALARY
+      // 💰 TOTAL SALARY
       Payroll.sum('net_salary', {
         where: {
           status: { [Op.in]: ['Processed', 'Locked'] },
@@ -499,7 +227,7 @@ const getDashboardSummary = async ({ year, page = 1, limit = 10 }) => {
         }
       }),
 
-      // 📊 MONTHLY APPROVED LEAVES
+      // 📊 MONTHLY LEAVES
       LeaveRequest.findAll({
         attributes: [
           [fn('MONTH', col('start_date')), 'month'],
@@ -521,7 +249,7 @@ const getDashboardSummary = async ({ year, page = 1, limit = 10 }) => {
         order: [['createdAt', 'DESC']]
       }),
 
-      // 🔥 ALL LEAVES (FIXED ALIAS)
+      // 📋 ALL LEAVES
       LeaveRequest.findAndCountAll({
         where: {
           startDate: { [Op.between]: [start, end] }
@@ -529,38 +257,79 @@ const getDashboardSummary = async ({ year, page = 1, limit = 10 }) => {
         include: [
           {
             model: User,
-            as: 'employee', // ✅ correct
+            as: 'employee',
             attributes: ['id', 'firstName', 'lastName', 'email']
           },
           {
             model: User,
-            as: 'approver', // ✅ FIXED (not 'manager')
+            as: 'approver',
             attributes: ['id', 'firstName', 'lastName', 'email']
           }
         ],
         limit: Number(limit),
         offset: Number(offset),
         order: [['createdAt', 'DESC']]
+      }),
+
+      // 📋 ALL EXPENSES (NEW)
+      Expense.findAndCountAll({
+        where: {
+          createdAt: { [Op.between]: [start, end] }
+        },
+        include: [
+          {
+            model: User,
+            as: 'employee',
+            attributes: ['id', 'firstName', 'lastName', 'email']
+          }
+        ],
+        limit: Number(limit),
+        offset: Number(offset),
+        order: [['createdAt', 'DESC']]
+      }),
+
+      // 📊 MONTHLY EXPENSES (NEW)
+      Expense.findAll({
+        attributes: [
+          [fn('MONTH', col('created_at')), 'month'],
+          [fn('SUM', col('amount')), 'total']
+        ],
+        where: {
+          managerApprovalStatus: 'Approved',
+          financeApprovalStatus: 'Approved',
+          createdAt: { [Op.between]: [start, end] }
+        },
+        group: [fn('MONTH', col('created_at'))],
+        raw: true
+      }),
+
+      // 📊 MONTHLY SALARY (NEW)
+      Payroll.findAll({
+        attributes: [
+          [fn('MONTH', col('processed_at')), 'month'],
+          [fn('SUM', col('net_salary')), 'total']
+        ],
+        where: {
+          status: { [Op.in]: ['Processed', 'Locked'] },
+          processedAt: { [Op.between]: [start, end] }
+        },
+        group: [fn('MONTH', col('processed_at'))],
+        raw: true
       })
 
     ]);
 
-    // 🔥 FORMAT LEAVE COUNTS
-    const leaveMap = {
-      Approved: 0,
-      Pending: 0,
-      Rejected: 0
-    };
-
+    // 🔥 LEAVE STATUS FORMAT
+    const leaveMap = { Approved: 0, Pending: 0, Rejected: 0 };
     leaveStats.forEach(item => {
       leaveMap[item.status] = Number(item.count);
     });
 
-    // 📊 FORMAT MONTHLY
-    const formatMonthly = (data) => {
+    // 📊 MONTH FORMATTER
+    const formatMonthly = (data, key = 'count') => {
       const map = {};
       data.forEach(item => {
-        map[item.month] = Number(item.count);
+        map[item.month] = Number(item[key]);
       });
 
       return Array.from({ length: 12 }, (_, i) => ({
@@ -569,7 +338,7 @@ const getDashboardSummary = async ({ year, page = 1, limit = 10 }) => {
       }));
     };
 
-    // 🔥 CLEAN LEAVE RESPONSE
+    // 🧹 CLEAN LEAVES
     const cleanLeaves = allLeavesList.rows.map(leave => ({
       id: leave.id,
       status: leave.status,
@@ -577,19 +346,32 @@ const getDashboardSummary = async ({ year, page = 1, limit = 10 }) => {
       endDate: leave.endDate,
       reason: leave.reason,
 
-      // 👤 Employee
       employeeName: leave.employee
         ? `${leave.employee.firstName} ${leave.employee.lastName}`
         : null,
 
       employeeEmail: leave.employee?.email || null,
 
-      // 👨‍💼 Approver
       approverName: leave.approver
         ? `${leave.approver.firstName} ${leave.approver.lastName}`
         : null,
 
       approverEmail: leave.approver?.email || null
+    }));
+
+    // 🧹 CLEAN EXPENSES (NEW)
+    const cleanExpenses = expensesList.rows.map(exp => ({
+      id: exp.id,
+      amount: exp.amount,
+      category: exp.category,
+      status: `${exp.managerApprovalStatus} / ${exp.financeApprovalStatus}`,
+      createdAt: exp.createdAt,
+
+      employeeName: exp.employee
+        ? `${exp.employee.firstName} ${exp.employee.lastName}`
+        : null,
+
+      employeeEmail: exp.employee?.email || null
     }));
 
     return {
@@ -604,7 +386,9 @@ const getDashboardSummary = async ({ year, page = 1, limit = 10 }) => {
       },
 
       charts: {
-        leaves: formatMonthly(monthlyLeaves)
+        leaves: formatMonthly(monthlyLeaves),
+        expenses: formatMonthly(monthlyExpenses, 'total'),
+        salary: formatMonthly(monthlySalary, 'total')
       },
 
       users: {
@@ -617,7 +401,6 @@ const getDashboardSummary = async ({ year, page = 1, limit = 10 }) => {
         }
       },
 
-      // 🔥 FINAL LEAVES OUTPUT
       leaves: {
         pending: cleanLeaves.filter(l => l.status === 'Pending'),
         approved: cleanLeaves.filter(l => l.status === 'Approved'),
@@ -632,6 +415,25 @@ const getDashboardSummary = async ({ year, page = 1, limit = 10 }) => {
             totalPages: Math.ceil(allLeavesList.count / limit)
           }
         }
+      },
+
+      // 💸 EXPENSES (NEW)
+      expenses: {
+        total: Number(expensesClaimed || 0),
+        all: {
+          data: cleanExpenses,
+          pagination: {
+            total: expensesList.count,
+            page: Number(page),
+            limit: Number(limit),
+            totalPages: Math.ceil(expensesList.count / limit)
+          }
+        }
+      },
+
+      // 💰 SALARY (NEW)
+      salary: {
+        total: Number(salaryPaid || 0)
       }
     };
 
@@ -644,8 +446,221 @@ const getDashboardSummary = async ({ year, page = 1, limit = 10 }) => {
 
 
 
+// const getDashboardSummary = async ({ year, page = 1, limit = 10 }) => {
+//   try {
+//     const start = `${year}-01-01`;
+//     const end = `${year}-12-31`;
+//     const offset = (page - 1) * limit;
+
+//     const [
+//       totalUsers,
+//       leaveStats,
+//       newLeaves,
+//       expensesClaimed,
+//       salaryPaid,
+//       monthlyLeaves,
+//       usersData,
+//       allLeavesList
+//     ] = await Promise.all([
+
+//       // 👥 USERS COUNT
+//       User.count(),
+
+//       // 🔥 SINGLE QUERY FOR LEAVE COUNTS
+//       LeaveRequest.findAll({
+//         attributes: [
+//           'status',
+//           [fn('COUNT', col('id')), 'count']
+//         ],
+//         where: {
+//           startDate: { [Op.between]: [start, end] }
+//         },
+//         group: ['status'],
+//         raw: true
+//       }),
+
+//       // 🆕 NEW LEAVES (LAST 7 DAYS)
+//       LeaveRequest.count({
+//         where: {
+//           createdAt: {
+//             [Op.gte]: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+//           }
+//         }
+//       }),
+
+//       // 💸 EXPENSES
+//       Expense.sum('amount', {
+//         where: {
+//           managerApprovalStatus: 'Approved',
+//           financeApprovalStatus: 'Approved',
+//           createdAt: { [Op.between]: [start, end] }
+//         }
+//       }),
+
+//       // 💰 SALARY
+//       Payroll.sum('net_salary', {
+//         where: {
+//           status: { [Op.in]: ['Processed', 'Locked'] },
+//           processedAt: { [Op.between]: [start, end] }
+//         }
+//       }),
+
+//       // 📊 MONTHLY APPROVED LEAVES
+//       LeaveRequest.findAll({
+//         attributes: [
+//           [fn('MONTH', col('start_date')), 'month'],
+//           [fn('COUNT', col('id')), 'count']
+//         ],
+//         where: {
+//           status: 'Approved',
+//           startDate: { [Op.between]: [start, end] }
+//         },
+//         group: [fn('MONTH', col('start_date'))],
+//         raw: true
+//       }),
+
+//       // 👥 USERS LIST
+//       User.findAndCountAll({
+//         attributes: { exclude: ['passwordHash'] },
+//         limit: Number(limit),
+//         offset: Number(offset),
+//         order: [['createdAt', 'DESC']]
+//       }),
+
+//       // 🔥 ALL LEAVES (FIXED ALIAS)
+//       LeaveRequest.findAndCountAll({
+//         where: {
+//           startDate: { [Op.between]: [start, end] }
+//         },
+//         include: [
+//           {
+//             model: User,
+//             as: 'employee', // ✅ correct
+//             attributes: ['id', 'firstName', 'lastName', 'email']
+//           },
+//           {
+//             model: User,
+//             as: 'approver', // ✅ FIXED (not 'manager')
+//             attributes: ['id', 'firstName', 'lastName', 'email']
+//           }
+//         ],
+//         limit: Number(limit),
+//         offset: Number(offset),
+//         order: [['createdAt', 'DESC']]
+//       })
+
+//     ]);
+
+//     // 🔥 FORMAT LEAVE COUNTS
+//     const leaveMap = {
+//       Approved: 0,
+//       Pending: 0,
+//       Rejected: 0
+//     };
+
+//     leaveStats.forEach(item => {
+//       leaveMap[item.status] = Number(item.count);
+//     });
+
+//     // 📊 FORMAT MONTHLY
+//     const formatMonthly = (data) => {
+//       const map = {};
+//       data.forEach(item => {
+//         map[item.month] = Number(item.count);
+//       });
+
+//       return Array.from({ length: 12 }, (_, i) => ({
+//         month: i + 1,
+//         value: map[i + 1] || 0
+//       }));
+//     };
+
+//     // 🔥 CLEAN LEAVE RESPONSE
+//     const cleanLeaves = allLeavesList.rows.map(leave => ({
+//       id: leave.id,
+//       status: leave.status,
+//       startDate: leave.startDate,
+//       endDate: leave.endDate,
+//       reason: leave.reason,
+
+//       // 👤 Employee
+//       employeeName: leave.employee
+//         ? `${leave.employee.firstName} ${leave.employee.lastName}`
+//         : null,
+
+//       employeeEmail: leave.employee?.email || null,
+
+//       // 👨‍💼 Approver
+//       approverName: leave.approver
+//         ? `${leave.approver.firstName} ${leave.approver.lastName}`
+//         : null,
+
+//       approverEmail: leave.approver?.email || null
+//     }));
+
+//     return {
+//       summary: {
+//         totalUsers,
+//         approvedLeaves: leaveMap.Approved,
+//         pendingLeaves: leaveMap.Pending,
+//         rejectedLeaves: leaveMap.Rejected,
+//         newLeaves,
+//         expensesClaimed: Number(expensesClaimed || 0),
+//         salaryPaid: Number(salaryPaid || 0)
+//       },
+
+//       charts: {
+//         leaves: formatMonthly(monthlyLeaves)
+//       },
+
+//       users: {
+//         data: usersData.rows,
+//         pagination: {
+//           total: usersData.count,
+//           page: Number(page),
+//           limit: Number(limit),
+//           totalPages: Math.ceil(usersData.count / limit)
+//         }
+//       },
+
+//       // 🔥 FINAL LEAVES OUTPUT
+//       leaves: {
+//         pending: cleanLeaves.filter(l => l.status === 'Pending'),
+//         approved: cleanLeaves.filter(l => l.status === 'Approved'),
+//         rejected: cleanLeaves.filter(l => l.status === 'Rejected'),
+
+//         all: {
+//           data: cleanLeaves,
+//           pagination: {
+//             total: allLeavesList.count,
+//             page: Number(page),
+//             limit: Number(limit),
+//             totalPages: Math.ceil(allLeavesList.count / limit)
+//           }
+//         }
+//       }
+//     };
+
+//   } catch (error) {
+//     console.error('Dashboard Error:', error);
+//     throw error;
+//   }
+// };
+
+//get user by department
+const getUsersByDepartment = async (department) => {
+  if (!department) {
+    throw new Error('Department is required');
+  }
+
+  const users = await userRepository.getUsersByDepartment(department);
+
+  return users;
+};
+
 
 module.exports = {
+  getUsersByDepartment,
   listUsers,
   getUserById,
   createUser,
