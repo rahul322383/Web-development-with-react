@@ -212,9 +212,25 @@ const getCurrentUser = async (userId) => {
     };
   }
 
+  const u = user.get({ plain: true });
+
   return {
     success: true,
-    data: normalizeUserPayload(user) // ✅ SAFE
+    data: {
+      user: {
+        id: u.id,
+        email: u.email,
+        fullName: `${u.firstName} ${u.lastName}`,
+        primaryRole: u.Roles?.[0]?.name || 'Employee'
+      },
+
+      meta: {
+        role: u.Roles?.[0]?.name,
+        isActive: u.isActive,
+        department: u.department
+        
+      }
+    }
   };
 };
 
