@@ -197,11 +197,12 @@ import Register from "./pages/Register";
 import { Dashboard } from "./pages/Dashboard";
 import { Users } from "./pages/Users";
 import { Leave } from "./pages/Leave";
-import { Expenses } from "./pages/Expenses";
 import { Payroll } from "./pages/Payroll";
 import { Notifications } from "./pages/Notifications";
 import PendingLeaves from "./leave/pending-leave";
 import ApprovedLeaves from "./leave/approved-leave";
+import Expenses from "./Expenses/Expenses";
+import DepartmentDashboard from "./department/DepartmentDashboard";
 
 // Public Pages
 import HomePage from "./pages/home";
@@ -263,6 +264,12 @@ function AppRoutes() {
             <Dashboard />
           </ProtectedRoute>
         } />
+          <Route path="/department-dashboard" element={ 
+            <ProtectedRoute>
+              <DepartmentDashboard />
+            </ProtectedRoute>
+          } />
+
 
         <Route path="/users" element={
           <ProtectedRoute roles={["Admin", "Manager"]}>
