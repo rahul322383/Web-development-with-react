@@ -61,5 +61,15 @@ export const userApi = {
     } catch (error) {
       throw error.response?.data || error.message;
     }
-  }
+  },
+
+
+ // userApi.js
+  getUsersByDepartment : async (department) => {
+  const response = await axiosInstance.get(`/users/department/${department}`);
+  return response.data.data;
+ }
+
+
 };
+
