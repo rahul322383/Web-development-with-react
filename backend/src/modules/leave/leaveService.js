@@ -773,13 +773,20 @@ const listPendingLeavesForManager = async (managerId) => {
 
     return {
       success: true,
+      message: "Pending leaves fetched successfully",
+      count: data.length,
       data
     };
   } catch (error) {
-    return { success: false, message: error.message };
+    console.error("Error fetching pending leaves:", error);
+
+    return {
+      success: false,
+      message: "Failed to fetch pending leaves",
+      error: error.message
+    };
   }
 };
-
 
 
 
