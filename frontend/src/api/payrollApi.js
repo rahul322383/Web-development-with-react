@@ -1,4 +1,4 @@
-import axiosInstance from './axiosInstance';
+import axiosInstance from './axios';
 
 export const payrollApi = {
   // 🔹 Get all payrolls
