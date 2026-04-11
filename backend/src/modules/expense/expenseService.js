@@ -323,10 +323,7 @@ const financeReviewExpense = async ({ financeUserId, expenseId, status, paymentS
   }
 };
 
-/**
- * Returns all expenses submitted by the given employee.
- * @param {number|string} employeeId
- */
+
 const listMyExpenses = async (employeeId) => {
   if (!employeeId) return { success: false, message: 'employeeId is required', data: null };
   try {
@@ -337,10 +334,7 @@ const listMyExpenses = async (employeeId) => {
   }
 };
 
-/**
- * Returns expenses awaiting manager review for the given manager.
- * @param {number|string} managerId
- */
+
 const listPendingManager = async (managerId) => {
   if (!managerId) return { success: false, message: 'managerId is required', data: null };
   try {
