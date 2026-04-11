@@ -339,18 +339,47 @@ const listEmployeeLeavesWithCursor = async ({ employeeId, cursor, limit }) => {
 /* =========================
    MANAGER: PENDING LEAVES
 ========================= */
-const listPendingManagerLeaves = (managerId) =>
-  LeaveRequest.findAll({
-    where: { managerId, status: { [Op.in]: ['Pending', 'Approved', 'Rejected', 'Cancelled'] } },
+// const listPendingManagerLeaves = (managerId) =>
+//   LeaveRequest.findAll({
+//     where: { managerId, status: { [Op.in]: ['Pending', 'Approved', 'Rejected', 'Cancelled'] } },
+//     include: [
+//       {
+//         model: User,
+//         as: 'employee',
+//         attributes: ['id', 'firstName', 'lastName', 'email']
+//       }
+//     ],
+//     order: [['createdAt', 'ASC']]
+//   });
+
+
+
+
+const listPendingManagerLeaves = async (managerId) => {
+  return LeaveRequest.findAll({
+    where: {
+      managerId,
+      // optional → remove if you want ALL statuses
+      // status: 'Approved'
+    },
     include: [
       {
         model: User,
-        as: 'employee',
-        attributes: ['id', 'firstName', 'lastName', 'email']
+        as: 'employee', // 👈 MUST match association
+        attributes: [
+          'id',
+          'firstName',
+          'lastName',
+          'email',
+          'employeeCode',
+          'department'
+        ]
       }
     ],
-    order: [['createdAt', 'ASC']]
+    order: [['createdAt', 'DESC']]
   });
+};
+
 
 /* =========================
    TEAM LEAVES (MANAGER)
