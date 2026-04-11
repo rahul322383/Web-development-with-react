@@ -11,14 +11,15 @@ const createUserSchema = Joi.object({
   baseSalary: Joi.number().min(0).default(0),
   role: Joi.string().valid('Employee', 'Manager', 'HR', 'Finance', 'Admin').default('Employee')
 });
-
+ 
 const updateUserSchema = Joi.object({
   firstName: Joi.string().max(80).optional(),
   lastName: Joi.string().max(80).optional(),
   managerId: Joi.number().integer().positive().allow(null).optional(),
   department: Joi.string().allow('').optional(),
   baseSalary: Joi.number().min(0).optional(),
-  isActive: Joi.boolean().optional()
+  isActive: Joi.boolean().optional(),
+  role: Joi.string().valid('Employee', 'Manager', 'HR', 'Finance', 'Admin').optional()
 });
 
 module.exports = {
