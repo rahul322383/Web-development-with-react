@@ -1,4 +1,5 @@
 const asyncHandler = require('../../utils/asyncHandler');
+const { get } = require('./user.routes');
 const userService = require('./user.service');
 
 const listUsers = asyncHandler(async (req, res) => {
@@ -39,9 +40,31 @@ const getDashboardSummary = asyncHandler(async (req, res) => {
   });
 });
 
+const getUsersByDepartment = asyncHandler(async (req, res) => {
+  const department = req.params.department?.trim().toLowerCase();
 
+  if (!department) {
+    return res.status(400).json({
+      success: false,
+      message: "Department is required"
+    });
+  }
 
+  const users = await userService.getUsersByDepartment(department);
+
+  res.status(200).json({
+    success: true,
+    message: users.length
+      ? "Users fetched successfully"
+      : "No users found for this department",
+    count: users.length,
+    data: users
+  });
+});
+
+ 
 module.exports = {
+  getUsersByDepartment,
   listUsers,
   getUserById,
   createUser,
