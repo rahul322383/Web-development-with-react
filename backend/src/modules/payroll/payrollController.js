@@ -27,7 +27,14 @@ const getMyPayrollHistory = asyncHandler(async (req, res) => {
   res.status(200).json(result);
 });
 
+const getPayrollByEmployee = asyncHandler(async (req, res) => {
+  const employeeId = req.params.employeeId;
+  const result = await payrollService.getPayrollByEmployee(employeeId);
+  res.status(200).json(result);
+});
+
 module.exports = {
+  getPayrollByEmployee,
   enqueueProcessing,
   lockPayroll,
   getMyPayrollHistory
