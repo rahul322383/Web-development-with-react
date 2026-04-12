@@ -1,38 +1,12 @@
-// const app = require('./app');
-// const env = require('./src/config/env');
-// const logger = require('./src/config/logger');
-// const sequelize = require('./src/database/sequelize');
-// require('./src/database/initModels');
-// const registerScheduledJobs = require('./src/jobs/registerJobs');
-
-// const bootstrap = async () => {
-//   try {
-//     await sequelize.authenticate();
-//     logger.info('MySQL connected successfully');
-
-//     if (env.NODE_ENV !== 'production') {
-//       await sequelize.sync();
-//     }
-
-//     registerScheduledJobs();
-
-//     app.listen(env.PORT, '0.0.0.0', () => {
-//       logger.info(`Server running on port ${env.PORT}`);
-//     });
-//   } catch (error) {
-//     logger.error({ error }, 'Failed to start server');
-//     process.exit(1);
-//   }
-// };
-
-// bootstrap();
-
 const app = require('./app');
 const env = require('./src/config/env');
 const logger = require('./src/config/logger');
 const sequelize = require('./src/database/sequelize');
 require('./src/database/initModels');
 const registerScheduledJobs = require('./src/jobs/registerJobs');
+
+const http = require('http'); // ✅ IMPORTANT
+const { initSocket } = require('./src/config/socket');
 
 let server;
 
@@ -48,8 +22,21 @@ const startServer = async () => {
 
     registerScheduledJobs();
 
-    server = app.listen(env.PORT, '0.0.0.0', () => {
-      logger.info(`Server running on port ${env.PORT}`);
+    /* =========================
+       CREATE HTTP SERVER
+    ========================= */
+    const httpServer = http.createServer(app);
+
+    /* =========================
+       INIT SOCKET.IO
+    ========================= */
+    initSocket(httpServer);
+
+    /* =========================
+       START SERVER
+    ========================= */
+    server = httpServer.listen(env.PORT, '0.0.0.0', () => {
+      logger.info(`🚀 Server + Socket running on port ${env.PORT}`);
     });
 
   } catch (error) {
@@ -58,7 +45,9 @@ const startServer = async () => {
   }
 };
 
-/* graceful shutdown */
+/* =========================
+   GRACEFUL SHUTDOWN
+========================= */
 const shutdown = async (signal) => {
   logger.info(`${signal} received. Closing server...`);
 
@@ -78,7 +67,9 @@ const shutdown = async (signal) => {
   }
 };
 
-/* handle crashes */
+/* =========================
+   ERROR HANDLING
+========================= */
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
