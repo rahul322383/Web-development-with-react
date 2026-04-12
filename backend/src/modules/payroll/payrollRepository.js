@@ -44,7 +44,18 @@ const listPayrollHistory = async (employeeId) =>
 
 const findPayrollById = async (id) => Payroll.findByPk(id, { include: [{ model: PayrollItem, as: 'items' }] });
 
+const getPayrollByEmployee = async (employeeId) =>
+  Payroll.findAll({
+    where: { employeeId },
+    include: [{ model: PayrollItem, as: 'items' }],
+    order: [
+      ['year', 'DESC'],
+      ['month', 'DESC']
+    ]
+  }); 
+
 module.exports = {
+  getPayrollByEmployee,
   listActiveEmployees,
   upsertPayroll,
   upsertPayrollItems,
