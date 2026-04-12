@@ -102,7 +102,10 @@ const lockPayroll = async ({ payrollId, actorId, ipAddress }) =>
 
 const getPayrollHistory = async (employeeId) => payrollRepository.listPayrollHistory(employeeId);
 
+const getPayrollByEmployee = async (employeeId) => payrollRepository.getPayrollByEmployee(employeeId);
+
 module.exports = {
+  getPayrollByEmployee,
   computeNetSalary,
   enqueuePayrollProcessing,
   processPayrollBatch,
