@@ -214,6 +214,20 @@ const getCurrentUser = async (userId) => {
 
   const u = user.get({ plain: true });
 
+  /* =========================
+     GENERATE ACCESS TOKEN
+  ========================= */
+  const accessToken = jwt.sign(
+    {
+      id: u.id,
+      role: u.Roles?.[0]?.name || 'Employee'
+    },
+    env.JWT_SECRET,
+    {
+      expiresIn: '1d' // or 15m / 1h based on your system
+    }
+  );
+
   return {
     success: true,
     data: {
@@ -221,18 +235,21 @@ const getCurrentUser = async (userId) => {
         id: u.id,
         email: u.email,
         fullName: `${u.firstName} ${u.lastName}`,
-        primaryRole: u.Roles?.[0]?.name || 'Employee'
+        primaryRole: u.Roles?.[0]?.name || 'Employee',
+        accessToken
       },
 
       meta: {
         role: u.Roles?.[0]?.name,
         isActive: u.isActive,
         department: u.department
-        
-      }
+      },
+
+      
     }
   };
 };
+
 
 module.exports = {
   register,
