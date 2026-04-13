@@ -1,162 +1,11 @@
-// const sequelize = require('../../database/sequelize');
-// const { uploadBuffer } = require('../../config/cloudinary');
-// const expenseRepository = require('./expenseRepository');
-// const { logAuditEvent } = require('../../utils/auditLogger');
-// const { clearCacheKeys } = require('../../utils/cache');
 
-// const submitExpense = async ({ employeeId, payload, receiptBuffer, ipAddress }) => {
-//   try {
-//     return await sequelize.transaction(async (transaction) => {
-//       const expense = await expenseRepository.createExpense(
-//         {
-//           employeeId,
-//           category: payload.category,
-//           amount: payload.amount,
-//           currency: payload.currency,
-//           description: payload.description
-//         },
-//         transaction
-//       );
-//       console.log('Expense created with ID:', expense.id);
-//       console.log('Receipt buffer exists:', !!receiptBuffer);
-//       console.log('Receipt buffer size:', receiptBuffer ? receiptBuffer.length : 'N/A');
-
-//       if (receiptBuffer) {
-//         const uploadResult = await uploadBuffer(receiptBuffer, 'hrms/expenses');
-//         await expenseRepository.createReceipt(
-//           {
-//             expenseId: expense.id,
-//             cloudinaryPublicId: uploadResult.public_id,
-//             cloudinaryUrl: uploadResult.secure_url
-//           },
-//           transaction
-//         );
-//       }
-
-//       await logAuditEvent({
-//         userId: employeeId,
-//         moduleName: 'Expense',
-//         actionType: 'CREATE',
-//         oldData: null,
-//         newData: expense,
-//         ipAddress
-//       });
-
-//       await clearCacheKeys([`dashboard_summary:${employeeId}:${new Date().getFullYear()}`]);
-
-//       const fullExpense = await expenseRepository.findExpenseById(expense.id);
-//       return { success: true, message: 'Expense submitted successfully', data: fullExpense };
-//     });
-//   } catch (err) {
-//     return { success: false, message: err.message || 'Failed to submit expense', data: null };
-//   }
-// };
-
-// const managerReviewExpense = async ({ managerId, expenseId, status, ipAddress }) => {
-//   try {
-//     return await sequelize.transaction(async (transaction) => {
-//       const expense = await expenseRepository.findExpenseById(expenseId);
-//       if (!expense) return { success: false, message: 'Expense not found', data: null };
-//       if (expense.employee.managerId !== managerId) return { success: false, message: 'Not authorized for this expense', data: null };
-//       if (expense.managerApprovalStatus !== 'Pending') return { success: false, message: 'Manager decision already submitted', data: null };
-
-//       await expenseRepository.updateExpense(expenseId, { managerApprovalStatus: status }, transaction);
-
-//       await logAuditEvent({
-//         userId: managerId,
-//         moduleName: 'Expense',
-//         actionType: 'APPROVE',
-//         oldData: { managerApprovalStatus: 'Pending' },
-//         newData: { managerApprovalStatus: status },
-//         ipAddress
-//       });
-
-//       await clearCacheKeys([`dashboard_summary:${expense.employeeId}:${new Date().getFullYear()}`]);
-
-//       const updatedExpense = await expenseRepository.findExpenseById(expenseId);
-//       return { success: true, message: 'Expense reviewed by manager', data: updatedExpense };
-//     });
-//   } catch (err) {
-//     return { success: false, message: err.message || 'Failed to review expense', data: null };
-//   }
-// };
-
-// const financeReviewExpense = async ({ financeUserId, expenseId, status, paymentStatus, ipAddress }) => {
-//   try {
-//     return await sequelize.transaction(async (transaction) => {
-//       const expense = await expenseRepository.findExpenseById(expenseId);
-//       if (!expense) return { success: false, message: 'Expense not found', data: null };
-//       if (expense.managerApprovalStatus !== 'Approved') return { success: false, message: 'Expense must be manager approved first', data: null };
-//       if (expense.financeApprovalStatus !== 'Pending') return { success: false, message: 'Finance decision already submitted', data: null };
-
-//       const payload = {
-//         financeApprovalStatus: status,
-//         paymentStatus: paymentStatus || (status === 'Approved' ? 'Processing' : 'Unpaid')
-//       };
-//       if (payload.paymentStatus === 'Paid') payload.paidAt = new Date();
-
-//       await expenseRepository.updateExpense(expenseId, payload, transaction);
-
-//       await logAuditEvent({
-//         userId: financeUserId,
-//         moduleName: 'Expense',
-//         actionType: 'APPROVE',
-//         oldData: { financeApprovalStatus: 'Pending' },
-//         newData: payload,
-//         ipAddress
-//       });
-
-//       await clearCacheKeys([`dashboard_summary:${expense.employeeId}:${new Date().getFullYear()}`]);
-
-//       const updatedExpense = await expenseRepository.findExpenseById(expenseId);
-//       return { success: true, message: 'Expense reviewed by finance', data: updatedExpense };
-//     });
-//   } catch (err) {
-//     return { success: false, message: err.message || 'Failed to review expense', data: null };
-//   }
-// };
-
-// const listMyExpenses = async (employeeId) => {
-//   try {
-//     const expenses = await expenseRepository.listExpensesForEmployee(employeeId);
-//     return { success: true, message: 'Expenses fetched', data: expenses };
-//   } catch (err) {
-//     return { success: false, message: err.message || 'Failed to fetch expenses', data: null };
-//   }
-// };
-
-// const listPendingManager = async (managerId) => {
-//   try {
-//     const expenses = await expenseRepository.listPendingManagerExpenses(managerId);
-//     return { success: true, message: 'Pending manager expenses fetched', data: expenses };
-//   } catch (err) {
-//     return { success: false, message: err.message || 'Failed to fetch pending expenses', data: null };
-//   }
-// };
-
-// const listPendingFinance = async () => {
-//   try {
-//     const expenses = await expenseRepository.listPendingFinanceExpenses();
-//     return { success: true, message: 'Pending finance expenses fetched', data: expenses };
-//   } catch (err) {
-//     return { success: false, message: err.message || 'Failed to fetch pending finance expenses', data: null };
-//   }
-// };
-
-// module.exports = {
-//   submitExpense,
-//   managerReviewExpense,
-//   financeReviewExpense,
-//   listMyExpenses,
-//   listPendingManager,
-//   listPendingFinance
-// };
 
 const sequelize = require('../../database/sequelize');
 const { uploadBuffer } = require('../../config/cloudinary');
 const expenseRepository = require('./expenseRepository');
 const { logAuditEvent } = require('../../utils/auditLogger');
 const { clearCacheKeys } = require('../../utils/cache');
+const { get } = require('./expenseRoutes');
 
 
 const bustDashboardCache = (employeeId) =>
@@ -358,7 +207,29 @@ const listPendingFinance = async () => {
   }
 };
 
+// Add this method to your existing expenseService
+const getFinanceTeamIds = async () => {
+  try {
+    // Query your database for users with finance role
+    const financeUsers = await prisma.user.findMany({
+      where: {
+        role: 'FINANCE' // or whatever role name you use
+      },
+      select: {
+        id: true
+      }
+    });
+    
+    return financeUsers.map(user => user.id);
+  } catch (error) {
+    console.error('Error fetching finance team IDs:', error);
+    return [];
+  }
+};
+
+
 module.exports = {
+  getFinanceTeamIds,
   submitExpense,
   managerReviewExpense,
   financeReviewExpense,
