@@ -18,7 +18,7 @@ const envSchema = Joi.object({
 
   JWT_ACCESS_SECRET: Joi.string().required(),
   JWT_REFRESH_SECRET: Joi.string().required(),
-  JWT_ACCESS_EXPIRES_IN: Joi.string().default('15m'),
+  JWT_ACCESS_EXPIRES_IN: Joi.string().default('1d'),
   JWT_REFRESH_EXPIRES_IN: Joi.string().default('7d'),
 
   REDIS_HOST: Joi.string().required(),
