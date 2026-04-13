@@ -5,13 +5,18 @@ import App from './App';
 import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext'; 
 const root = ReactDOM.createRoot(document.getElementById('root'));
+import { SocketProvider } from "./context/SocketContext";
 
 root.render(
   <React.StrictMode>
-    <AuthProvider>
-      <ThemeProvider>   {/* 👈 add this */}
-        <App />
-      </ThemeProvider>
-    </AuthProvider>
+    
+      <AuthProvider>
+        <SocketProvider>
+        <ThemeProvider>
+          <App />
+        </ThemeProvider>
+        </SocketProvider>
+      </AuthProvider>
+    
   </React.StrictMode>
 );
