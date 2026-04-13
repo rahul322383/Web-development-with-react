@@ -1,737 +1,3 @@
-
-// // import React, { useState, useEffect } from 'react';
-// // import { Link, useLocation, useNavigate } from 'react-router-dom';
-// // import { 
-// //   LayoutDashboard, 
-// //   Users, 
-// //   Calendar, 
-// //   Receipt, 
-// //   DollarSign,
-// //   Bell,
-// //   LogOut,
-// //   X,
-// //   Menu,
-// //   Home,
-// //   Info,
-// //   Sparkles,
-// //   CreditCard,
-// //   PlayCircle,
-// //   BookOpen,
-// //   Briefcase,
-// //   Shield,
-// //   Scale,
-// //   Lock,
-// //   HelpCircle,
-// //   LogIn,
-// //   UserPlus
-// // } from 'lucide-react';
-// // import { useAuth } from "../../context/AuthContext";
-// // import { toast } from 'sonner';
-// // import PendingLeaves from '../../leave/pending-leave';
-
-// // export const Sidebar = ({ isOpen, onClose }) => {
-// //   const location = useLocation();
-// //   const navigate = useNavigate();
-// //   const { user, logout, isAuthenticated } = useAuth();
-
-// //   // Navigation for authenticated users based on role
-// //   const getAuthenticatedNavigation = () => {
-// //     const baseNavigation = [
-// //       { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, roles: ['Admin', 'Manager', 'Employee'] },
-// //       { name: 'Pending Leaves', href: '/pending-leave', icon: LayoutDashboard, roles: ['Admin', 'Manager', 'HR'] },
-// //       { name: 'Approved Leaves', href: '/approved-leave', icon: LayoutDashboard, roles: ['Admin', 'Manager', 'HR'] },
-// //       { name: 'Users', href: '/users', icon: Users, roles: ['Admin', 'Manager', 'HR'] },
-// //       { name: 'Leave', href: '/leave', icon: Calendar, roles: ['Admin', 'Manager', 'Employee' , 'HR'] },
-// //       { name: 'Expenses', href: '/expenses', icon: Receipt, roles: ['Admin', 'Manager', 'Employee'] },
-// //       { name: 'Payroll', href: '/payroll', icon: DollarSign, roles: ['Admin'] },
-// //       { name: 'Notifications', href: '/notifications', icon: Bell, roles: ['Admin', 'Manager', 'Employee'] }
-// //     ];
-
-// //     // Filter navigation based on user's role
-// //     if (user?.primaryRole) {
-// //       return baseNavigation.filter(item => item.roles.includes(user.primaryRole));
-// //     }
-// //     return baseNavigation.filter(item => item.roles.includes('Employee'));
-// //   };
-
-// //   // Navigation for non-authenticated users
-// //   const publicNavigation = [
-// //     { name: 'Home', href: '/', icon: Home },
-// //     { name: 'Features', href: '/features', icon: Sparkles },
-// //     { name: 'Pricing', href: '/pricing', icon: CreditCard },
-// //     { name: 'Demo', href: '/demo', icon: PlayCircle },
-// //     { name: 'About', href: '/about', icon: Info },
-// //     {name : 'Contact', href: '/contact', icon: Info },
-// //     { name : 'Help', href: '/help', icon: HelpCircle },
-// //     { name: 'Privacy', href: '/privacy', icon: Shield },
-// //     { name: 'Terms', href: '/terms', icon: Scale },
-// //     { name: 'Security', href: '/security', icon: Lock }
-// //   ];
-
-// //   // Footer links for non-authenticated users
-// //   const footerLinks = [
-// //     { name: 'Privacy', href: '/privacy', icon: Shield },
-// //     { name: 'Terms', href: '/terms', icon: Scale },
-// //     { name: 'Security', href: '/security', icon: Lock },
-// //     { name: 'Help', href: '/help', icon: HelpCircle }
-// //   ];
-
-// //   const handleLogout = async () => {
-// //     try {
-// //       await logout();
-// //       toast.success('Logged out successfully');
-// //       navigate('/', { replace: true });
-// //       if (onClose) onClose(); // Close sidebar on mobile after logout
-// //     } catch (error) {
-// //       toast.error('Logout failed, but you have been signed out locally');
-// //       navigate('/', { replace: true });
-// //     }
-// //   };
-
-// //   const navigation = isAuthenticated ? getAuthenticatedNavigation() : publicNavigation;
-
-// //   // Get user display name and initials
-// //   const getUserDisplayName = () => {
-// //     if (user?.fullName) return user.fullName;
-// //     if (user?.name) return user.name;
-// //     return 'User';
-// //   };
-
-// //   const getUserInitials = () => {
-// //     const name = getUserDisplayName();
-// //     if (name === 'User') return 'U';
-// //     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-// //   };
-
-// //   const getUserRole = () => {
-// //     if (user?.primaryRole) return user.primaryRole;
-// //     if (user?.role) return user.role;
-// //     return 'Employee';
-// //   };
-
-// //   const getUserEmail = () => {
-// //     if (user?.email) return user.email;
-// //     return '';
-// //   };
-
-// //   // Get role badge color
-// //   const getRoleBadgeColor = (role) => {
-// //     switch(role?.toLowerCase()) {
-// //       case 'admin':
-// //         return 'bg-gradient-to-r from-red-500 to-pink-500';
-// //       case 'manager':
-// //         return 'bg-gradient-to-r from-blue-500 to-cyan-500';
-// //       default:
-// //         return 'bg-gradient-to-r from-green-500 to-emerald-500';
-// //     }
-// //   };
-
-// //   return (
-// //     <>
-// //       {/* Mobile overlay - only shows when sidebar is open */}
-// //       {isOpen && (
-// //         <div 
-// //           className="fixed inset-0 bg-black/50 z-20 lg:hidden"
-// //           onClick={onClose}
-// //           data-testid="sidebar-overlay"
-// //         />
-// //       )}
-
-// //       {/* Sidebar - always visible on desktop, controlled on mobile */}
-// //       <aside
-// //         className={`
-// //           fixed left-0 top-0 z-30 h-full w-64 border-r border-slate-200 bg-white
-// //           transition-transform duration-300 ease-in-out shadow-xl
-// //           ${isOpen ? 'translate-x-0' : '-translate-x-full'}
-// //           lg:translate-x-0
-// //         `}
-// //         data-testid="sidebar"
-// //       >
-// //         <div className="flex h-full flex-col">
-// //           {/* Logo and close button */}
-// //           <div className="flex h-16 items-center justify-between border-b border-slate-200 px-4">
-// //             <div className="flex items-center space-x-2">
-// //               <div className="h-8 w-8 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-lg flex items-center justify-center">
-// //                 <span className="text-white font-bold text-sm">HR</span>
-// //               </div>
-// //               <span className="font-bold text-slate-800">HR Management</span>
-// //             </div>
-// //             <button
-// //               onClick={onClose}
-// //               className="lg:hidden p-2 rounded-lg hover:bg-slate-100 transition-colors"
-// //               data-testid="sidebar-close-button"
-// //             >
-// //               <X className="h-5 w-5 text-slate-600" />
-// //             </button>
-// //           </div>
-
-// //           {/* Navigation */}
-// //           <nav className="flex-1 space-y-1 px-3 py-4 overflow-y-auto">
-// //             {navigation.map((item) => {
-// //               const isActive = location.pathname === item.href;
-// //               return (
-// //                 <Link
-// //                   key={item.name}
-// //                   to={item.href}
-// //                   onClick={() => {
-// //                     if (window.innerWidth < 1024 && onClose) {
-// //                       onClose(); // Close sidebar on mobile after navigation
-// //                     }
-// //                   }}
-// //                   data-testid={`nav-${item.name.toLowerCase()}`}
-// //                   className={`
-// //                     group flex items-center space-x-3 rounded-lg px-3 py-2.5 text-sm font-medium
-// //                     transition-all duration-200
-// //                     ${
-// //                       isActive
-// //                         ? 'bg-gradient-to-r from-indigo-50 to-purple-50 text-indigo-600 shadow-sm'
-// //                         : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-// //                     }
-// //                   `}
-// //                 >
-// //                   <item.icon className={`h-5 w-5 flex-shrink-0 transition-transform group-hover:scale-110 ${
-// //                     isActive ? 'text-indigo-600' : 'text-slate-500'
-// //                   }`} />
-// //                   <span>{item.name}</span>
-// //                   {isActive && (
-// //                     <div className="ml-auto w-1 h-6 bg-indigo-600 rounded-full"></div>
-// //                   )}
-// //                 </Link>
-// //               );
-// //             })}
-// //           </nav>
-
-// //           {/* User section for authenticated users */}
-// //           {isAuthenticated ? (
-// //             <div className="border-t border-slate-200 p-4 bg-gradient-to-b from-white to-slate-50">
-// //               <div className="flex items-center space-x-3 mb-4">
-// //                 <div className="relative">
-// //                   <div className="h-12 w-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-md">
-// //                     <span className="text-white font-semibold text-sm">
-// //                       {getUserInitials()}
-// //                     </span>
-// //                   </div>
-// //                   <div className={`absolute -bottom-1 -right-1 h-3 w-3 rounded-full bg-green-500 border-2 border-white`}></div>
-// //                 </div>
-// //                 <div className="flex-1 min-w-0">
-// //                   <p className="text-sm font-semibold text-slate-900 truncate" data-testid="sidebar-user-name">
-// //                     {getUserDisplayName()}
-// //                   </p>
-// //                   <div className="flex items-center space-x-2 mt-1">
-// //                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium text-white ${getRoleBadgeColor(getUserRole())}`}>
-// //                       {getUserRole()}
-// //                     </span>
-// //                   </div>
-// //                   {getUserEmail() && (
-// //                     <p className="text-xs text-slate-500 truncate mt-1" data-testid="sidebar-user-email">
-// //                       {getUserEmail()}
-// //                     </p>
-// //                   )}
-// //                 </div>
-// //               </div>
-              
-// //               {/* User stats or additional info */}
-// //               <div className="mb-3 p-2 bg-slate-100 rounded-lg">
-// //                 <div className="text-xs text-slate-600">
-// //                   <span className="font-medium">ID:</span> {user?.id || 'N/A'}
-// //                 </div>
-// //               </div>
-              
-// //               <button
-// //                 onClick={handleLogout}
-// //                 data-testid="sidebar-logout-button"
-// //                 className="w-full flex items-center justify-center space-x-2 rounded-lg px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors group border border-red-200"
-// //               >
-// //                 <LogOut className="h-4 w-4 group-hover:scale-110 transition-transform" />
-// //                 <span>Logout</span>
-// //               </button>
-// //             </div>
-// //           ) : (
-// //             /* Footer links for non-authenticated users */
-// //             <div className="border-t border-slate-200 p-4 bg-slate-50">
-// //               {/* Legal & Help Links */}
-// //               <div className="grid grid-cols-2 gap-2 mb-4">
-// //                 {footerLinks.map((link) => (
-// //                   <Link
-// //                     key={link.name}
-// //                     to={link.href}
-// //                     onClick={() => {
-// //                       if (window.innerWidth < 1024 && onClose) {
-// //                         onClose();
-// //                       }
-// //                     }}
-// //                     className="flex items-center space-x-1 text-xs text-slate-600 hover:text-indigo-600 transition-colors"
-// //                   >
-// //                     <link.icon className="h-3 w-3" />
-// //                     <span>{link.name}</span>
-// //                   </Link>
-// //                 ))}
-// //               </div>
-
-// //               {/* Auth Buttons */}
-// //               <div className="space-y-2">
-// //                 <Link
-// //                   to="/login"
-// //                   onClick={() => {
-// //                     if (window.innerWidth < 1024 && onClose) {
-// //                       onClose();
-// //                     }
-// //                   }}
-// //                   className="w-full flex items-center justify-center space-x-2 rounded-lg px-3 py-2 text-sm font-medium border-2 border-indigo-600 text-indigo-600 hover:bg-indigo-50 transition-colors group"
-// //                 >
-// //                   <LogIn className="h-4 w-4 group-hover:scale-110 transition-transform" />
-// //                   <span>Login</span>
-// //                 </Link>
-// //                 <Link
-// //                   to="/register"
-// //                   onClick={() => {
-// //                     if (window.innerWidth < 1024 && onClose) {
-// //                       onClose();
-// //                     }
-// //                   }}
-// //                   className="w-full flex items-center justify-center space-x-2 rounded-lg px-3 py-2 text-sm font-medium bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:shadow-lg hover:shadow-indigo-500/25 transition-all group"
-// //                 >
-// //                   <UserPlus className="h-4 w-4 group-hover:scale-110 transition-transform" />
-// //                   <span>Sign Up</span>
-// //                 </Link>
-// //               </div>
-// //             </div>
-// //           )}
-// //         </div>
-// //       </aside>
-// //     </>
-// //   );
-// // };
-
-
-// import React, { useState, useEffect } from 'react';
-// import { Link, useLocation, useNavigate } from 'react-router-dom';
-// import { 
-//   LayoutDashboard, 
-//   Users, 
-//   Calendar, 
-//   Receipt, 
-//   DollarSign,
-//   Bell,
-//   LogOut,
-//   X,
-//   Menu,
-//   Home,
-//   Info,
-//   Sparkles,
-//   CreditCard,
-//   PlayCircle,
-//   BookOpen,
-//   Briefcase,
-//   Shield,
-//   Scale,
-//   Lock,
-//   HelpCircle,
-//   LogIn,
-//   UserPlus,
-//   Sun,
-//   Moon,
-//   Monitor
-// } from 'lucide-react';
-// import { useAuth } from "../../context/AuthContext";
-// import { toast } from 'sonner';
-
-// // Theme context hook (you'll need to implement this in your app)
-// const useTheme = () => {
-//   const [theme, setTheme] = useState(() => {
-//     if (typeof window !== 'undefined') {
-//       const stored = localStorage.getItem('theme');
-//       if (stored) return stored;
-//       return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-//     }
-//     return 'light';
-//   });
-
-//   useEffect(() => {
-//     const root = document.documentElement;
-//     root.classList.remove('light', 'dark');
-//     root.classList.add(theme);
-//     localStorage.setItem('theme', theme);
-//   }, [theme]);
-
-//   const toggleTheme = () => {
-//     setTheme(prev => prev === 'light' ? 'dark' : 'light');
-//   };
-
-//   const setSystemTheme = () => {
-//     const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-//     setTheme(systemTheme);
-//   };
-
-//   return { theme, toggleTheme, setSystemTheme };
-// };
-
-// export const Sidebar = ({ isOpen, onClose }) => {
-//   const location = useLocation();
-//   const navigate = useNavigate();
-//   const { user, logout, isAuthenticated } = useAuth();
-//   const { theme, toggleTheme, setSystemTheme } = useTheme();
-//   const [showThemeMenu, setShowThemeMenu] = useState(false);
-
-//   // Navigation for authenticated users based on role
-//   const getAuthenticatedNavigation = () => {
-//     const baseNavigation = [
-//       { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, roles: ['Admin', 'Manager', 'Employee'] },
-//       { name: 'Pending Leaves', href: '/pending-leave', icon: LayoutDashboard, roles: ['Admin', 'Manager', 'HR'] },
-//       { name: 'Approved Leaves', href: '/approved-leave', icon: LayoutDashboard, roles: ['Admin', 'Manager', 'HR'] },
-//       { name: 'Users', href: '/users', icon: Users, roles: ['Admin', 'Manager', 'HR'] },
-//       { name: 'Leave', href: '/leave', icon: Calendar, roles: ['Admin', 'Manager', 'Employee', 'HR'] },
-//       { name: 'Expenses', href: '/expenses', icon: Receipt, roles: ['Admin', 'Manager', 'Employee'] },
-//       { name: 'Payroll', href: '/payroll', icon: DollarSign, roles: ['Admin'] },
-//       { name: 'Notifications', href: '/notifications', icon: Bell, roles: ['Admin', 'Manager', 'Employee'] }
-//     ];
-
-//     if (user?.primaryRole) {
-//       return baseNavigation.filter(item => item.roles.includes(user.primaryRole));
-//     }
-//     return baseNavigation.filter(item => item.roles.includes('Employee'));
-//   };
-
-//   // Navigation for non-authenticated users
-//   const publicNavigation = [
-//     { name: 'Home', href: '/', icon: Home },
-//     { name: 'Features', href: '/features', icon: Sparkles },
-//     { name: 'Pricing', href: '/pricing', icon: CreditCard },
-//     { name: 'Demo', href: '/demo', icon: PlayCircle },
-//     { name: 'About', href: '/about', icon: Info },
-//     { name: 'Contact', href: '/contact', icon: Info },
-//     { name: 'Help', href: '/help', icon: HelpCircle },
-//     { name: 'Privacy', href: '/privacy', icon: Shield },
-//     { name: 'Terms', href: '/terms', icon: Scale },
-//     { name: 'Security', href: '/security', icon: Lock }
-//   ];
-
-//   // Footer links for non-authenticated users
-//   const footerLinks = [
-//     { name: 'Privacy', href: '/privacy', icon: Shield },
-//     { name: 'Terms', href: '/terms', icon: Scale },
-//     { name: 'Security', href: '/security', icon: Lock },
-//     { name: 'Help', href: '/help', icon: HelpCircle }
-//   ];
-
-//   const handleLogout = async () => {
-//     try {
-//       await logout();
-//       toast.success('Logged out successfully');
-//       navigate('/', { replace: true });
-//       if (onClose) onClose();
-//     } catch (error) {
-//       toast.error('Logout failed, but you have been signed out locally');
-//       navigate('/', { replace: true });
-//     }
-//   };
-
-//   const navigation = isAuthenticated ? getAuthenticatedNavigation() : publicNavigation;
-
-//   const getUserDisplayName = () => {
-//     if (user?.fullName) return user.fullName;
-//     if (user?.name) return user.name;
-//     return 'User';
-//   };
-
-//   const getUserInitials = () => {
-//     const name = getUserDisplayName();
-//     if (name === 'User') return 'U';
-//     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-//   };
-
-//   const getUserRole = () => {
-//     if (user?.primaryRole) return user.primaryRole;
-//     if (user?.role) return user.role;
-//     return 'Employee';
-//   };
-
-//   const getUserEmail = () => {
-//     if (user?.email) return user.email;
-//     return '';
-//   };
-
-//   const getRoleBadgeColor = (role) => {
-//     const colors = {
-//       light: {
-//         admin: 'bg-gradient-to-r from-red-500 to-pink-500',
-//         manager: 'bg-gradient-to-r from-blue-500 to-cyan-500',
-//         employee: 'bg-gradient-to-r from-green-500 to-emerald-500'
-//       },
-//       dark: {
-//         admin: 'bg-gradient-to-r from-red-600 to-pink-600',
-//         manager: 'bg-gradient-to-r from-blue-600 to-cyan-600',
-//         employee: 'bg-gradient-to-r from-green-600 to-emerald-600'
-//       }
-//     };
-    
-//     const roleKey = role?.toLowerCase() || 'employee';
-//     return colors[theme]?.[roleKey] || colors.light[roleKey];
-//   };
-
-//   // Close theme menu when clicking outside
-//   useEffect(() => {
-//     const handleClickOutside = (event) => {
-//       if (showThemeMenu && !event.target.closest('.theme-menu-container')) {
-//         setShowThemeMenu(false);
-//       }
-//     };
-//     document.addEventListener('mousedown', handleClickOutside);
-//     return () => document.removeEventListener('mousedown', handleClickOutside);
-//   }, [showThemeMenu]);
-
-//   return (
-//     <>
-//       {/* Mobile overlay */}
-//       {isOpen && (
-//         <div 
-//           className="fixed inset-0 bg-black/50 dark:bg-black/70 backdrop-blur-sm z-20 lg:hidden transition-all duration-300"
-//           onClick={onClose}
-//           data-testid="sidebar-overlay"
-//         />
-//       )}
-
-//       {/* Sidebar */}
-//       <aside
-//         className={`
-//           fixed left-0 top-0 z-30 h-full w-72 border-r 
-//           border-slate-200 dark:border-slate-700
-//           bg-white dark:bg-slate-900
-//           transition-all duration-300 ease-in-out shadow-xl
-//           ${isOpen ? 'translate-x-0' : '-translate-x-full'}
-//           lg:translate-x-0
-//         `}
-//         data-testid="sidebar"
-//       >
-//         <div className="flex h-full flex-col">
-//           {/* Logo and close button */}
-//           <div className="flex h-16 items-center justify-between border-b border-slate-200 dark:border-slate-700 px-4">
-//             <div className="flex items-center space-x-3">
-//               <div className="relative">
-//                 <div className="h-9 w-9 bg-gradient-to-br from-indigo-600 to-purple-600 dark:from-indigo-500 dark:to-purple-500 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-500/25">
-//                   <span className="text-white font-bold text-sm">HR</span>
-//                 </div>
-//                 <div className="absolute -top-1 -right-1 h-3 w-3 bg-green-500 rounded-full border-2 border-white dark:border-slate-900 animate-pulse"></div>
-//               </div>
-//               <span className="font-bold text-lg bg-gradient-to-r from-slate-900 to-slate-700 dark:from-white dark:to-slate-300 bg-clip-text text-transparent">
-//                 HR Management
-//               </span>
-//             </div>
-//             <button
-//               onClick={onClose}
-//               className="lg:hidden p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-//               data-testid="sidebar-close-button"
-//             >
-//               <X className="h-5 w-5 text-slate-600 dark:text-slate-400" />
-//             </button>
-//           </div>
-//           {/* Navigation */}
-//           <nav className="flex-1 space-y-1 px-3 py-4 overflow-y-auto scrollbar-thin 
-//             scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 
-//             scrollbar-track-transparent"
-//           >
-//             {navigation.map((item) => {
-//               const isActive = location.pathname === item.href;
-//               return (
-//                 <Link
-//                   key={item.name}
-//                   to={item.href}
-//                   onClick={() => {
-//                     if (window.innerWidth < 1024 && onClose) {
-//                       onClose();
-//                     }
-//                   }}
-//                   data-testid={`nav-${item.name.toLowerCase()}`}
-//                   className={`
-//                     group flex items-center space-x-3 rounded-lg px-3 py-2.5 text-sm font-medium
-//                     transition-all duration-200 relative
-//                     ${
-//                       isActive
-//                         ? 'bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30 text-indigo-600 dark:text-indigo-400 shadow-sm'
-//                         : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200'
-//                     }
-//                   `}
-//                 >
-//                   <item.icon className={`h-5 w-5 flex-shrink-0 transition-transform group-hover:scale-110 ${
-//                     isActive 
-//                       ? 'text-indigo-600 dark:text-indigo-400' 
-//                       : 'text-slate-500 dark:text-slate-500 group-hover:text-slate-700 dark:group-hover:text-slate-300'
-//                   }`} />
-//                   <span className="flex-1">{item.name}</span>
-//                   {isActive && (
-//                     <>
-//                       <div className="absolute right-0 w-1 h-8 bg-gradient-to-b from-indigo-600 to-purple-600 dark:from-indigo-500 dark:to-purple-500 rounded-l-full"></div>
-//                       <div className="absolute inset-0 bg-gradient-to-r from-indigo-600/5 to-purple-600/5 dark:from-indigo-400/10 dark:to-purple-400/10 rounded-lg"></div>
-//                     </>
-//                   )}
-//                 </Link>
-//               );
-//             })}
-//           </nav>
-
-//           {/* User section for authenticated users */}
-//           {isAuthenticated ? (
-//             <div className="border-t border-slate-200 dark:border-slate-700 p-4 
-//               bg-gradient-to-b from-white to-slate-50 dark:from-slate-900 dark:to-slate-800/50"
-//             >
-//               <div className="flex items-center space-x-3 mb-4">
-//                 <div className="relative">
-//                   <div className="h-12 w-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 
-//                     dark:from-indigo-600 dark:to-purple-700 
-//                     flex items-center justify-center shadow-lg shadow-indigo-500/25"
-//                   >
-//                     <span className="text-white font-semibold text-sm">
-//                       {getUserInitials()}
-//                     </span>
-//                   </div>
-//                   <div className="absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-full 
-//                     bg-green-500 border-2 border-white dark:border-slate-900 
-//                     ring-2 ring-green-500/20 animate-pulse"
-//                   ></div>
-//                 </div>
-//                 <div className="flex-1 min-w-0">
-//                   <p className="text-sm font-semibold text-slate-900 dark:text-white truncate" 
-//                      data-testid="sidebar-user-name"
-//                   >
-//                     {getUserDisplayName()}
-//                   </p>
-//                   <div className="flex items-center space-x-2 mt-1">
-//                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium text-white shadow-sm ${getRoleBadgeColor(getUserRole())}`}>
-//                       {getUserRole()}
-//                     </span>
-//                   </div>
-//                   {getUserEmail() && (
-//                     <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-1" 
-//                        data-testid="sidebar-user-email"
-//                     >
-//                       {getUserEmail()}
-//                     </p>
-//                   )}
-//                 </div>
-//               </div>
-              
-//               {/* User stats */}
-//               <div className="mb-3 p-2.5 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
-//                 <div className="text-xs space-y-1">
-//                   <div className="flex justify-between">
-//                     <span className="text-slate-600 dark:text-slate-400">ID:</span>
-//                     <span className="font-mono font-medium text-slate-900 dark:text-slate-200">
-//                       {user?.id || 'N/A'}
-//                     </span>
-//                   </div>
-//                   {user?.department && (
-//                     <div className="flex justify-between">
-//                       <span className="text-slate-600 dark:text-slate-400">Dept:</span>
-//                       <span className="font-medium text-slate-900 dark:text-slate-200">
-//                         {user.department}
-//                       </span>
-//                     </div>
-//                   )}
-//                 </div>
-//               </div>
-              
-//               <button
-//                 onClick={handleLogout}
-//                 data-testid="sidebar-logout-button"
-//                 className="w-full flex items-center justify-center space-x-2 rounded-lg px-3 py-2.5 
-//                   text-sm font-medium 
-//                   text-red-600 dark:text-red-400 
-//                   hover:bg-red-50 dark:hover:bg-red-950/30 
-//                   border border-red-200 dark:border-red-800
-//                   transition-all duration-200 group
-//                   hover:shadow-md hover:shadow-red-500/10"
-//               >
-//                 <LogOut className="h-4 w-4 group-hover:scale-110 transition-transform" />
-//                 <span>Logout</span>
-//               </button>
-//             </div>
-//           ) : (
-//             /* Footer links for non-authenticated users */
-//             <div className="border-t border-slate-200 dark:border-slate-700 p-4 
-//               bg-slate-50 dark:bg-slate-800/50"
-//             >
-//               {/* Legal & Help Links */}
-//               <div className="grid grid-cols-2 gap-2 mb-4">
-//                 {footerLinks.map((link) => (
-//                   <Link
-//                     key={link.name}
-//                     to={link.href}
-//                     onClick={() => {
-//                       if (window.innerWidth < 1024 && onClose) {
-//                         onClose();
-//                       }
-//                     }}
-//                     className="flex items-center space-x-1.5 text-xs 
-//                       text-slate-600 dark:text-slate-400 
-//                       hover:text-indigo-600 dark:hover:text-indigo-400 
-//                       transition-colors group"
-//                   >
-//                     <link.icon className="h-3 w-3 group-hover:scale-110 transition-transform" />
-//                     <span>{link.name}</span>
-//                   </Link>
-//                 ))}
-//               </div>
-
-//               {/* Auth Buttons */}
-//               <div className="space-y-2">
-//                 <Link
-//                   to="/login"
-//                   onClick={() => {
-//                     if (window.innerWidth < 1024 && onClose) {
-//                       onClose();
-//                     }
-//                   }}
-//                   className="w-full flex items-center justify-center space-x-2 rounded-lg px-3 py-2.5 
-//                     text-sm font-medium 
-//                     border-2 border-indigo-600 dark:border-indigo-500 
-//                     text-indigo-600 dark:text-indigo-400 
-//                     hover:bg-indigo-50 dark:hover:bg-indigo-950/30 
-//                     transition-all duration-200 group
-//                     hover:shadow-md hover:shadow-indigo-500/10"
-//                 >
-//                   <LogIn className="h-4 w-4 group-hover:scale-110 transition-transform" />
-//                   <span>Login</span>
-//                 </Link>
-//                 <Link
-//                   to="/register"
-//                   onClick={() => {
-//                     if (window.innerWidth < 1024 && onClose) {
-//                       onClose();
-//                     }
-//                   }}
-//                   className="w-full flex items-center justify-center space-x-2 rounded-lg px-3 py-2.5 
-//                     text-sm font-medium 
-//                     bg-gradient-to-r from-indigo-600 to-purple-600 
-//                     dark:from-indigo-500 dark:to-purple-500
-//                     text-white 
-//                     hover:shadow-lg hover:shadow-indigo-500/25 
-//                     dark:hover:shadow-indigo-500/20
-//                     transition-all duration-200 group
-//                     relative overflow-hidden"
-//                 >
-//                   <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 
-//                     translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"
-//                   ></div>
-//                   <UserPlus className="h-4 w-4 group-hover:scale-110 transition-transform relative z-10" />
-//                   <span className="relative z-10">Sign Up</span>
-//                 </Link>
-//               </div>
-
-//               {/* Version info */}
-//               <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700">
-//                 <p className="text-center text-xs text-slate-500 dark:text-slate-500">
-//                   v1.0.0 • © 2024 HR Management
-//                 </p>
-//               </div>
-//             </div>
-//           )}
-//         </div>
-//       </aside>
-//     </>
-//   );
-// };
-
-
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
@@ -743,7 +9,6 @@ import {
   Bell,
   LogOut,
   X,
-  Menu,
   Home,
   Info,
   Sparkles,
@@ -756,57 +21,164 @@ import {
   Lock,
   HelpCircle,
   LogIn,
-  UserPlus
+  UserPlus,
+  Settings,
+  User,
+  ClipboardList,
+  BarChart,
+  MessageSquare,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { useAuth } from "../../context/AuthContext";
+import { useTheme } from "../../context/ThemeContext";
 import { toast } from 'sonner';
-
 
 export const Sidebar = ({ isOpen, onClose }) => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout, isAuthenticated } = useAuth();
+  const { user, meta, logout, isAuthenticated, isLoading } = useAuth();
+  const { theme } = useTheme();
+  const [userData, setUserData] = useState(null);
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
-  // Navigation for authenticated users based on role
+  // Update user data when auth context changes
+  useEffect(() => {
+    if (user) {
+      setUserData(user);
+    }
+  }, [user]);
+
+  // Enhanced navigation based on role with metadata support
   const getAuthenticatedNavigation = () => {
+    const role = user?.primaryRole || meta?.role || 'Employee';
+    const department = meta?.department;
+    
     const baseNavigation = [
-      { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, roles: ['Admin', 'Manager', 'Employee'] },
-      { name: 'Pending Leaves', href: '/pending-leave', icon: LayoutDashboard, roles: ['Admin', 'Manager', 'HR'] },
-      { name: 'Approved Leaves', href: '/approved-leave', icon: LayoutDashboard, roles: ['Admin', 'Manager', 'HR'] },
-      { name: 'Users', href: '/users', icon: Users, roles: ['Admin', 'Manager'] },
-      { name: 'Leave', href: '/leave', icon: Calendar, roles: ['Admin', 'Manager', 'Employee'] },
-      { name: 'Expenses', href: '/expenses', icon: Receipt, roles: ['Admin', 'Manager', 'Employee'] },
-      { name: 'Payroll', href: '/payroll', icon: DollarSign, roles: ['Admin'] },
-      { name: 'Notifications', href: '/notifications', icon: Bell, roles: ['Admin', 'Manager', 'Employee'] }
+      { 
+        name: 'Dashboard', 
+        href: '/dashboard', 
+        icon: LayoutDashboard, 
+        roles: ['Admin', 'Manager', 'Employee', 'HR', 'Finance'],
+        showForAll: true 
+      },
+      { 
+        name: 'Profile', 
+        href: '/profile', 
+        icon: User, 
+        roles: ['Admin', 'Manager', 'Employee', 'HR', 'Finance'],
+        showForAll: true 
+      },
+      { 
+        name: 'Leave Management', 
+        href: '/leave', 
+        icon: Calendar, 
+        roles: ['Admin', 'Manager', 'Employee', 'HR', 'Finance'] 
+      },
+      { 
+        name: 'Pending Approvals', 
+        href: '/pending-leave', 
+        icon: ClipboardList, 
+        roles: ['Admin', 'Manager', 'HR', 'Finance'],
+        badge: true
+      },
+      { 
+        name: 'Expenses', 
+        href: '/expenses', 
+        icon: Receipt, 
+        roles: ['Admin', 'Manager', 'Employee', 'HR', 'Finance'] 
+      },
+      { 
+        name: 'Users Management', 
+        href: '/users', 
+        icon: Users, 
+        roles: ['Admin', 'Manager', 'HR', 'Finance'] 
+      },
+      { 
+        name: 'Payroll', 
+        href: '/payroll', 
+        icon: DollarSign, 
+        roles: ['Admin' ,'Manager', 'HR', 'Finance'] 
+      },
+      { 
+        name: 'Reports & Analytics', 
+        href: '/reports', 
+        icon: BarChart, 
+        roles: ['Admin', 'Manager', 'HR', 'Finance'] 
+      },
+      { 
+        name: 'Messages', 
+        href: '/messages', 
+        icon: MessageSquare, 
+        roles: ['Admin', 'Manager', 'Employee', 'HR', 'Finance'] 
+      },
+      { 
+        name: 'Notifications', 
+        href: '/notifications', 
+        icon: Bell, 
+        roles: ['Admin', 'Manager', 'Employee', 'HR', 'Finance'] 
+      },
+      { 
+        name: 'Settings', 
+        href: '/settings', 
+        icon: Settings, 
+        roles: ['Admin', 'Manager', 'Employee', 'HR', 'Finance'] 
+      }
     ];
 
-    // Filter navigation based on user's role
-    if (user?.primaryRole) {
-      return baseNavigation.filter(item => item.roles.includes(user.primaryRole));
+    // Department-specific navigation
+    if (department === 'Marketing') {
+      baseNavigation.push({
+        name: 'Marketing Tools',
+        href: '/marketing',
+        icon: Briefcase,
+        roles: ['Manager', 'Employee']
+      });
     }
-    return baseNavigation.filter(item => item.roles.includes('Employee'));
+
+    if (department === 'HR') {
+      baseNavigation.push({
+        name: 'Recruitment',
+        href: '/recruitment',
+        icon: Briefcase,
+        roles: ['Admin', 'Manager', 'HR']
+      });
+    }
+
+    // Filter navigation based on user's role
+    return baseNavigation.filter(item => 
+      item.showForAll || item.roles.includes(role)
+    );
   };
 
-  // Navigation for non-authenticated users
+  // Enhanced public navigation
   const publicNavigation = [
     { name: 'Home', href: '/', icon: Home },
     { name: 'Features', href: '/features', icon: Sparkles },
     { name: 'Pricing', href: '/pricing', icon: CreditCard },
     { name: 'Demo', href: '/demo', icon: PlayCircle },
     { name: 'About', href: '/about', icon: Info },
-    {name : 'Contact', href: '/contact', icon: Info },
-    { name : 'Help', href: '/help', icon: HelpCircle },
-    { name: 'Privacy', href: '/privacy', icon: Shield },
-    { name: 'Terms', href: '/terms', icon: Scale },
-    { name: 'Security', href: '/security', icon: Lock }
+    { name: 'Careers', href: '/careers', icon: Briefcase },
+    { name: 'Contact', href: '/contact', icon: MessageSquare },
   ];
 
-  // Footer links for non-authenticated users
+  // Footer links with better organization
   const footerLinks = [
-    { name: 'Privacy', href: '/privacy', icon: Shield },
-    { name: 'Terms', href: '/terms', icon: Scale },
-    { name: 'Security', href: '/security', icon: Lock },
-    { name: 'Help', href: '/help', icon: HelpCircle }
+    { 
+      section: 'Legal',
+      links: [
+        { name: 'Privacy', href: '/privacy', icon: Shield },
+        { name: 'Terms', href: '/terms', icon: Scale },
+        { name: 'Security', href: '/security', icon: Lock },
+      ]
+    },
+    {
+      section: 'Support',
+      links: [
+        { name: 'Help Center', href: '/help', icon: HelpCircle },
+        { name: 'Documentation', href: '/docs', icon: BookOpen },
+      ]
+    }
   ];
 
   const handleLogout = async () => {
@@ -814,7 +186,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
       await logout();
       toast.success('Logged out successfully');
       navigate('/', { replace: true });
-      if (onClose) onClose(); // Close sidebar on mobile after logout
+      if (onClose) onClose();
     } catch (error) {
       toast.error('Logout failed, but you have been signed out locally');
       navigate('/', { replace: true });
@@ -823,10 +195,11 @@ export const Sidebar = ({ isOpen, onClose }) => {
 
   const navigation = isAuthenticated ? getAuthenticatedNavigation() : publicNavigation;
 
-  // Get user display name and initials
+  // Get user display information with metadata
   const getUserDisplayName = () => {
     if (user?.fullName) return user.fullName;
     if (user?.name) return user.name;
+    if (meta?.name) return meta.name;
     return 'User';
   };
 
@@ -837,197 +210,323 @@ export const Sidebar = ({ isOpen, onClose }) => {
   };
 
   const getUserRole = () => {
-    if (user?.primaryRole) return user.primaryRole;
-    if (user?.role) return user.role;
-    return 'Employee';
+    return user?.primaryRole || meta?.role || 'Employee';
   };
 
   const getUserEmail = () => {
-    if (user?.email) return user.email;
-    return '';
+    return user?.email || meta?.email || '';
   };
 
-  // Get role badge color
-  const getRoleBadgeColor = (role) => {
-    switch(role?.toLowerCase()) {
-      case 'admin':
-        return 'bg-gradient-to-r from-red-500 to-pink-500';
-      case 'manager':
-        return 'bg-gradient-to-r from-blue-500 to-cyan-500';
-      default:
-        return 'bg-gradient-to-r from-green-500 to-emerald-500';
-    }
+  const getDepartment = () => {
+    return meta?.department || user?.department || '';
   };
+
+  // Enhanced role badge colors
+  const getRoleBadgeColor = (role) => {
+    const roleColors = {
+      'Admin': 'from-red-500 to-pink-500',
+      'Manager': 'from-blue-500 to-cyan-500',
+      'HR': 'from-purple-500 to-indigo-500',
+      'Employee': 'from-green-500 to-emerald-500'
+    };
+    return roleColors[role] || 'from-gray-500 to-slate-500';
+  };
+
+  // Theme-aware class names
+  const getThemeClasses = () => {
+    const isDark = theme === 'dark';
+    return {
+      sidebar: isDark 
+        ? 'bg-gray-900 border-gray-800 text-white' 
+        : 'bg-white border-slate-200 text-slate-800',
+      navItem: (isActive) => isDark
+        ? `${isActive ? 'bg-gray-800 text-indigo-400' : 'text-gray-300 hover:bg-gray-800 hover:text-white'}`
+        : `${isActive ? 'bg-gradient-to-r from-indigo-50 to-purple-50 text-indigo-600' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`,
+      userSection: isDark
+        ? 'bg-gray-800 border-gray-700'
+        : 'bg-gradient-to-b from-white to-slate-50 border-slate-200',
+      footer: isDark
+        ? 'bg-gray-900 border-gray-800'
+        : 'bg-slate-50 border-slate-200'
+    };
+  };
+
+  const themeClasses = getThemeClasses();
 
   return (
     <>
-      {/* Mobile overlay - only shows when sidebar is open */}
+      {/* Mobile overlay */}
       {isOpen && (
         <div 
-          className="fixed inset-0 bg-black/50 z-20 lg:hidden"
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 lg:hidden"
           onClick={onClose}
           data-testid="sidebar-overlay"
         />
       )}
 
-      {/* Sidebar - always visible on desktop, controlled on mobile */}
+      {/* Sidebar - Fixed positioning to start below header */}
       <aside
         className={`
-          fixed left-0 top-0 z-30 h-full w-64 border-r border-slate-200 bg-white
-          transition-transform duration-300 ease-in-out shadow-xl
+          fixed left-0 top-16 z-30 h-[calc(100vh-4rem)] border-r
+          transition-all duration-300 ease-in-out shadow-xl
           ${isOpen ? 'translate-x-0' : '-translate-x-full'}
           lg:translate-x-0
+          ${isCollapsed ? 'w-20' : 'w-72'}
+          ${themeClasses.sidebar}
         `}
         data-testid="sidebar"
       >
         <div className="flex h-full flex-col">
-          {/* Logo and close button */}
-          <div className="flex h-16 items-center justify-between border-b border-slate-200 px-4">
-            <div className="flex items-center space-x-2">
-              <div className="h-8 w-8 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-sm">HR</span>
-              </div>
-              <span className="font-bold text-slate-800">HR Management</span>
-            </div>
-            <button
-              onClick={onClose}
-              className="lg:hidden p-2 rounded-lg hover:bg-slate-100 transition-colors"
-              data-testid="sidebar-close-button"
-            >
-              <X className="h-5 w-5 text-slate-600" />
-            </button>
-          </div>
+          {/* Collapse Toggle Button */}
+          <button
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            className={`absolute -right-3 top-20 z-40 p-1.5 rounded-full bg-white dark:bg-gray-800 border border-slate-200 dark:border-gray-700 shadow-md hover:shadow-lg transition-all ${
+              theme === 'dark' ? 'text-gray-300 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            {isCollapsed ? (
+              <ChevronRight className="w-4 h-4" />
+            ) : (
+              <ChevronLeft className="w-4 h-4" />
+            )}
+          </button>
 
           {/* Navigation */}
           <nav className="flex-1 space-y-1 px-3 py-4 overflow-y-auto">
-            {navigation.map((item) => {
-              const isActive = location.pathname === item.href;
-              return (
-                <Link
-                  key={item.name}
-                  to={item.href}
-                  onClick={() => {
-                    if (window.innerWidth < 1024 && onClose) {
-                      onClose(); // Close sidebar on mobile after navigation
-                    }
-                  }}
-                  data-testid={`nav-${item.name.toLowerCase()}`}
-                  className={`
-                    group flex items-center space-x-3 rounded-lg px-3 py-2.5 text-sm font-medium
-                    transition-all duration-200
-                    ${
-                      isActive
-                        ? 'bg-gradient-to-r from-indigo-50 to-purple-50 text-indigo-600 shadow-sm'
-                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                    }
-                  `}
-                >
-                  <item.icon className={`h-5 w-5 flex-shrink-0 transition-transform group-hover:scale-110 ${
-                    isActive ? 'text-indigo-600' : 'text-slate-500'
-                  }`} />
-                  <span>{item.name}</span>
-                  {isActive && (
-                    <div className="ml-auto w-1 h-6 bg-indigo-600 rounded-full"></div>
-                  )}
-                </Link>
-              );
-            })}
-          </nav>
-
-          {/* User section for authenticated users */}
-          {isAuthenticated ? (
-            <div className="border-t border-slate-200 p-4 bg-gradient-to-b from-white to-slate-50">
-              <div className="flex items-center space-x-3 mb-4">
-                <div className="relative">
-                  <div className="h-12 w-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-md">
-                    <span className="text-white font-semibold text-sm">
-                      {getUserInitials()}
-                    </span>
-                  </div>
-                  <div className={`absolute -bottom-1 -right-1 h-3 w-3 rounded-full bg-green-500 border-2 border-white`}></div>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-slate-900 truncate" data-testid="sidebar-user-name">
-                    {getUserDisplayName()}
-                  </p>
-                  <div className="flex items-center space-x-2 mt-1">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium text-white ${getRoleBadgeColor(getUserRole())}`}>
-                      {getUserRole()}
-                    </span>
-                  </div>
-                  {getUserEmail() && (
-                    <p className="text-xs text-slate-500 truncate mt-1" data-testid="sidebar-user-email">
-                      {getUserEmail()}
-                    </p>
-                  )}
-                </div>
+            {isLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
               </div>
-              
-              {/* User stats or additional info */}
-              <div className="mb-3 p-2 bg-slate-100 rounded-lg">
-                <div className="text-xs text-slate-600">
-                  <span className="font-medium">ID:</span> {user?.id || 'N/A'}
-                </div>
-              </div>
-              
-              <button
-                onClick={handleLogout}
-                data-testid="sidebar-logout-button"
-                className="w-full flex items-center justify-center space-x-2 rounded-lg px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors group border border-red-200"
-              >
-                <LogOut className="h-4 w-4 group-hover:scale-110 transition-transform" />
-                <span>Logout</span>
-              </button>
-            </div>
-          ) : (
-            /* Footer links for non-authenticated users */
-            <div className="border-t border-slate-200 p-4 bg-slate-50">
-              {/* Legal & Help Links */}
-              <div className="grid grid-cols-2 gap-2 mb-4">
-                {footerLinks.map((link) => (
+            ) : (
+              navigation.map((item) => {
+                const isActive = location.pathname === item.href;
+                return (
                   <Link
-                    key={link.name}
-                    to={link.href}
+                    key={item.name}
+                    to={item.href}
                     onClick={() => {
                       if (window.innerWidth < 1024 && onClose) {
                         onClose();
                       }
                     }}
-                    className="flex items-center space-x-1 text-xs text-slate-600 hover:text-indigo-600 transition-colors"
+                    data-testid={`nav-${item.name.toLowerCase().replace(/\s+/g, '-')}`}
+                    className={`
+                      group flex items-center rounded-lg px-3 py-2.5 text-sm font-medium
+                      transition-all duration-200 relative
+                      ${isCollapsed ? 'justify-center space-x-0' : 'space-x-3'}
+                      ${themeClasses.navItem(isActive)}
+                    `}
+                    title={isCollapsed ? item.name : ''}
                   >
-                    <link.icon className="h-3 w-3" />
-                    <span>{link.name}</span>
+                    <item.icon className={`h-5 w-5 flex-shrink-0 transition-transform group-hover:scale-110 ${
+                      isActive && theme === 'dark' ? 'text-indigo-400' : ''
+                    }`} />
+                    {!isCollapsed && (
+                      <>
+                        <span className="flex-1">{item.name}</span>
+                        {item.badge && (
+                          <span className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-medium text-white">
+                            3
+                          </span>
+                        )}
+                        {isActive && (
+                          <div className={`absolute right-0 w-1 h-6 rounded-full ${
+                            theme === 'dark' ? 'bg-indigo-400' : 'bg-indigo-600'
+                          }`}></div>
+                        )}
+                      </>
+                    )}
                   </Link>
-                ))}
-              </div>
+                );
+              })
+            )}
+          </nav>
 
-              {/* Auth Buttons */}
-              <div className="space-y-2">
-                <Link
-                  to="/login"
-                  onClick={() => {
-                    if (window.innerWidth < 1024 && onClose) {
-                      onClose();
-                    }
-                  }}
-                  className="w-full flex items-center justify-center space-x-2 rounded-lg px-3 py-2 text-sm font-medium border-2 border-indigo-600 text-indigo-600 hover:bg-indigo-50 transition-colors group"
-                >
-                  <LogIn className="h-4 w-4 group-hover:scale-110 transition-transform" />
-                  <span>Login</span>
-                </Link>
-                <Link
-                  to="/register"
-                  onClick={() => {
-                    if (window.innerWidth < 1024 && onClose) {
-                      onClose();
-                    }
-                  }}
-                  className="w-full flex items-center justify-center space-x-2 rounded-lg px-3 py-2 text-sm font-medium bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:shadow-lg hover:shadow-indigo-500/25 transition-all group"
-                >
-                  <UserPlus className="h-4 w-4 group-hover:scale-110 transition-transform" />
-                  <span>Sign Up</span>
-                </Link>
+          {/* User section or Footer */}
+          {isAuthenticated ? (
+            <div className={`border-t p-4 ${themeClasses.userSection}`}>
+              {/* User Profile */}
+              <div className={`flex ${isCollapsed ? 'justify-center' : 'space-x-3'} mb-4`}>
+                <div className="relative">
+                  <div className="h-10 w-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg ring-2 ring-offset-2 ring-indigo-500 ring-offset-transparent">
+                    <span className="text-white font-semibold text-sm">
+                      {getUserInitials()}
+                    </span>
+                  </div>
+                  {meta?.isActive && (
+                    <div className="absolute -bottom-1 -right-1 h-3 w-3 rounded-full bg-green-500 border-2 border-white dark:border-gray-800"></div>
+                  )}
+                </div>
+                {!isCollapsed && (
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-semibold truncate ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`} 
+                       data-testid="sidebar-user-name">
+                      {getUserDisplayName()}
+                    </p>
+                    <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium text-white bg-gradient-to-r ${getRoleBadgeColor(getUserRole())}`}>
+                        {getUserRole()}
+                      </span>
+                      {getDepartment() && (
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                          theme === 'dark' 
+                            ? 'bg-gray-700 text-gray-300' 
+                            : 'bg-slate-200 text-slate-700'
+                        }`}>
+                          {getDepartment()}
+                        </span>
+                      )}
+                    </div>
+                    {getUserEmail() && (
+                      <p className={`text-xs truncate mt-1 ${theme === 'dark' ? 'text-gray-400' : 'text-slate-500'}`}
+                         data-testid="sidebar-user-email">
+                        {getUserEmail()}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
+              
+              {/* User metadata - Only show when not collapsed */}
+              {!isCollapsed && (user?.id || meta) && (
+                <div className={`mb-3 p-3 rounded-lg ${theme === 'dark' ? 'bg-gray-700' : 'bg-slate-100'}`}>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <span className={`font-medium block ${theme === 'dark' ? 'text-gray-300' : 'text-slate-600'}`}>ID</span>
+                      <span className={theme === 'dark' ? 'text-white' : 'text-slate-900'}>
+                        {user?.id || 'N/A'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className={`font-medium block ${theme === 'dark' ? 'text-gray-300' : 'text-slate-600'}`}>Status</span>
+                      <span className={`${meta?.isActive ? 'text-green-500' : 'text-red-500'}`}>
+                        {meta?.isActive ? 'Active' : 'Inactive'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              <button
+                onClick={handleLogout}
+                data-testid="sidebar-logout-button"
+                className={`w-full flex items-center justify-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all group ${
+                  isCollapsed ? 'px-2' : ''
+                } ${
+                  theme === 'dark'
+                    ? 'text-red-400 hover:bg-red-900/20 border border-red-900/30 hover:border-red-500/30'
+                    : 'text-red-600 hover:bg-red-50 border border-red-200'
+                }`}
+                title={isCollapsed ? 'Logout' : ''}
+              >
+                <LogOut className="h-4 w-4 group-hover:scale-110 transition-transform" />
+                {!isCollapsed && <span>Logout</span>}
+              </button>
+            </div>
+          ) : (
+            /* Public footer with better organization */
+            <div className={`border-t p-4 ${themeClasses.footer}`}>
+              {!isCollapsed ? (
+                <>
+                  {/* Legal & Help Links */}
+                  <div className="space-y-4 mb-4">
+                    {footerLinks.map((section) => (
+                      <div key={section.section}>
+                        <h4 className={`text-xs font-semibold mb-2 uppercase tracking-wider ${
+                          theme === 'dark' ? 'text-gray-400' : 'text-slate-500'
+                        }`}>
+                          {section.section}
+                        </h4>
+                        <div className="grid grid-cols-2 gap-2">
+                          {section.links.map((link) => (
+                            <Link
+                              key={link.name}
+                              to={link.href}
+                              onClick={() => {
+                                if (window.innerWidth < 1024 && onClose) {
+                                  onClose();
+                                }
+                              }}
+                              className={`flex items-center space-x-1.5 text-xs transition-colors ${
+                                theme === 'dark'
+                                  ? 'text-gray-400 hover:text-white'
+                                  : 'text-slate-600 hover:text-indigo-600'
+                              }`}
+                            >
+                              <link.icon className="h-3 w-3" />
+                              <span>{link.name}</span>
+                            </Link>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Auth Buttons */}
+                  <div className="space-y-2">
+                    <Link
+                      to="/login"
+                      onClick={() => {
+                        if (window.innerWidth < 1024 && onClose) {
+                          onClose();
+                        }
+                      }}
+                      className={`w-full flex items-center justify-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all group ${
+                        theme === 'dark'
+                          ? 'border-2 border-indigo-500 text-indigo-400 hover:bg-indigo-500/10'
+                          : 'border-2 border-indigo-600 text-indigo-600 hover:bg-indigo-50'
+                      }`}
+                    >
+                      <LogIn className="h-4 w-4 group-hover:scale-110 transition-transform" />
+                      <span>Login</span>
+                    </Link>
+                    <Link
+                      to="/register"
+                      onClick={() => {
+                        if (window.innerWidth < 1024 && onClose) {
+                          onClose();
+                        }
+                      }}
+                      className="w-full flex items-center justify-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:shadow-lg hover:shadow-indigo-500/25 transition-all group"
+                    >
+                      <UserPlus className="h-4 w-4 group-hover:scale-110 transition-transform" />
+                      <span>Sign Up</span>
+                    </Link>
+                  </div>
+                </>
+              ) : (
+                /* Collapsed footer - just icons */
+                <div className="flex flex-col items-center space-y-3">
+                  <Link
+                    to="/login"
+                    onClick={() => {
+                      if (window.innerWidth < 1024 && onClose) {
+                        onClose();
+                      }
+                    }}
+                    className={`p-2 rounded-lg transition-all ${
+                      theme === 'dark'
+                        ? 'border border-indigo-500 text-indigo-400 hover:bg-indigo-500/10'
+                        : 'border border-indigo-600 text-indigo-600 hover:bg-indigo-50'
+                    }`}
+                    title="Login"
+                  >
+                    <LogIn className="h-4 w-4" />
+                  </Link>
+                  <Link
+                    to="/register"
+                    onClick={() => {
+                      if (window.innerWidth < 1024 && onClose) {
+                        onClose();
+                      }
+                    }}
+                    className="p-2 rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:shadow-lg transition-all"
+                    title="Sign Up"
+                  >
+                    <UserPlus className="h-4 w-4" />
+                  </Link>
+                </div>
+              )}
             </div>
           )}
         </div>
