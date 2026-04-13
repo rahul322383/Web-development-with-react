@@ -5,7 +5,7 @@ const sequelize = require('./src/database/sequelize');
 require('./src/database/initModels');
 const registerScheduledJobs = require('./src/jobs/registerJobs');
 
-const http = require('http'); // ✅ IMPORTANT
+const http = require('http'); 
 const { initSocket } = require('./src/config/socket');
 
 let server;
