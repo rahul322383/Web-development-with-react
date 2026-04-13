@@ -532,7 +532,87 @@ const getDashboardSummary = async ({ userId, year }) => {
     recentLeaves
   };
 };
+
+// Add these methods to your existing leaveService
+
+const getHRTeamIds = async () => {
+  try {
+    const hrUsers = await prisma.user.findMany({
+      where: {
+        OR: [
+          { role: 'HR' },
+          { role: 'ADMIN' },
+          { role: 'HR_MANAGER' }
+        ]
+      },
+      select: {
+        id: true
+      }
+    });
+    return hrUsers.map(user => user.id);
+  } catch (error) {
+    console.error('Error fetching HR team IDs:', error);
+    return [];
+  }
+};
+
+const getAdminIds = async () => {
+  try {
+    const admins = await prisma.user.findMany({
+      where: {
+        role: 'ADMIN'
+      },
+      select: {
+        id: true
+      }
+    });
+    return admins.map(user => user.id);
+  } catch (error) {
+    console.error('Error fetching admin IDs:', error);
+    return [];
+  }
+};
+
+const getAllEmployeeIds = async () => {
+  try {
+    const employees = await prisma.user.findMany({
+      where: {
+        role: 'EMPLOYEE'
+      },
+      select: {
+        id: true
+      }
+    });
+    return employees.map(user => user.id);
+  } catch (error) {
+    console.error('Error fetching employee IDs:', error);
+    return [];
+  }
+};
+
+const getTeamMembers = async (managerId) => {
+  try {
+    const teamMembers = await prisma.user.findMany({
+      where: {
+        managerId: managerId
+      },
+      select: {
+        id: true
+      }
+    });
+    return teamMembers.map(user => user.id);
+  } catch (error) {
+    console.error('Error fetching team members:', error);
+    return [];
+  }
+};
+
+
 module.exports = {
+   getHRTeamIds,
+  getAdminIds,
+  getAllEmployeeIds,
+  getTeamMembers,
   getDashboardSummary,
   listTeamLeaves,
   findEmployee,
