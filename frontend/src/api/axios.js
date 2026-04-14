@@ -1,8 +1,6 @@
-// src/api/axiosInstance.js
-
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL;
+const API_BASE_URL = 'http://localhost:8001/api/v1';
 
 const axiosInstance = axios.create({
   baseURL: API_BASE_URL,
@@ -11,6 +9,17 @@ const axiosInstance = axios.create({
   }
 });
 
+let isRefreshing = false;
+let refreshSubscribers = [];
+
+const onRefreshed = (token) => {
+  refreshSubscribers.forEach((cb) => cb(token));
+  refreshSubscribers = [];
+};
+
+const addSubscriber = (cb) => {
+  refreshSubscribers.push(cb);
+};
 
 // ======================
 // REQUEST INTERCEPTOR
@@ -28,53 +37,73 @@ axiosInstance.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-
+// ======================
+// RESPONSE INTERCEPTOR
+// ======================
 axiosInstance.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true;
-
-      try {
-        const refreshToken = localStorage.getItem('refreshToken');
-
-        // ❌ No refresh token
-        if (!refreshToken) {
-          localStorage.removeItem('accessToken');
-          localStorage.removeItem('refreshToken');
-
-          window.dispatchEvent(new Event("logout")); // ✅ clean
-          return Promise.reject(error);
-        }
-
-        const res = await axios.post(
-          `${API_BASE_URL}/auth/refresh-token`,
-          { refreshToken }
-        );
-
-        const { accessToken, refreshToken: newRefreshToken } = res.data.data;
-
-        localStorage.setItem('accessToken', accessToken);
-        localStorage.setItem('refreshToken', newRefreshToken);
-
-        originalRequest.headers.Authorization = `Bearer ${accessToken}`;
-
-        return axiosInstance(originalRequest);
-
-      } catch (refreshError) {
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('refreshToken');
-
-        // ✅ NO reload, NO loop
-        window.dispatchEvent(new Event("logout"));
-
-        return Promise.reject(refreshError);
-      }
+    if (error.response?.status !== 401) {
+      return Promise.reject(error);
     }
 
-    return Promise.reject(error);
+    if (originalRequest._retry) {
+      return Promise.reject(error);
+    }
+
+    originalRequest._retry = true;
+
+    const refreshToken = localStorage.getItem('refreshToken');
+
+    if (!refreshToken) {
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+      window.dispatchEvent(new Event('logout'));
+      return Promise.reject(error);
+    }
+
+    // ======================
+    // REFRESH LOCK SYSTEM
+    // ======================
+    if (isRefreshing) {
+      return new Promise((resolve) => {
+        addSubscriber((token) => {
+          originalRequest.headers.Authorization = `Bearer ${token}`;
+          resolve(axiosInstance(originalRequest));
+        });
+      });
+    }
+
+    isRefreshing = true;
+
+    try {
+      const res = await axios.post(`${API_BASE_URL}/auth/refresh-token`, {
+        refreshToken
+      });
+
+      const { accessToken, refreshToken: newRefreshToken } = res.data.data;
+
+      localStorage.setItem('accessToken', accessToken);
+      localStorage.setItem('refreshToken', newRefreshToken);
+
+      axiosInstance.defaults.headers.Authorization = `Bearer ${accessToken}`;
+
+      onRefreshed(accessToken);
+
+      originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+
+      return axiosInstance(originalRequest);
+    } catch (refreshError) {
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+      window.dispatchEvent(new Event('logout'));
+
+      return Promise.reject(refreshError);
+    } finally {
+      isRefreshing = false;
+    }
   }
 );
 
