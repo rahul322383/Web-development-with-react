@@ -7,7 +7,6 @@ const {
   buildRefreshToken,
   verifyRefreshToken
 } = require('../../utils/tokenUtils');
-const { redisClient } = require('../../redis/redisClient');
 const authRepository = require('./authRepository');
 
 const toExpiryDate = (duration) => {
@@ -69,10 +68,9 @@ const register = async (payload) => {
 
     await authRepository.assignRoleToUser(createdUser.id, role.id, transaction);
 
-    return createdUser; // ✅ return full user
+    return createdUser;
   });
 
-  // 🔥 ISSUE TOKENS AFTER REGISTER
   return await issueTokensForUser(user);
 };
 
@@ -175,23 +173,13 @@ const refreshSession = async (rawRefreshToken) => {
   return newTokens;
 };
 
-const logout = async ({ refreshToken, accessJti, accessExp }) => {
+const logout = async ({ refreshToken }) => {
 
   if (refreshToken) {
     try {
       const payload = verifyRefreshToken(refreshToken);
       await authRepository.revokeRefreshToken({ tokenId: payload.tokenId });
-    } catch {
-      // ignore error
-    }
-  }
-
-  if (accessJti && accessExp) {
-    const ttlSeconds = Math.max(accessExp - Math.floor(Date.now() / 1000), 0);
-
-    if (ttlSeconds > 0) {
-      await redisClient.set(`bl_access_${accessJti}`, '1', 'EX', ttlSeconds);
-    }
+    } catch {}
   }
 
   return {
@@ -199,8 +187,6 @@ const logout = async ({ refreshToken, accessJti, accessExp }) => {
     message: "Logged out successfully"
   };
 };
-
-
 
 const getCurrentUser = async (userId) => {
   const user = await authRepository.findUserById(userId);
@@ -214,9 +200,6 @@ const getCurrentUser = async (userId) => {
 
   const u = user.get({ plain: true });
 
-  /* =========================
-     GENERATE ACCESS TOKEN
-  ========================= */
   const accessToken = jwt.sign(
     {
       id: u.id,
@@ -224,7 +207,7 @@ const getCurrentUser = async (userId) => {
     },
     env.JWT_SECRET,
     {
-      expiresIn: '1d' // or 15m / 1h based on your system
+      expiresIn: '1d'
     }
   );
 
@@ -238,18 +221,14 @@ const getCurrentUser = async (userId) => {
         primaryRole: u.Roles?.[0]?.name || 'Employee',
         accessToken
       },
-
       meta: {
         role: u.Roles?.[0]?.name,
         isActive: u.isActive,
         department: u.department
-      },
-
-      
+      }
     }
   };
 };
-
 
 module.exports = {
   register,

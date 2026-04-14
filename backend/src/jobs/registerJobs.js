@@ -1,24 +1,58 @@
-const cron = require('node-cron');
-const { payrollQueue, leaveResetQueue, yearEndQueue } = require('../redis/queues');
-const logger = require('../config/logger');
+const sequelize = require('../database/sequelize');
+const payrollService = require('../modules/payroll/service/payrollService');
+const yearEndRepository = require('../modules/yearEnd/yearEndRepository');
+const leaveRepository = require('../modules/leave/leaveRepository');
 
-const registerScheduledJobs = () => {
-  cron.schedule('0 2 1 * *', async () => {
-    const now = new Date();
-    await payrollQueue.add('monthly-payroll', { month: now.getMonth() + 1, year: now.getFullYear() });
-    logger.info('Scheduled payroll job queued');
-  });
-
-  cron.schedule('0 3 1 1 *', async () => {
-    await leaveResetQueue.add('yearly-leave-reset', {});
-    logger.info('Scheduled leave reset job queued');
-  });
-
-  cron.schedule('0 4 2 1 *', async () => {
-    const previousYear = new Date().getFullYear() - 1;
-    await yearEndQueue.add('year-end-summary', { year: previousYear });
-    logger.info('Scheduled year-end summary job queued');
+const runMonthlyPayroll = async () => {
+  const now = new Date();
+  return payrollService.processPayroll({
+    month: now.getMonth() + 1,
+    year: now.getFullYear()
   });
 };
 
-module.exports = registerScheduledJobs;
+const runYearlyLeaveReset = async () =>
+  sequelize.transaction(async (transaction) => {
+    const employees = await leaveRepository.listAllEmployees();
+
+    await Promise.all(
+      employees.map((emp) =>
+        leaveRepository.resetEmployeeLeaves(emp.id, transaction)
+      )
+    );
+
+    return { success: true, count: employees.length };
+  });
+
+const runYearEndSummary = async () =>
+  sequelize.transaction(async (transaction) => {
+    const year = new Date().getFullYear() - 1;
+    const employees = await yearEndRepository.listActiveEmployees();
+
+    const summaries = await Promise.all(
+      employees.map(async (employee) => {
+        const [totalSalaryPaid, totalLeaves] = await Promise.all([
+          yearEndRepository.getTotalSalary(employee.id, year),
+          yearEndRepository.getTotalLeaves(employee.id, year)
+        ]);
+
+        return yearEndRepository.createYearSummary(
+          {
+            employeeId: employee.id,
+            year,
+            totalSalaryPaid,
+            totalLeaves
+          },
+          transaction
+        );
+      })
+    );
+
+    return { success: true, year, count: summaries.length };
+  });
+
+module.exports = {
+  runMonthlyPayroll,
+  runYearlyLeaveReset,
+  runYearEndSummary
+};

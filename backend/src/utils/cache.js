@@ -1,17 +1,15 @@
-const { redisClient } = require('../redis/redisClient');
+// Redis removed — using no-op cache functions
 
 const getCache = async (key) => {
-  const value = await redisClient.get(key);
-  return value ? JSON.parse(value) : null;
+  return null; // always miss cache
 };
 
 const setCache = async (key, payload, ttlSeconds = 300) => {
-  await redisClient.set(key, JSON.stringify(payload), 'EX', ttlSeconds);
+  return; // do nothing
 };
 
 const clearCacheKeys = async (keys = []) => {
-  if (!keys.length) return;
-  await redisClient.del(keys);
+  return; // do nothing
 };
 
 module.exports = {
