@@ -10,7 +10,8 @@
     "worker": "node worker.js",
     "test": "jest --runInBand",
     "test:watch": "jest --watch",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "build": "echo \"No build step required for Node backend\""
   },
   "dependencies": {
     "@bull-board/api": "^6.21.2",
