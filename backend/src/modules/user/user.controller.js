@@ -1,5 +1,4 @@
 const asyncHandler = require('../../utils/asyncHandler');
-const { get } = require('./user.routes');
 const userService = require('./user.service');
 
 const listUsers = asyncHandler(async (req, res) => {

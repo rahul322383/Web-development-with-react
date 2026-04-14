@@ -10,12 +10,12 @@ const router = express.Router();
 router.use(authenticate);
 
 router.get('/dashboard/summary', authorize('Employee', 'Manager', 'HR', 'Finance', 'Admin'), userController.getDashboardSummary);
-router.get('/', authorize('HR', 'Admin', 'Manager'), userController.listUsers);
-router.get('/:id', authorize('HR', 'Admin', 'Manager'), userController.getUserById);
+router.get('/', authorize('HR', 'Admin', 'Manager', 'Finance'), userController.listUsers);
+router.get('/:id', authorize('HR', 'Admin', 'Manager', 'Finance'), userController.getUserById);
 router.post('/', authorize('HR', 'Admin'), validate(createUserSchema), userController.createUser);
-router.patch('/:id', authorize('HR', 'Admin','Manager'), validate(updateUserSchema), userController.updateUser);
+router.patch('/:id', authorize('HR', 'Admin','Manager', 'Finance'), validate(updateUserSchema), userController.updateUser);
 router.delete('/:id', authorize('Admin'), userController.deleteUser);
 
-router.get('/department/:department', authorize('HR', 'Admin', 'Manager'), userController.getUsersByDepartment);
+router.get('/department/:department', authorize('HR', 'Admin', 'Manager', 'Finance'), userController.getUsersByDepartment);
 
 module.exports = router;

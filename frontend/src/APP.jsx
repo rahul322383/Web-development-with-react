@@ -17,13 +17,14 @@ import Register from "./pages/Register";
 import { Dashboard } from "./pages/Dashboard";
 import { Users } from "./pages/Users";
 import { Leave } from "./pages/Leave";
-import   Notifications from "./Notification//Notification"
+// import   Notifications from "./Notification//Notification"
 import PendingLeaves from "./leave/pending-leave";
 import ApprovedLeaves from "./leave/approved-leave";
 import Expenses from "./Expenses/Expenses";
 import DepartmentDashboard from "./department/DepartmentDashboard";
 import Payroll from "./pyaroll/Payroll";
 import YearEnd from "./YearEnd/YearEnd";
+import AuditLogs from "./Audit/AuditLogs";
 
 // Public Pages
 import HomePage from "./pages/home";
@@ -122,6 +123,11 @@ function AppRoutes() {
             <Expenses />
           </ProtectedRoute>
         } />
+        <Route path="/audit-logs" element={
+          <ProtectedRoute roles={["Admin", "HR", "Manager", "Finance"]}>
+            <AuditLogs />
+          </ProtectedRoute>
+        } />
 
 
 <Route path="/payroll" element={
@@ -135,11 +141,11 @@ function AppRoutes() {
   </ProtectedRoute>
 } />
 
-        <Route path="/notifications" element={
+        {/* <Route path="/notifications" element={
           <ProtectedRoute>
             <Notifications />
           </ProtectedRoute>
-        } />
+        } /> */}
       </Route>
 
       {/* Auth Routes */}

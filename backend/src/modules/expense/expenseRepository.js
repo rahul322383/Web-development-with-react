@@ -5,6 +5,16 @@ const createExpense = async (payload, transaction) => Expense.create(payload, { 
 
 const createReceipt = async (payload, transaction) => ExpenseReceipt.create(payload, { transaction });
 
+
+const getUsersByRoles = async (roles = []) => {
+  return User.findAll({
+    where: { role: roles },
+   attributes: ['id', 'role', 'firstName', 'lastName']
+  });
+};
+
+
+
 const findExpenseById = async (id) =>
   Expense.findByPk(id, {
     include: [
@@ -22,19 +32,36 @@ const listExpensesForEmployee = async (employeeId) =>
     order: [['createdAt', 'DESC']]
   });
 
-const listPendingManagerExpenses = async (managerId) =>
-  Expense.findAll({
-    where: { managerApprovalStatus: 'Pending' },
+// const listPendingManagerExpenses = async (managerId) =>
+//   Expense.findAll({
+//     where: { managerApprovalStatus: 'Pending' },
+//     include: [
+//       {
+//         model: User,
+//         as: 'employee',
+//         where: { managerId },
+//         attributes: ['id', 'firstName', 'lastName', 'email']
+//       }
+//     ],
+//     order: [['createdAt', 'ASC']]
+//   });
+
+const listPendingManagerExpenses = async (managerId) => {
+  return Expense.findAll({
+    where: {
+      managerApprovalStatus: 'Pending'
+    },
     include: [
       {
         model: User,
         as: 'employee',
-        where: { managerId },
-        attributes: ['id', 'firstName', 'lastName', 'email']
+        attributes: ['id', 'managerId', 'firstName', 'lastName', 'email']
       }
     ],
     order: [['createdAt', 'ASC']]
   });
+};
+
 
 const listPendingFinanceExpenses = async () =>
   Expense.findAll({
@@ -42,7 +69,7 @@ const listPendingFinanceExpenses = async () =>
       managerApprovalStatus: 'Approved',
       financeApprovalStatus: 'Pending'
     },
-    include: [{ model: User, as: 'employee', attributes: ['id', 'firstName', 'lastName', 'email'] }],
+    include: [{ model: User, as: 'employee', attributes: ['id','firstName', 'lastName', 'email'] }],
     order: [['createdAt', 'ASC']]
   });
 
@@ -57,6 +84,7 @@ module.exports = {
   createReceipt,
   findExpenseById,
   updateExpense,
+  getUsersByRoles,
   listExpensesForEmployee,
   listPendingManagerExpenses,
   listPendingFinanceExpenses,

@@ -1,5 +1,5 @@
-const yearEndService = require('../../modules/yearEnd/service/yearEndService');
-const logger = require('../../config/logger');
+const yearEndService = require('../modules/yearEnd/yearEndService');
+const logger = require('../config/logger');
 
 const processYearEndJob = async (job) => {
   logger.info({ year: job.data.year }, 'Processing year-end summary job');

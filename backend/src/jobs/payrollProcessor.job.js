@@ -1,5 +1,5 @@
-const payrollService = require('../../modules/payroll/service/payrollService');
-const logger = require('../../config/logger');
+const payrollService = require('../modules/payroll/payrollService');
+const logger = require('../config/logger');
 
 const processPayrollJob = async (job) => {
   logger.info({ jobId: job.id, data: job.data }, 'Processing payroll job');

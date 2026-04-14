@@ -1,4 +1,141 @@
 
+// import React, { useState } from 'react';
+// import { useNavigate, Link } from 'react-router-dom';
+// import { useAuth } from '../context/AuthContext';
+// import { Button } from '../components/ui/button';
+// import { Input } from '../components/ui/input';
+// import { Label } from '../components/ui/label';
+// import { toast } from 'sonner';
+// import { LogIn } from 'lucide-react';
+
+// export default function Login() {
+//   const [email, setEmail] = useState('');
+//   const [password, setPassword] = useState('');
+//   const [loading, setLoading] = useState(false);
+//   const { login } = useAuth();
+//   const navigate = useNavigate();
+
+//   const handleSubmit = async (e) => {
+//     e.preventDefault();
+//     setLoading(true);
+
+//     try {
+//       await login(email, password);
+//       toast.success('Login successful!');
+//       navigate('/dashboard');
+//     } catch (error) {
+//       toast.error(error.response?.data?.message || 'Login failed. Please try again.');
+//     } finally {
+//       setLoading(false);
+//     }
+//   };
+
+//   return (
+//     <div className="min-h-screen flex">
+//       <div className="flex-1 flex items-center justify-center px-6 py-12 bg-white">
+//         <div className="w-full max-w-md space-y-8">
+//           <div>
+//             <div className="flex items-center gap-3 mb-8">
+//               <div className="w-12 h-12 rounded-md bg-[#002FA7] flex items-center justify-center text-white font-bold">
+//                 HR
+//               </div>
+//               <div>
+//                 <h2 className="text-2xl font-bold text-slate-900" style={{ fontFamily: 'Manrope, sans-serif' }}>
+//                   HR Management
+//                 </h2>
+//               </div>
+//             </div>
+//             <h1 className="text-4xl font-bold tracking-tight text-slate-900 mb-2" style={{ fontFamily: 'Manrope, sans-serif' }}>
+//               Welcome back
+//             </h1>
+//             <p className="text-sm text-slate-600" style={{ fontFamily: 'Inter, sans-serif' }}>
+//               Sign in to access your account
+//             </p>
+//           </div>
+
+//           <form data-testid="login-form" onSubmit={handleSubmit} className="space-y-6">
+//             <div className="space-y-4">
+//               <div>
+//                 <Label htmlFor="email" className="text-sm font-medium text-slate-700">
+//                   Email address
+//                 </Label>
+//                 <Input
+//                   id="email"
+//                   data-testid="email-input"
+//                   type="email"
+//                   required
+//                   value={email}
+//                   onChange={(e) => setEmail(e.target.value)}
+//                   className="mt-1.5"
+//                   placeholder="you@example.com"
+//                 />
+//               </div>
+
+//               <div>
+//                 <Label htmlFor="password" className="text-sm font-medium text-slate-700">
+//                   Password
+//                 </Label>
+//                 <Input
+//                   id="password"
+//                   data-testid="password-input"
+//                   type="password"
+//                   required
+//                   value={password}
+//                   onChange={(e) => setPassword(e.target.value)}
+//                   className="mt-1.5"
+//                   placeholder="••••••••"
+//                 />
+//               </div>
+//             </div>
+
+//             <Button
+//               type="submit"
+//               data-testid="login-submit-button"
+//               disabled={loading}
+//               className="w-full bg-[#002FA7] hover:bg-[#002480] text-white"
+//             >
+//               {loading ? (
+//                 <span>Signing in...</span>
+//               ) : (
+//                 <>
+//                   <LogIn className="w-4 h-4 mr-2" />
+//                   Sign in
+//                 </>
+//               )}
+//             </Button>
+
+//             <div className="text-center text-sm text-slate-600">
+//               Don't have an account?{' '}
+//               <Link to="/register" className="font-medium text-[#002FA7] hover:underline">
+//                 Register here
+//               </Link>
+//             </div>
+//           </form>
+//         </div>
+//       </div>
+
+//       <div
+//         className="hidden lg:flex flex-1 items-center justify-center bg-slate-900 relative overflow-hidden"
+//         style={{
+//           backgroundImage: 'url(https://images.unsplash.com/photo-1610741804272-059e1d3c5dba?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NDh8MHwxfHNlYXJjaHwzfHxtb2Rlcm4lMjBvZmZpY2UlMjBhcmNoaXRlY3R1cmUlMjBhYnN0cmFjdHxlbnwwfHx8fDE3NzA5NzQ2MTR8MA&ixlib=rb-4.1.0&q=85)',
+//           backgroundSize: 'cover',
+//           backgroundPosition: 'center',
+//         }}
+//       >
+//         <div className="absolute inset-0 bg-slate-900/80" />
+//         <div className="relative z-10 max-w-md px-8 text-center">
+//           <h2 className="text-4xl font-bold text-white mb-4" style={{ fontFamily: 'Manrope, sans-serif' }}>
+//             Enterprise HR Management
+//           </h2>
+//           <p className="text-lg text-slate-200" style={{ fontFamily: 'Inter, sans-serif' }}>
+//             Streamline your workforce operations with our comprehensive HR solution
+//           </p>
+//         </div>
+//       </div>
+//     </div>
+//   );
+// }
+
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -204,7 +341,7 @@ export const Login = () => {
       const result = await login(formData);
       
       if (result.success) {
-        toast.success('Login successful!');
+        
         setLoading(false);
         // useEffect will handle navigation when isAuthenticated becomes true
       } else {

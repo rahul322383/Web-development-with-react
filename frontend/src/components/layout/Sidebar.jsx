@@ -88,6 +88,13 @@ export const Sidebar = ({ isOpen, onClose }) => {
         icon: Receipt, 
         roles: ['Admin', 'Manager', 'Employee', 'HR', 'Finance'] 
       },
+      {
+        name: "Audit Logs",
+        href: "/audit-logs",
+        icon: BarChart,
+        roles: ["Admin", "HR", "Manager", "Finance"]
+      },
+
       { 
         name: 'Users Management', 
         href: '/users', 
@@ -105,12 +112,6 @@ export const Sidebar = ({ isOpen, onClose }) => {
         href: '/reports', 
         icon: BarChart, 
         roles: ['Admin', 'Manager', 'HR', 'Finance'] 
-      },
-      { 
-        name: 'Messages', 
-        href: '/messages', 
-        icon: MessageSquare, 
-        roles: ['Admin', 'Manager', 'Employee', 'HR', 'Finance'] 
       },
       { 
         name: 'Notifications', 

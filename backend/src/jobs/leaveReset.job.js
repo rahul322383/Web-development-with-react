@@ -1,5 +1,5 @@
-const leaveService = require('../../modules/leave/service/leaveService');
-const logger = require('../../config/logger');
+const leaveService = require('../modules/leave/leaveService');
+const logger = require('../config/logger');
 
 const processLeaveResetJob = async (_job) => {
   const targetYear = new Date().getFullYear();

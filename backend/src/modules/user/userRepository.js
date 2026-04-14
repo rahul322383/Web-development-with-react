@@ -88,8 +88,43 @@ const getUsersByDepartment = (department) =>
     order: [['createdAt', 'DESC']]
   });
 
+  const getAdminIds = async () => {
+  try {
+    const admins = await User.findAll({
+      where: {
+        role: { [Op.in]: ['ADMIN'] }
+      },
+      attributes: ['id'],
+      raw: true
+    });
+    return admins.map(admin => admin.id);
+  } catch (error) {
+    console.error('Error fetching admin IDs:', error);
+    return [];
+  }
+};
+
+const getHRTeamIds = async () => {
+  try {
+    const hrUsers = await User.findAll({
+      where: {
+        role: { [Op.in]: ['HR', 'HR_MANAGER'] }
+      },
+      attributes: ['id'],
+      raw: true
+    });
+    return hrUsers.map(user => user.id);
+  } catch (error) {
+    console.error('Error fetching HR team IDs:', error);
+    return [];
+  }
+};
+
+
 
 module.exports = {
+  getAdminIds,
+  getHRTeamIds,
   getUsersByDepartment,
   findUsers,
   findUserById,

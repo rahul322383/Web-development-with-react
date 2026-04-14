@@ -54,7 +54,24 @@ const getPayrollByEmployee = async (employeeId) =>
     ]
   }); 
 
+
+  const getAdminIds = async () => {
+  try {
+    const admins = await User.findAll({
+      where: {
+        role: { [Op.in]: ['ADMIN', 'HR', 'FINANCE'] }
+      },
+      attributes: ['id'],
+      raw: true
+    });
+    return admins.map(admin => admin.id);
+  } catch (error) {
+    console.error('Error fetching admin IDs:', error);
+    return [];
+  }
+};
 module.exports = {
+  getAdminIds,
   getPayrollByEmployee,
   listActiveEmployees,
   upsertPayroll,

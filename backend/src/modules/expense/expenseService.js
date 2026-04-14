@@ -5,43 +5,79 @@ const { uploadBuffer } = require('../../config/cloudinary');
 const expenseRepository = require('./expenseRepository');
 const { logAuditEvent } = require('../../utils/auditLogger');
 const { clearCacheKeys } = require('../../utils/cache');
-const { get } = require('./expenseRoutes');
-
+const { User } = require('../../models');
+// const { bustDashboardCache } = require('../../utils/cache');
 
 const bustDashboardCache = (employeeId) =>
   clearCacheKeys([`dashboard_summary:${employeeId}:${new Date().getFullYear()}`]);
 
+
+const STATUS = {
+  PENDING: 'Pending',
+  APPROVED: 'Approved',
+  REJECTED: 'Rejected'
+};
+
+const PAYMENT_STATUS = {
+  UNPAID: 'Unpaid',
+  PROCESSING: 'Processing',
+  PAID: 'Paid'
+};
+
+
 const submitExpense = async ({ employeeId, payload, receiptBuffer, ipAddress }) => {
-  
- 
   const { category, amount, currency, description } = payload ?? {};
-  
 
-  if (!employeeId) return { success: false, message: 'Employee ID is required', data: null };
+  if (!employeeId) {
+    return { success: false, message: 'Employee ID is required', data: null };
+  }
 
-
- if (!category || amount == null || !currency){
+  if (!category || amount == null || !currency) {
     return { success: false, message: 'category, amount, and currency are required', data: null };
   }
 
-
-  if (typeof amount !== 'number' || amount <= 0) {
+  // ✅ Parse amount safely
+  const parsedAmount = Number(amount);
+  if (isNaN(parsedAmount) || parsedAmount <= 0) {
     return { success: false, message: 'amount must be a positive number', data: null };
   }
 
-  try {
-let uploadResult;
+  // ✅ Validate currency
+  const allowedCurrencies = ['INR', 'USD', 'EUR'];
+  if (!allowedCurrencies.includes(currency)) {
+    return { success: false, message: 'Invalid currency', data: null };
+  }
 
-if (receiptBuffer?.length) {
-  uploadResult = await uploadBuffer(receiptBuffer, 'hrms/expenses');
-}
+  try {
+    // ✅ Fetch user & manager
+    const user = await User.findByPk(employeeId);
+    if (!user) {
+      return { success: false, message: 'User not found', data: null };
+    }
+
+    const managerId = user.managerId;
+
+    let uploadResult;
+    if (receiptBuffer?.length) {
+      uploadResult = await uploadBuffer(receiptBuffer, 'hrms/expenses');
+    }
 
     return await sequelize.transaction(async (transaction) => {
+      // ✅ Create expense
       const expense = await expenseRepository.createExpense(
-        { employeeId, category, amount, currency, description },
+        {
+          employeeId,
+          managerId,
+          category,
+          amount: parsedAmount,
+          currency,
+          description,
+          status: 'PENDING_MANAGER'
+        },
         transaction
       );
 
+      // ✅ Save receipt
       if (uploadResult) {
         await expenseRepository.createReceipt(
           {
@@ -53,6 +89,7 @@ if (receiptBuffer?.length) {
         );
       }
 
+      // ✅ Audit log
       await logAuditEvent({
         userId: employeeId,
         moduleName: 'Expense',
@@ -62,116 +99,190 @@ if (receiptBuffer?.length) {
         ipAddress
       });
 
+      // ✅ Cache clear
       await bustDashboardCache(employeeId);
 
-      const fullExpense = await expenseRepository.findExpenseById(expense.id);
-     return { success: true, message: 'Expense submitted successfully', data: fullExpense };
-    });
-  } catch (err) {
-    return { success: false, message: err.message || 'Failed to submit expense', data: null };
-  }
+      // ✅ Fetch full data
+     const fullExpense = await expenseRepository.findExpenseById(expense.id);
+
+return {
+  success: true,
+  message: 'Expense submitted successfully',
+  data: fullExpense || expense   // 🔥 fallback fix
 };
-
-
-const managerReviewExpense = async ({ managerId, expenseId, status, ipAddress }) => {
-  if (!managerId || !expenseId) {
-    return { success: false, message: 'managerId and expenseId are required', data: null };
-  }
-  if (!['Approved', 'Rejected'].includes(status)) {
-    return { success: false, message: "status must be 'Approved' or 'Rejected'", data: null };
-  }
-
-  try {
-    // Pre-flight read outside the transaction — we only need a lock once we
-    // know the update is valid, keeping the critical section short.
-    const expense = await expenseRepository.findExpenseById(expenseId);
-    if (!expense) return { success: false, message: 'Expense not found', data: null };
-    if (expense.employee?.managerId !== managerId) {
-      return { success: false, message: 'Not authorized for this expense', data: null };
-    }
-    if (expense.managerApprovalStatus !== 'Pending') {
-      return { success: false, message: 'Manager decision already submitted', data: null };
-    }
-
-    return await sequelize.transaction(async (transaction) => {
-      await expenseRepository.updateExpense(expenseId, { managerApprovalStatus: status }, transaction);
-
-      await logAuditEvent({
-        userId: managerId,
-        moduleName: 'Expense',
-        actionType: 'APPROVE',
-        oldData: { managerApprovalStatus: 'Pending' },
-        newData: { managerApprovalStatus: status },
-        ipAddress
-      });
-
-      await bustDashboardCache(expense.employeeId);
-
-      const updatedExpense = await expenseRepository.findExpenseById(expenseId);
-      return { success: true, message: 'Expense reviewed by manager', data: updatedExpense };
     });
+
   } catch (err) {
-    return { success: false, message: err.message || 'Failed to review expense', data: null };
-  }
-};
-
-
-const financeReviewExpense = async ({ financeUserId, expenseId, status, paymentStatus, ipAddress }) => {
-  if (!financeUserId || !expenseId) {
-    return { success: false, message: 'financeUserId and expenseId are required', data: null };
-  }
-  if (!['Approved', 'Rejected'].includes(status)) {
-    return { success: false, message: "status must be 'Approved' or 'Rejected'", data: null };
-  }
-  const validPaymentStatuses = ['Processing', 'Paid', 'Unpaid'];
-  if (paymentStatus && !validPaymentStatuses.includes(paymentStatus)) {
-    return { success: false, message: `paymentStatus must be one of: ${validPaymentStatuses.join(', ')}`, data: null };
-  }
-
-  try {
-    const expense = await expenseRepository.findExpenseById(expenseId);
-    if (!expense) return { success: false, message: 'Expense not found', data: null };
-    if (expense.managerApprovalStatus !== 'Approved') {
-      return { success: false, message: 'Expense must be manager-approved first', data: null };
-    }
-    if (expense.financeApprovalStatus !== 'Pending') {
-      return { success: false, message: 'Finance decision already submitted', data: null };
-    }
-
-    // Rejected expenses are never paid — ignore any caller-supplied payment status.
-    const resolvedPaymentStatus =
-      status === 'Rejected'
-        ? 'Unpaid'
-        : (paymentStatus ?? 'Processing');
-
-    const updatePayload = {
-      financeApprovalStatus: status,
-      paymentStatus: resolvedPaymentStatus,
-      ...(resolvedPaymentStatus === 'Paid' ? { paidAt: new Date() } : {})
+    return {
+      success: false,
+      message: err.message || 'Failed to submit expense',
+      data: null
     };
-
-    return await sequelize.transaction(async (transaction) => {
-      await expenseRepository.updateExpense(expenseId, updatePayload, transaction);
-
-      await logAuditEvent({
-        userId: financeUserId,
-        moduleName: 'Expense',
-        actionType: 'APPROVE',
-        oldData: { financeApprovalStatus: 'Pending' },
-        newData: updatePayload,
-        ipAddress
-      });
-
-      await bustDashboardCache(expense.employeeId);
-
-      const updatedExpense = await expenseRepository.findExpenseById(expenseId);
-      return { success: true, message: 'Expense reviewed by finance', data: updatedExpense };
-    });
-  } catch (err) {
-    return { success: false, message: err.message || 'Failed to review expense', data: null };
   }
 };
 
+
+
+
+const managerReviewExpense = async ({
+  managerId,
+  expenseId,
+  status,
+  comment,
+  ipAddress
+}) => {
+  const VALID_STATUS = [STATUS.APPROVED, STATUS.REJECTED];
+
+  if (!VALID_STATUS.includes(status)) {
+    return { success: false, message: 'Invalid status', data: null };
+  }
+
+  const expense = await expenseRepository.findExpenseById(expenseId);
+
+  if (!expense) {
+    return { success: false, message: 'Expense not found', data: null };
+  }
+
+  if (expense.employee?.managerId !== managerId) {
+    return { success: false, message: 'Not authorized', data: null };
+  }
+
+  if (expense.managerApprovalStatus !== STATUS.PENDING) {
+    return { success: false, message: 'Already reviewed', data: null };
+  }
+
+  return sequelize.transaction(async (transaction) => {
+    await expenseRepository.updateExpense(
+      expenseId,
+      {
+        managerApprovalStatus: status,
+        managerComment: comment || null
+      },
+      transaction
+    );
+
+    const updatedExpense = await expenseRepository.findExpenseById(expenseId);
+
+    return {
+      success: true,
+      message: 'Expense reviewed successfully',
+      data: updatedExpense
+    };
+  });
+};
+
+
+// const financeReviewExpense = async ({ financeUserId, expenseId, status, paymentStatus, ipAddress }) => {
+//   if (!financeUserId || !expenseId) {
+//     return { success: false, message: 'financeUserId and expenseId are required', data: null };
+//   }
+//   if (!['Approved', 'Rejected'].includes(status)) {
+//     return { success: false, message: "status must be 'Approved' or 'Rejected'", data: null };
+//   }
+//   const validPaymentStatuses = ['Processing', 'Paid', 'Unpaid'];
+//   if (paymentStatus && !validPaymentStatuses.includes(paymentStatus)) {
+//     return { success: false, message: `paymentStatus must be one of: ${validPaymentStatuses.join(', ')}`, data: null };
+//   }
+
+//   try {
+//     const expense = await expenseRepository.findExpenseById(expenseId);
+//     if (!expense) return { success: false, message: 'Expense not found', data: null };
+//     if (expense.managerApprovalStatus !== 'Approved') {
+//       return { success: false, message: 'Expense must be manager-approved first', data: null };
+//     }
+//     if (expense.financeApprovalStatus !== 'Pending') {
+//       return { success: false, message: 'Finance decision already submitted', data: null };
+//     }
+
+//     // Rejected expenses are never paid — ignore any caller-supplied payment status.
+//     const resolvedPaymentStatus =
+//       status === 'Rejected'
+//         ? 'Unpaid'
+//         : (paymentStatus ?? 'Processing');
+
+//     const updatePayload = {
+//       financeApprovalStatus: status,
+//       paymentStatus: resolvedPaymentStatus,
+//       ...(resolvedPaymentStatus === 'Paid' ? { paidAt: new Date() } : {})
+//     };
+
+//     return await sequelize.transaction(async (transaction) => {
+//       await expenseRepository.updateExpense(expenseId, updatePayload, transaction);
+
+//       await logAuditEvent({
+//         userId: financeUserId,
+//         moduleName: 'Expense',
+//         actionType: 'APPROVE',
+//         oldData: { financeApprovalStatus: 'Pending' },
+//         newData: updatePayload,
+//         ipAddress
+//       });
+
+//       await bustDashboardCache(expense.employeeId);
+
+//       const updatedExpense = await expenseRepository.findExpenseById(expenseId);
+//       return { success: true, message: 'Expense reviewed by finance', data: updatedExpense };
+//     });
+//   } catch (err) {
+//     return { success: false, message: err.message || 'Failed to review expense', data: null };
+//   }
+// };
+
+
+const financeReviewExpense = async ({
+  financeUserId,
+  expenseId,
+  status,
+  paymentStatus,
+  ipAddress
+}) => {
+  const VALID_STATUS = [STATUS.APPROVED, STATUS.REJECTED];
+
+  if (!VALID_STATUS.includes(status)) {
+    return { success: false, message: 'Invalid status', data: null };
+  }
+
+  const expense = await expenseRepository.findExpenseById(expenseId);
+
+  if (!expense) {
+    return { success: false, message: 'Expense not found', data: null };
+  }
+
+  if (expense.managerApprovalStatus !== STATUS.APPROVED) {
+    return { success: false, message: 'Manager approval required', data: null };
+  }
+
+  if (expense.financeApprovalStatus !== STATUS.PENDING) {
+    return { success: false, message: 'Already reviewed', data: null };
+  }
+
+  const resolvedPaymentStatus =
+    status === STATUS.REJECTED
+      ? PAYMENT_STATUS.UNPAID
+      : (paymentStatus || PAYMENT_STATUS.PROCESSING);
+
+  return sequelize.transaction(async (transaction) => {
+    await expenseRepository.updateExpense(
+      expenseId,
+      {
+        financeApprovalStatus: status,
+        paymentStatus: resolvedPaymentStatus,
+        ...(resolvedPaymentStatus === PAYMENT_STATUS.PAID && {
+          paidAt: new Date()
+        })
+      },
+      transaction
+    );
+
+    const updatedExpense = await expenseRepository.findExpenseById(expenseId);
+
+    return {
+      success: true,
+      message: 'Finance review completed',
+      data: updatedExpense
+    };
+  });
+};
 
 const listMyExpenses = async (employeeId) => {
   if (!employeeId) return { success: false, message: 'employeeId is required', data: null };

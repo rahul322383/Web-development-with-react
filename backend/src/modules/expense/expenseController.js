@@ -1,65 +1,13 @@
-// const asyncHandler = require('../../utils/asyncHandler');
-// const expenseService = require('./expenseService');
 
-// const submitExpense = asyncHandler(async (req, res) => {
-//   const result = await expenseService.submitExpense({
-//     employeeId: req.user.id,
-//     payload: req.body,
-//     receiptBuffer: req.file?.buffer,
-//     ipAddress: req.ip
-//   });
-
-//   return res.status(result.success ? 201 : 400).json(result);
-// });
-
-// const managerReviewExpense = asyncHandler(async (req, res) => {
-//   const result = await expenseService.managerReviewExpense({
-//     managerId: req.user.id,
-//     expenseId: Number(req.params.id),
-//     status: req.body.status,
-//     ipAddress: req.ip
-//   });
-//   res.status(200).json(result);
-// });
-
-// const financeReviewExpense = asyncHandler(async (req, res) => {
-//   const result = await expenseService.financeReviewExpense({
-//     financeUserId: req.user.id,
-//     expenseId: Number(req.params.id),
-//     status: req.body.status,
-//     paymentStatus: req.body.paymentStatus,
-//     ipAddress: req.ip
-//   });
-//   res.status(200).json(result);
-// });
-
-// const listMyExpenses = asyncHandler(async (req, res) => {
-//   const result = await expenseService.listMyExpenses(req.user.id);
-//   res.status(200).json(result);
-// });
-
-// const listPendingManager = asyncHandler(async (req, res) => {
-//   const result = await expenseService.listPendingManager(req.user.id);
-//   res.status(200).json(result);
-// });
-
-// const listPendingFinance = asyncHandler(async (_req, res) => {
-//   const result = await expenseService.listPendingFinance();
-//   res.status(200).json(result);
-// });
-
-// module.exports = {
-//   submitExpense,
-//   managerReviewExpense,
-//   financeReviewExpense,
-//   listMyExpenses,
-//   listPendingManager,
-//   listPendingFinance
-// };
 
 const asyncHandler = require('../../utils/asyncHandler');
 const expenseService = require('./expenseService');
 const { sendNotification } = require('../../config/socket');
+const { User } = require('../../models/user.model');
+const { getUsersByRoles } = require('./expenseRepository');
+
+
+
 
 const submitExpense = asyncHandler(async (req, res) => {
   const result = await expenseService.submitExpense({
@@ -69,29 +17,36 @@ const submitExpense = asyncHandler(async (req, res) => {
     ipAddress: req.ip
   });
 
-  // Send notification to employee
   if (result.success) {
+    const { id, amount } = result.data;
+    const employeeName = req.user.name || "Employee";
+
+    // ✅ Employee notification
     sendNotification(req.user.id, {
       type: "EXPENSE_SUBMITTED",
-      title: "Expense Submitted Successfully",
-      message: `Your expense request for $${result.data.amount} has been submitted and is pending approval.`,
-      expenseId: result.data.id,
-      amount: result.data.amount,
-      status: "PENDING_MANAGER"
+      title: "Expense Submitted",
+      message: `₹${amount} expense submitted successfully and is under review.`,
+      expenseId: id,
+      amount,
+      status: "PENDING_APPROVAL"
     });
 
-    // Notify manager (you might need to fetch manager ID from user service)
-    if (result.data.managerId) {
-      sendNotification(result.data.managerId, {
-        type: "EXPENSE_PENDING_REVIEW",
-        title: "New Expense Requires Review",
-        message: `A new expense request for $${result.data.amount} from ${req.user.name || 'Employee'} requires your review.`,
-        expenseId: result.data.id,
-        amount: result.data.amount,
+    // 🔥 Roles that should receive notification
+    const rolesToNotify = ["FINANCE_MANAGER", "HR", "ADMIN"];
+
+    const financeUsers = await getUsersByRoles(rolesToNotify);
+
+    financeUsers.forEach(user => {
+      sendNotification(user.id, {
+        type: "EXPENSE_REVIEW_REQUIRED",
+        title: "Expense Approval Needed",
+        message: `${employeeName} submitted an expense of ₹${amount}. Review and approve/reject it.`,
+        expenseId: id,
+        amount,
         employeeId: req.user.id,
-        employeeName: req.user.name
+        employeeName
       });
-    }
+    });
   }
 
   return res.status(result.success ? 201 : 400).json(result);
