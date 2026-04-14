@@ -31,7 +31,7 @@ import HomePage from "./pages/home";
 import Features from "./Public/Features";
 import Pricing from "./Public/Pricing";
 import Demo from "./Public/Demo";
-import About from "./Public/About";
+import About from "./Public/about";
 import Privacy from "./Public/Privacy";
 import Terms from "./Public/Terms";
 import Security from "./Public/Security";
