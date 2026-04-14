@@ -1,94 +1,5 @@
 
 
-// const { Server } = require("socket.io");
-// const jwt = require("jsonwebtoken");
-
-// let io;
-// const userSocketMap = new Map(); // userId -> Set(socketIds)
-
-// const initSocket = (server) => {
-//   io = new Server(server, {
-//     cors: {
-//       origin: process.env.CLIENT_URL,
-//       credentials: true
-//     }
-//   });
-
-//   // 🔐 AUTH MIDDLEWARE
-//   io.use((socket, next) => {
-//     try {
-//       const token = socket.handshake.auth?.token;
-
-//       if (!token) {
-//         return next(new Error("NO_TOKEN"));
-//       }
-
-//       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-//       socket.user = decoded;
-//       next();
-//     } catch (err) {
-//       next(new Error("INVALID_TOKEN"));
-//     }
-//   });
-
-//   io.on("connection", (socket) => {
-//     const userId = socket.user.id || socket.user.userId;
-
-//     console.log("✅ Connected:", userId, socket.id);
-
-//     if (!userSocketMap.has(userId)) {
-//       userSocketMap.set(userId, new Set());
-//     }
-
-//     userSocketMap.get(userId).add(socket.id);
-
-//     // Send welcome notification
-//     socket.emit("notification", {
-//       type: "CONNECTION_SUCCESS",
-//       message: "Connected to notification service",
-//       timestamp: new Date().toISOString()
-//     });
-
-//     socket.on("disconnect", () => {
-//       const sockets = userSocketMap.get(userId);
-
-//       if (sockets) {
-//         sockets.delete(socket.id);
-//         if (sockets.size === 0) {
-//           userSocketMap.delete(userId);
-//         }
-//       }
-
-//       console.log("❌ Disconnected:", socket.id);
-//     });
-//   });
-// };
-
-// // 🔔 NOTIFICATION
-// const sendNotification = (userId, payload) => {
-//   const sockets = userSocketMap.get(userId);
-//   if (!io || !sockets) return;
-
-//   const notificationPayload = {
-//     ...payload,
-//     timestamp: new Date().toISOString()
-//   };
-
-//   sockets.forEach((socketId) => {
-//     io.to(socketId).emit("notification", notificationPayload);
-//   });
-// };
-
-// // Send notification to multiple users
-// const sendBulkNotifications = (userIds, payload) => {
-//   userIds.forEach(userId => {
-//     sendNotification(userId, payload);
-//   });
-// };
-
-// module.exports = { initSocket, sendNotification, sendBulkNotifications };
-
 const { Server } = require("socket.io");
 const jwt = require("jsonwebtoken");
 
@@ -118,63 +29,73 @@ const initSocket = (server) => {
       next(new Error("INVALID_TOKEN"));
     }
   });
+io.on("connection", (socket) => {
+  const userId = socket.user.id || socket.user.userId;
 
-  io.on("connection", (socket) => {
-    const userId = socket.user.id || socket.user.userId;
+  if (!userId) {
+    console.log("❌ Invalid user in socket");
+    return;
+  }
 
-    console.log("✅ Connected:", userId, socket.id);
+  console.log("✅ Connected:", userId, socket.id);
 
-    // 🧠 Track sockets (multi-tab support)
-    if (!userSocketMap.has(userId)) {
-      userSocketMap.set(userId, new Set());
-    }
-    userSocketMap.get(userId).add(socket.id);
+  // Track sockets
+  if (!userSocketMap.has(userId)) {
+    userSocketMap.set(userId, new Set());
+  }
+  userSocketMap.get(userId).add(socket.id);
 
-    // 🔥 Join rooms
-    socket.join(`user_${userId}`);
+  // Join personal room
+  socket.join(`user_${userId}`);
 
-    // Optional: role-based room
-    if (socket.user.role === "admin") {
-      socket.join("admins");
-    }
+  // ✅ FIX: normalize role
+  const role = (socket.user.role || "").toUpperCase();
 
-    // 🎉 Welcome event
-    socket.emit("CONNECTED", {
-      message: "Socket connected successfully",
-      timestamp: new Date().toISOString()
-    });
+  if (role === "ADMIN") {
+    socket.join("admins");
+  }
 
-    socket.on("disconnect", () => {
-      const sockets = userSocketMap.get(userId);
+  // Debug rooms
+  console.log("📦 Rooms:", socket.rooms);
 
-      if (sockets) {
-        sockets.delete(socket.id);
-        if (sockets.size === 0) {
-          userSocketMap.delete(userId);
-        }
-      }
-
-      console.log("❌ Disconnected:", socket.id);
-    });
+  socket.emit("CONNECTED", {
+    message: "Socket connected successfully",
+    timestamp: new Date().toISOString()
   });
+
+  socket.on("disconnect", () => {
+    const sockets = userSocketMap.get(userId);
+
+    if (sockets) {
+      sockets.delete(socket.id);
+      if (sockets.size === 0) {
+        userSocketMap.delete(userId);
+      }
+    }
+
+    console.log("❌ Disconnected:", socket.id);
+  });
+});
 };
 
 // ---
 
 // # 🔔 NOTIFICATION SYSTEM
 
-// Send to single user
 const sendNotification = (userId, payload) => {
-  if (!io) return;
+  if (!io) {
+    console.log("❌ IO not initialized");
+    return;
+  }
+
+  console.log("📨 Sending notification to:", userId);
+  console.log("📨 Payload:", payload);
 
   io.to(`user_${userId}`).emit("NOTIFICATION", {
     ...payload,
     timestamp: new Date().toISOString()
   });
 };
-
-// ---
-
 // # 🔥 REAL-TIME AUDIT EVENT
 
 const sendAuditLog = (log) => {
