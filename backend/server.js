@@ -1,11 +1,97 @@
+// const app = require('./app');
+// const env = require('./src/config/env');
+// const logger = require('./src/config/logger');
+// const sequelize = require('./src/database/sequelize');
+// require('./src/database/initModels');
+// const registerScheduledJobs = require('./src/jobs/registerJobs');
+
+// const http = require('http'); 
+// const { initSocket } = require('./src/config/socket');
+
+// let server;
+
+// const startServer = async () => {
+//   try {
+//     await sequelize.authenticate();
+//     logger.info('MySQL connected successfully');
+
+//     if (env.NODE_ENV === 'development') {
+//       await sequelize.sync({ alter: false });
+//       logger.info('Database synchronized');
+//     }
+
+//     registerScheduledJobs();
+
+//     /* =========================
+//        CREATE HTTP SERVER
+//     ========================= */
+//     const httpServer = http.createServer(app);
+
+//     /* =========================
+//        INIT SOCKET.IO
+//     ========================= */
+//     initSocket(httpServer);
+
+//     /* =========================
+//        START SERVER
+//     ========================= */
+//     server = httpServer.listen(env.PORT, '0.0.0.0', () => {
+//       logger.info(`🚀 Server + Socket running on port ${env.PORT}`);
+//     });
+
+//   } catch (error) {
+//     logger.error({ error }, 'Server startup failed');
+//     process.exit(1);
+//   }
+// };
+
+// /* =========================
+//    GRACEFUL SHUTDOWN
+// ========================= */
+// const shutdown = async (signal) => {
+//   logger.info(`${signal} received. Closing server...`);
+
+//   if (server) {
+//     server.close(async () => {
+//       logger.info('HTTP server closed');
+
+//       try {
+//         await sequelize.close();
+//         logger.info('Database connection closed');
+//         process.exit(0);
+//       } catch (err) {
+//         logger.error({ err }, 'Error during shutdown');
+//         process.exit(1);
+//       }
+//     });
+//   }
+// };
+
+// /* =========================
+//    ERROR HANDLING
+// ========================= */
+// process.on('SIGINT', shutdown);
+// process.on('SIGTERM', shutdown);
+
+// process.on('unhandledRejection', (reason) => {
+//   logger.error({ reason }, 'Unhandled Promise Rejection');
+// });
+
+// process.on('uncaughtException', (err) => {
+//   logger.error({ err }, 'Uncaught Exception');
+//   process.exit(1);
+// });
+
+// startServer();
+
+
 const app = require('./app');
 const env = require('./src/config/env');
 const logger = require('./src/config/logger');
 const sequelize = require('./src/database/sequelize');
 require('./src/database/initModels');
-const registerScheduledJobs = require('./src/jobs/registerJobs');
 
-const http = require('http'); 
+const http = require('http');
 const { initSocket } = require('./src/config/socket');
 
 let server;
@@ -20,34 +106,20 @@ const startServer = async () => {
       logger.info('Database synchronized');
     }
 
-    registerScheduledJobs();
-
-    /* =========================
-       CREATE HTTP SERVER
-    ========================= */
     const httpServer = http.createServer(app);
 
-    /* =========================
-       INIT SOCKET.IO
-    ========================= */
     initSocket(httpServer);
 
-    /* =========================
-       START SERVER
-    ========================= */
     server = httpServer.listen(env.PORT, '0.0.0.0', () => {
-      logger.info(`🚀 Server + Socket running on port ${env.PORT}`);
+      logger.info(`Server + Socket running on port ${env.PORT}`);
     });
 
   } catch (error) {
-    logger.error({ error }, 'Server startup failed');
+    logger.error(error.stack || error.message);
     process.exit(1);
   }
 };
 
-/* =========================
-   GRACEFUL SHUTDOWN
-========================= */
 const shutdown = async (signal) => {
   logger.info(`${signal} received. Closing server...`);
 
@@ -60,25 +132,22 @@ const shutdown = async (signal) => {
         logger.info('Database connection closed');
         process.exit(0);
       } catch (err) {
-        logger.error({ err }, 'Error during shutdown');
+        logger.error(err.stack || err.message);
         process.exit(1);
       }
     });
   }
 };
 
-/* =========================
-   ERROR HANDLING
-========================= */
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
 process.on('unhandledRejection', (reason) => {
-  logger.error({ reason }, 'Unhandled Promise Rejection');
+  console.error('UNHANDLED REJECTION 👉', reason);
 });
 
 process.on('uncaughtException', (err) => {
-  logger.error({ err }, 'Uncaught Exception');
+  console.error('UNCAUGHT EXCEPTION 👉', err);
   process.exit(1);
 });
 

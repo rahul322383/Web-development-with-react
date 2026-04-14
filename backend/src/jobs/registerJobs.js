@@ -1,5 +1,5 @@
 const sequelize = require('../database/sequelize');
-const payrollService = require('../modules/payroll/service/payrollService');
+const payrollService = require('../modules/payroll/payrollService');
 const yearEndRepository = require('../modules/yearEnd/yearEndRepository');
 const leaveRepository = require('../modules/leave/leaveRepository');
 
@@ -15,6 +15,10 @@ const runYearlyLeaveReset = async () =>
   sequelize.transaction(async (transaction) => {
     const employees = await leaveRepository.listAllEmployees();
 
+    if (!employees.length) {
+      return { success: true, count: 0 };
+    }
+
     await Promise.all(
       employees.map((emp) =>
         leaveRepository.resetEmployeeLeaves(emp.id, transaction)
@@ -29,6 +33,10 @@ const runYearEndSummary = async () =>
     const year = new Date().getFullYear() - 1;
     const employees = await yearEndRepository.listActiveEmployees();
 
+    if (!employees.length) {
+      return { success: true, year, count: 0 };
+    }
+
     const summaries = await Promise.all(
       employees.map(async (employee) => {
         const [totalSalaryPaid, totalLeaves] = await Promise.all([
@@ -40,8 +48,8 @@ const runYearEndSummary = async () =>
           {
             employeeId: employee.id,
             year,
-            totalSalaryPaid,
-            totalLeaves
+            totalSalaryPaid: totalSalaryPaid || 0,
+            totalLeaves: totalLeaves || 0
           },
           transaction
         );
