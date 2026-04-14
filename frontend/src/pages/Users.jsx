@@ -10,7 +10,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '../components/ui/Table.jsx';
+} from '../components/ui/table.jsx';
 import { Search, UserPlus, Edit, Trash2, MoreVertical, X, Eye, EyeOff, Users as UsersIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { userApi } from '../api/userApi';
