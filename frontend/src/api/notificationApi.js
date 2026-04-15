@@ -1,94 +1,44 @@
-import axiosInstance from './axios';
+// notificationApi.js
+import axiosInstance from "./axios";
 
 const notificationApi = {
-  /* =========================
-     GET NOTIFICATIONS
-  ========================= */
-  getMyNotifications: async (limit = 20, offset = 0) => {
-    try {
-      const res = await axiosInstance.get(`/notifications?limit=${limit}&offset=${offset}`);
-      return res.data;
-    } catch (error) {
-      throw error.response?.data || error.message;
-    }
-  },
-  getNotifications: async (limit = 50, offset = 0) => {
-    const res = await axiosInstance.get('/notifications', {
+  // 📥 GET NOTIFICATIONS
+  getNotifications: async (limit = 20, offset = 0) => {
+    const res = await axiosInstance.get("/notifications", {
       params: { limit, offset }
     });
     return res.data;
   },
 
-  /* =========================
-     UNREAD COUNT
-  ========================= */
+  // 🔢 UNREAD COUNT
   getUnreadCount: async () => {
-    try {
-      const res = await axiosInstance.get(`/notifications/unread-count`);
-      return res.data;
-    } catch (error) {
-      throw error.response?.data || error.message;
-    }
+    const res = await axiosInstance.get("/notifications/unread-count");
+    return res.data;
   },
 
-  /* =========================
-     MARK SINGLE AS READ
-  ========================= */
+  // ✅ MARK ONE AS READ
   markNotificationRead: async (id) => {
-    try {
-      const res = await axiosInstance.patch(`/notifications/${id}/read`);
-      return res.data;
-    } catch (error) {
-      throw error.response?.data || error.message;
-    }
+    const res = await axiosInstance.patch(`/notifications/${id}/read`);
+    return res.data;
   },
 
-  /* =========================
-     MARK ALL AS READ
-  ========================= */
+  // ✅ MARK ALL READ
   markAllNotificationsRead: async () => {
-    try {
-      const res = await axiosInstance.patch(`/notifications/read-all`);
-      return res.data;
-    } catch (error) {
-      throw error.response?.data || error.message;
-    }
+    const res = await axiosInstance.patch("/notifications/read-all");
+    return res.data;
   },
 
-  /* =========================
-     DELETE SINGLE
-  ========================= */
+  // 🗑 DELETE ONE
   deleteNotification: async (id) => {
-    try {
-      const res = await axiosInstance.delete(`/notifications/${id}`);
-      return res.data;
-    } catch (error) {
-      throw error.response?.data || error.message;
-    }
+    const res = await axiosInstance.delete(`/notifications/${id}`);
+    return res.data;
   },
 
-  /* =========================
-     CLEAR ALL
-  ========================= */
+  // 🧹 CLEAR ALL
   clearAllNotifications: async () => {
-    try {
-      const res = await axiosInstance.delete(`/notifications`);
-      return res.data;
-    } catch (error) {
-      throw error.response?.data || error.message;
-    }
+    const res = await axiosInstance.delete("/notifications");
+    return res.data;
   }
 };
-
-
 
 export default notificationApi;
-
-export const getNotification = async (limit = 20, offset = 0) => {
-  try {
-    const res = await axiosInstance.get(`/notifications?limit=${limit}&offset=${offset}`);
-    return res.data;
-  } catch (error) {
-    throw error.response?.data || error.message;
-  }
-};
