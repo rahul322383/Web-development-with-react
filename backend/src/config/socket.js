@@ -18,6 +18,7 @@ const initSocket = (server) => {
       const token =
         socket.handshake.auth?.token ||
         socket.handshake.headers?.authorization?.split(" ")[1];
+        console.log("🔍 Socket auth token:", token);
 
       if (!token) return next(new Error("NO_TOKEN"));
 
