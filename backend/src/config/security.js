@@ -24,8 +24,17 @@ const loginLimiter = rateLimit({
   message: { message: 'Too many login attempts. Please try again later.' }
 });
 
+ const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many registration attempts. Please try again later.' }
+});
+
 module.exports = {
   helmetMiddleware: helmet(),
+  registerLimiter,
   corsMiddleware,
   globalLimiter,
   loginLimiter
