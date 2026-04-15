@@ -63,7 +63,7 @@ const submitExpense = async ({ employeeId, payload, receiptBuffer, ipAddress }) 
     }
 
     return await sequelize.transaction(async (transaction) => {
-      // ✅ Create expense
+      
       const expense = await expenseRepository.createExpense(
         {
           employeeId,
@@ -108,7 +108,7 @@ const submitExpense = async ({ employeeId, payload, receiptBuffer, ipAddress }) 
 return {
   success: true,
   message: 'Expense submitted successfully',
-  data: fullExpense || expense   // 🔥 fallback fix
+  data: fullExpense || expense   
 };
     });
 
