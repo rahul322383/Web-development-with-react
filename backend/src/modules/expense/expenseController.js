@@ -60,28 +60,28 @@ const managerReviewExpense = asyncHandler(async (req, res) => {
     ipAddress: req.ip
   });
 
-  if (result.success) {
-    // Notify employee about manager's decision
+  if (result.success && result.data) {
+    const approval = result.data.managerApproval || "PENDING";
+    const safeApprovalText = approval.toLowerCase();
+
     sendNotification(result.data.employeeId, {
-      type: `EXPENSE_${result.data.managerApproval}`,
-      title: `Expense ${result.data.managerApproval === 'APPROVED' ? 'Approved' : 'Rejected'} by Manager`,
-      message: `Your expense request #${result.data.id} has been ${result.data.managerApproval.toLowerCase()} by your manager.`,
+      type: `EXPENSE_${approval}`,
+      title: `Expense ${approval === 'APPROVED' ? 'Approved' : 'Rejected'} by Manager`,
+      message: `Your expense request #${result.data.id} has been ${safeApprovalText} by your manager.`,
       expenseId: result.data.id,
       amount: result.data.amount,
-      managerApproval: result.data.managerApproval,
+      managerApproval: approval,
       comment: req.body.comment
     });
 
-    // If approved, notify finance team
-    if (result.data.managerApproval === 'APPROVED') {
-      // You might want to notify all finance team members
-      // For now, sending to a specific finance user ID or group
+    if (approval === 'APPROVED') {
       const financeTeamIds = await expenseService.getFinanceTeamIds();
-      financeTeamIds.forEach(financeId => {
+
+      financeTeamIds.forEach((financeId) => {
         sendNotification(financeId, {
           type: "EXPENSE_PENDING_FINANCE_REVIEW",
           title: "Expense Ready for Finance Review",
-          message: `Expense #${result.data.id} for $${result.data.amount} has been approved by manager and requires finance review.`,
+          message: `Expense #${result.data.id} for ₹${result.data.amount} has been approved by manager and requires finance review.`,
           expenseId: result.data.id,
           amount: result.data.amount,
           employeeId: result.data.employeeId
