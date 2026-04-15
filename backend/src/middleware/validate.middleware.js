@@ -1,21 +1,21 @@
-const validate = (schema, target = 'body') => (req, res, next) => {
-  const data = req[target];
-
-  const { error, value } = schema.validate(data, {
-    abortEarly: false,
-    stripUnknown: true
-  });
-
-  if (error) {
-    return res.status(400).json({
-      success: false,
-      message: 'Validation error',
-      errors: error.details.map((x) => x.message)
+const validate = (schema) => {
+  return (req, res, next) => {
+    const { error, value } = schema.validate(req.body, {
+      abortEarly: false,
+      stripUnknown: true
     });
-  }
 
-  req[target] = value;
-  next();
+    if (error) {
+      return res.status(400).json({
+        success: false,
+        message: "Validation error",
+        errors: error.details.map((err) => err.message)
+      });
+    }
+
+    req.body = value; 
+    next();
+  };
 };
 
 module.exports = validate;
