@@ -86,6 +86,7 @@ const applyForLeave = async ({
 
       // ✅ Validate manager exists
       const manager = await leaveRepository.findEmployee(employee.managerId);
+      console.log("Manager found:", manager ? manager.id : "No manager");
 
       if (!manager) {
         throw new Error("Assigned manager not found");
