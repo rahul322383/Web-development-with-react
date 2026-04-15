@@ -25,7 +25,8 @@ export const AuthProvider = ({ children }) => {
       const token = localStorage.getItem('accessToken');
       if (token) {
         try {
-          const userData = await authApi.getMe();
+          const response = await authApi.getMe();
+          const userData = response.data || response;
           setUser(userData.user);
           setMeta(userData.meta);
           setIsAuthenticated(true);
@@ -47,20 +48,20 @@ export const AuthProvider = ({ children }) => {
   const login = async (credentials) => {
     try {
       const response = await authApi.login(credentials);
-      const { user, meta } = response;
-      
-      // Store tokens
-      localStorage.setItem('accessToken', user.accessToken);
-      if (response.refreshToken) {
-        localStorage.setItem('refreshToken', response.refreshToken);
+      const data = response.data || response;
+      const { user, accessToken, refreshToken, meta } = data;
+
+      localStorage.setItem('accessToken', accessToken);
+      if (refreshToken) {
+        localStorage.setItem('refreshToken', refreshToken);
       }
       
       setUser(user);
-      setMeta(meta);
+      setMeta(meta || null);
       setIsAuthenticated(true);
       
       toast.success('Login successful!');
-      return { success: true, data: response };
+      return { success: true, data };
     } catch (error) {
       toast.error(error.response?.data?.message || 'Login failed');
       return { success: false, error };
@@ -70,8 +71,22 @@ export const AuthProvider = ({ children }) => {
   const register = async (userData) => {
     try {
       const response = await authApi.register(userData);
-      toast.success('Registration successful! Please login.');
-      return { success: true, data: response };
+      
+      // Handle the response structure correctly
+      const data = response.data || response;
+      const { user, accessToken, refreshToken, meta } = data;
+
+      localStorage.setItem('accessToken', accessToken);
+      if (refreshToken) {
+        localStorage.setItem('refreshToken', refreshToken);
+      }
+      
+      setUser(user);
+      setMeta(meta || null);
+      setIsAuthenticated(true);
+      
+      toast.success('Registration successful!');
+      return { success: true, data };
     } catch (error) {
       toast.error(error.response?.data?.message || 'Registration failed');
       return { success: false, error };
@@ -89,12 +104,14 @@ export const AuthProvider = ({ children }) => {
       setUser(null);
       setMeta(null);
       setIsAuthenticated(false);
+      toast.success('Logged out successfully');
     }
   };
 
   const refreshUserData = async () => {
     try {
-      const userData = await authApi.getMe();
+      const response = await authApi.getMe();
+      const userData = response.data || response;
       setUser(userData.user);
       setMeta(userData.meta);
       return { success: true, data: userData };
