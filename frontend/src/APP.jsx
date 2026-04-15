@@ -25,6 +25,7 @@ import DepartmentDashboard from "./department/DepartmentDashboard";
 import Payroll from "./pyaroll/Payroll";
 import YearEnd from "./YearEnd/YearEnd";
 import AuditLogs from "./Audit/AuditLogs";
+import ProfilePage from "./pages/ProfilePage";
 
 // Public Pages
 import HomePage from "./pages/home";
@@ -138,6 +139,12 @@ function AppRoutes() {
 <Route path="/year-end" element={
   <ProtectedRoute>
     <YearEnd />
+  </ProtectedRoute>
+} />
+
+<Route path="/profile" element={
+  <ProtectedRoute>
+    <ProfilePage />
   </ProtectedRoute>
 } />
 
