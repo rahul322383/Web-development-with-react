@@ -3,8 +3,6 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
 import { useAuth } from './AuthContext';
 import { toast } from 'sonner';
-import { useNavigate } from 'react-router-dom';
-
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:8001';
 
@@ -26,14 +24,10 @@ export const SocketProvider = ({ children }) => {
 
   useEffect(() => {
     if (!isAuthenticated || !user?.id) return;
-    const token = localStorage.getItem('accessToken');
-   
-     if (!token) {
-      console.warn('No access token found. Socket connection will not be established.');
-      return;
-    }
 
-    // Initialize socket connection
+    const token = localStorage.getItem('accessToken');
+    if (!token) return;
+
     const socketInstance = io(SOCKET_URL, {
       auth: {
         token: localStorage.getItem('accessToken')
@@ -48,28 +42,22 @@ export const SocketProvider = ({ children }) => {
 
     setSocket(socketInstance);
 
-    // Socket event listeners
     socketInstance.on('connect', () => {
-      console.log('🔌 Socket connected');
       setIsConnected(true);
       socketInstance.emit('register', user.id);
     });
 
     socketInstance.on('disconnect', () => {
-      console.log('🔌 Socket disconnected');
       setIsConnected(false);
     });
 
-    socketInstance.on('connect_error', (error) => {
-      console.error('Socket connection error:', error);
+    socketInstance.on('connect_error', () => {
       setIsConnected(false);
     });
 
     socketInstance.on('new-notification', (notification) => {
-      console.log('📨 New notification received:', notification);
       setNewNotification(notification);
-      
-      // Show toast notification
+
       toast.success(notification.message, {
         description: notification.title || 'New Notification',
         action: {
@@ -79,46 +67,37 @@ export const SocketProvider = ({ children }) => {
       });
     });
 
-    socketInstance.on('notification-read', (data) => {
-      console.log('📖 Notification read:', data);
-    });
+    socketInstance.on('notification-read', () => { });
 
-    socketInstance.on('notifications-cleared', (data) => {
-      console.log('🗑️ Notifications cleared:', data);
-    });
+    socketInstance.on('notifications-cleared', () => { });
 
-    // Cleanup on unmount
     return () => {
-      if (socketInstance) {
-        socketInstance.off('connect');
-        socketInstance.off('disconnect');
-        socketInstance.off('connect_error');
-        socketInstance.off('new-notification');
-        socketInstance.off('notification-read');
-        socketInstance.off('notifications-cleared');
-        socketInstance.disconnect();
-      }
+      socketInstance.off('connect');
+      socketInstance.off('disconnect');
+      socketInstance.off('connect_error');
+      socketInstance.off('new-notification');
+      socketInstance.off('notification-read');
+      socketInstance.off('notifications-cleared');
+      socketInstance.disconnect();
     };
   }, [isAuthenticated, user?.id]);
 
   const emitEvent = (eventName, data) => {
     if (socket && isConnected) {
       socket.emit(eventName, data);
-    } else {
-      console.warn('Socket not connected. Cannot emit event:', eventName);
     }
   };
 
-  const value = {
-    socket,
-    isConnected,
-    newNotification,
-    setNewNotification,
-    emitEvent,
-  };
-
   return (
-    <SocketContext.Provider value={value}>
+    <SocketContext.Provider
+      value={{
+        socket,
+        isConnected,
+        newNotification,
+        setNewNotification,
+        emitEvent,
+      }}
+    >
       {children}
     </SocketContext.Provider>
   );
