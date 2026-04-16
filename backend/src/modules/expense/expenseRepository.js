@@ -79,6 +79,8 @@ const expenseAggregateByEmployee = async (employeeId) =>
     attributes: [[fn('COALESCE', fn('SUM', col('amount')), 0), 'totalClaimed']]
   });
 
+  
+
 module.exports = {
   createExpense,
   createReceipt,
