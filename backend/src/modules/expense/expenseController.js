@@ -3,7 +3,7 @@
 const asyncHandler = require('../../utils/asyncHandler');
 const expenseService = require('./expenseService');
 const { sendNotification } = require('../../config/socket');
-const { User } = require('../../models/user.model');
+const { User, Role } = require('../../models');
 const { getUsersByRoles } = require('./expenseRepository');
 
 
@@ -95,44 +95,90 @@ const managerReviewExpense = asyncHandler(async (req, res) => {
 
 
 
+const VALID_ROLES = ['HR', 'Finance', 'Admin', 'Manager'];
+const VALID_STATUS = ['APPROVED', 'REJECTED'];
+const VALID_PAYMENT = ['Unpaid', 'Processing', 'Paid'];
+
 const financeReviewExpense = asyncHandler(async (req, res) => {
+  const { status, paymentStatus, comment } = req.body;
+
+  if (!VALID_STATUS.includes(status)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Invalid status'
+    });
+  }
+
+  if (paymentStatus && !VALID_PAYMENT.includes(paymentStatus)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Invalid payment status'
+    });
+  }
+
   const result = await expenseService.financeReviewExpense({
     financeUserId: req.user.id,
     expenseId: Number(req.params.id),
-    status: req.body.status,
-    paymentStatus: req.body.paymentStatus,
+    status,
+    paymentStatus,
     ipAddress: req.ip
   });
 
-  if (result.success && result.data) {
-    const approval = result.data.financeApproval || "PENDING";
-    const safeText = approval.toLowerCase();
-
-    sendNotification(result.data.employeeId, {
-      type: `EXPENSE_FINANCE_${approval}`,
-      title: `Expense ${approval === 'APPROVED' ? 'Approved' : 'Rejected'} by Finance`,
-      message: `Your expense request #${result.data.id} has been ${safeText} by finance team. Payment status: ${result.data.paymentStatus}`,
-      expenseId: result.data.id,
-      amount: result.data.amount,
-      financeApproval: approval,
-      paymentStatus: result.data.paymentStatus,
-      comment: req.body.comment
-    });
-
-    if (result.data.managerId) {
-      sendNotification(result.data.managerId, {
-        type: `EXPENSE_FINANCE_${approval}`,
-        title: `Finance Team ${approval === 'APPROVED' ? 'Approved' : 'Rejected'} Expense`,
-        message: `Expense #${result.data.id} has been ${safeText} by finance team.`,
-        expenseId: result.data.id,
-        amount: result.data.amount,
-        financeApproval: approval,
-        paymentStatus: result.data.paymentStatus
-      });
-    }
+  if (!result.success || !result.data) {
+    return res.status(400).json(result);
   }
 
-  res.status(200).json(result);
+  const {
+    id,
+    employeeId,
+    managerId,
+    amount,
+    financeApproval,
+    paymentStatus: finalPaymentStatus
+  } = result.data;
+
+  const approvalText = financeApproval.toLowerCase();
+
+  const payload = {
+    type: `EXPENSE_FINANCE_${financeApproval}`,
+    title: `Expense ${financeApproval === 'APPROVED' ? 'Approved' : 'Rejected'} by Finance`,
+    message: `Expense #${id} has been ${approvalText} by finance. Payment status: ${finalPaymentStatus}`,
+    expenseId: id,
+    amount,
+    financeApproval,
+    paymentStatus: finalPaymentStatus,
+    comment: comment || null
+  };
+
+  const sentTo = new Set();
+
+  await sendNotification(employeeId, payload);
+  sentTo.add(employeeId);
+
+  if (managerId && !sentTo.has(managerId)) {
+    await sendNotification(managerId, payload);
+    sentTo.add(managerId);
+  }
+
+  const roleUsers = await User.findAll({
+    where: { role: VALID_ROLES },
+    attributes: ['id']
+  });
+
+  await Promise.all(
+    roleUsers.map(async (u) => {
+      if (!sentTo.has(u.id)) {
+        await sendNotification(u.id, payload);
+        sentTo.add(u.id);
+      }
+    })
+  );
+
+  return res.status(200).json({
+    success: true,
+    message: result.message,
+    data: result.data
+  });
 });
 
 const listMyExpenses = asyncHandler(async (req, res) => {
