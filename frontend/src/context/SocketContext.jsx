@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 
 
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL ;
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:8001';
 
 const SocketContext = createContext();
 
@@ -26,15 +26,24 @@ export const SocketProvider = ({ children }) => {
 
   useEffect(() => {
     if (!isAuthenticated || !user?.id) return;
+    const token = localStorage.getItem('accessToken');
+   
+     if (!token) {
+      console.warn('No access token found. Socket connection will not be established.');
+      return;
+    }
 
     // Initialize socket connection
     const socketInstance = io(SOCKET_URL, {
-      transports: ['websocket'],
-      autoConnect: true,
+      auth: {
+        token: localStorage.getItem('accessToken')
+      },
+      transports: ['websocket', 'polling'],
       withCredentials: true,
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
+      timeout: 20000,
     });
 
     setSocket(socketInstance);
