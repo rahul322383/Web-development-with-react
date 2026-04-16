@@ -85,8 +85,13 @@ const getUnreadCount = asyncHandler(async (req, res) => {
   res.status(200).json(result);
 });
 
+const createNotification = async (userId, type, message, metadata) => {
+  return notificationService.createNotification(userId, type, message, metadata);
+};
+
 module.exports = {
   listMyNotifications,
+  createNotification,
   markRead,
   markAllRead,
   deleteNotification,
