@@ -6,7 +6,7 @@ const env = require('./src/config/env');
 
 const healthRoutes = require('./src/routes/healthRoutes');
 const v1Routes = require('./src/routes/v1.routes');
-const AppError = require('./src/common/AppError');
+const AppError = require('./src/utils/AppError');
 
 // Swagger
 const swaggerUi = require('swagger-ui-express');
