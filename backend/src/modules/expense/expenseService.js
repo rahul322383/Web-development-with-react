@@ -140,11 +140,13 @@ const submitExpense = async ({ employeeId, payload, receiptBuffer, ipAddress }) 
   }
 
   const parsedAmount = Number(amount);
+
   if (isNaN(parsedAmount) || parsedAmount <= 0) {
     return { success: false, message: 'amount must be a positive number', data: null };
   }
 
   const allowedCurrencies = ['INR', 'USD', 'EUR'];
+
   if (!allowedCurrencies.includes(currency)) {
     return { success: false, message: 'Invalid currency', data: null };
   }
@@ -156,17 +158,21 @@ const submitExpense = async ({ employeeId, payload, receiptBuffer, ipAddress }) 
       return { success: false, message: 'User not found', data: null };
     }
 
-    let uploadResult;
+    const getUserFullName = (u) =>
+      `${u.first_name || u.firstName || ''} ${u.last_name || u.lastName || ''}`.trim();
+
+    let uploadResult = null;
+
     if (receiptBuffer?.length) {
       uploadResult = await uploadBuffer(receiptBuffer, 'hrms/expenses');
     }
 
-    return await sequelize.transaction(async (transaction) => {
-
+    const result = await sequelize.transaction(async (transaction) => {
       const expense = await expenseRepository.createExpense(
         {
           employeeId,
-          managerId: user.managerId || null,
+          // managerId: user.managerId || null,
+          approvedByManagerId: user.managerId || null,
           category,
           amount: parsedAmount,
           currency,
@@ -187,48 +193,24 @@ const submitExpense = async ({ employeeId, payload, receiptBuffer, ipAddress }) 
         );
       }
 
-      // ============================
-      // 🔥 FIXED RECIPIENT LOGIC
-      // ============================
-
       const recipients = new Set();
 
-      // 1. Manager
-      if (user.manager_id) {
-        recipients.add(Number(user.manager_id));
+      if (user.managerId) {
+        recipients.add(Number(user.managerId));
       }
 
-      // 2. HR
-      const hrUsers = await User.findAll({
-        where: { role: 'HR' },
+      const roleUsers = await User.findAll({
+        where: {
+          role: ['HR', 'Finance', 'Admin']
+        },
         attributes: ['id']
       });
-      hrUsers.forEach(u => recipients.add(Number(u.id)));
 
-      // 3. FINANCE
-      const financeUsers = await User.findAll({
-        where: { role: 'Finance' },
-        attributes: ['id']
-      });
-      financeUsers.forEach(u => recipients.add(Number(u.id)));
+      roleUsers.forEach((u) => recipients.add(Number(u.id)));
 
-      // 4. ADMIN
-      const adminUsers = await User.findAll({
-        where: { role: 'Admin' },
-        attributes: ['id']
-      });
-      adminUsers.forEach(u => recipients.add(Number(u.id)));
-
-      // remove self
       recipients.delete(Number(employeeId));
 
-      console.log("Notifications will be sent to:", [...recipients]);
-
-      if (recipients.size === 0) {
-        console.warn("No recipients found for expense notification");
-      }
-
-      const fullName = `${user.first_name} ${user.last_name}`;
+      const fullName = getUserFullName(user);
 
       await Promise.all(
         [...recipients].map((id) =>
@@ -247,8 +229,6 @@ const submitExpense = async ({ employeeId, payload, receiptBuffer, ipAddress }) 
           )
         )
       );
-
-      console.log(`Expense submission notifications created for expense ID: ${expense.id}`);
 
       await logAuditEvent({
         userId: employeeId,
@@ -270,6 +250,7 @@ const submitExpense = async ({ employeeId, payload, receiptBuffer, ipAddress }) 
       };
     });
 
+    return result;
   } catch (err) {
     return {
       success: false,
@@ -376,7 +357,7 @@ const financeReviewExpense = async ({
   paymentStatus,
   ipAddress
 }) => {
-  const VALID_STATUS = [STATUS.APPROVED, STATUS.REJECTED];
+  const VALID_STATUS = ['APPROVED', 'REJECTED'];
 
   if (!VALID_STATUS.includes(status)) {
     return { success: false, message: 'Invalid status' };
@@ -388,44 +369,46 @@ const financeReviewExpense = async ({
     return { success: false, message: 'Expense not found' };
   }
 
-  if (expense.managerApprovalStatus !== STATUS.APPROVED) {
+  if (expense.managerApprovalStatus !== 'Approved') {
     return { success: false, message: 'Manager approval required' };
   }
 
-  if (expense.financeApprovalStatus !== STATUS.PENDING) {
+  if (expense.financeApprovalStatus !== 'Pending') {
     return { success: false, message: 'Already reviewed' };
   }
 
   const resolvedPaymentStatus =
-    status === STATUS.REJECTED
-      ? PAYMENT_STATUS.UNPAID
-      : (paymentStatus || PAYMENT_STATUS.PROCESSING);
+    status === 'REJECTED'
+      ? 'Unpaid'
+      : (paymentStatus || 'Processing');
 
-  return sequelize.transaction(async (transaction) => {
+  const updatedExpense = await sequelize.transaction(async (transaction) => {
     await expense.update(
       {
         financeApprovalStatus: status,
         paymentStatus: resolvedPaymentStatus,
-        ...(resolvedPaymentStatus === PAYMENT_STATUS.PAID && {
+        ...(resolvedPaymentStatus === 'Paid' && {
           paidAt: new Date()
         })
       },
       { transaction }
     );
 
-    return {
-      success: true,
-      message: 'Finance review completed',
-      data: {
-        id: expense.id,
-        employeeId: expense.employeeId,
-        managerId: expense.managerId || null,
-        amount: expense.amount,
-        financeApproval: status,
-        paymentStatus: resolvedPaymentStatus
-      }
-    };
+    return expense;
   });
+
+  return {
+    success: true,
+    message: 'Finance review completed',
+    data: {
+      id: updatedExpense.id,
+      employeeId: updatedExpense.employeeId,
+      managerId: updatedExpense.approvedByManagerId || updatedExpense.managerId || null,
+      amount: updatedExpense.amount,
+      financeApproval: status,
+      paymentStatus: resolvedPaymentStatus
+    }
+  };
 };
 
 
