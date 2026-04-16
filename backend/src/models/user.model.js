@@ -36,8 +36,12 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false
       },
       managerId: {
-        type: DataTypes.BIGINT.UNSIGNED,
-        allowNull: true
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: 'users',
+          key: 'id'
+        }
       },
       department: {
         type: DataTypes.STRING(100),
