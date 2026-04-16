@@ -1,5 +1,3 @@
-
-
 module.exports = (sequelize, DataTypes) => {
   const Expense = sequelize.define(
     'Expense',
@@ -14,14 +12,25 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         field: 'employee_id'
       },
+      approvedByManagerId: {
+        type: DataTypes.BIGINT.UNSIGNED,
+        allowNull: true,
+        field: 'approved_by_manager_id'
+      },
+      
+      //   approvedByFinanceId: {
+      //     type: DataTypes.BIGINT.UNSIGNED,
+      //     allowNull: true,
+      //     field: 'approved_by_finance_id'
+      //   }
+      // ,
       category: {
         type: DataTypes.STRING(100),
         allowNull: false
       },
       amount: {
         type: DataTypes.DECIMAL(12, 2),
-        allowNull: false,
-        field: 'amount'
+        allowNull: false
       },
       currency: {
         type: DataTypes.STRING(5),
@@ -56,7 +65,7 @@ module.exports = (sequelize, DataTypes) => {
     },
     {
       tableName: 'expenses',
-      underscored: true // 🔥 THIS FIXES created_at automatically
+      underscored: true
     }
   );
 
