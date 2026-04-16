@@ -93,6 +93,8 @@ const managerReviewExpense = asyncHandler(async (req, res) => {
   res.status(200).json(result);
 });
 
+
+
 const financeReviewExpense = asyncHandler(async (req, res) => {
   const result = await expenseService.financeReviewExpense({
     financeUserId: req.user.id,
@@ -102,28 +104,29 @@ const financeReviewExpense = asyncHandler(async (req, res) => {
     ipAddress: req.ip
   });
 
-  if (result.success) {
-    // Notify employee about finance decision
+  if (result.success && result.data) {
+    const approval = result.data.financeApproval || "PENDING";
+    const safeText = approval.toLowerCase();
+
     sendNotification(result.data.employeeId, {
-      type: `EXPENSE_FINANCE_${result.data.financeApproval}`,
-      title: `Expense ${result.data.financeApproval === 'APPROVED' ? 'Approved' : 'Rejected'} by Finance`,
-      message: `Your expense request #${result.data.id} has been ${result.data.financeApproval.toLowerCase()} by finance team. Payment status: ${result.data.paymentStatus}`,
+      type: `EXPENSE_FINANCE_${approval}`,
+      title: `Expense ${approval === 'APPROVED' ? 'Approved' : 'Rejected'} by Finance`,
+      message: `Your expense request #${result.data.id} has been ${safeText} by finance team. Payment status: ${result.data.paymentStatus}`,
       expenseId: result.data.id,
       amount: result.data.amount,
-      financeApproval: result.data.financeApproval,
+      financeApproval: approval,
       paymentStatus: result.data.paymentStatus,
       comment: req.body.comment
     });
 
-    // Notify manager about finance decision
     if (result.data.managerId) {
       sendNotification(result.data.managerId, {
-        type: `EXPENSE_FINANCE_${result.data.financeApproval}`,
-        title: `Finance Team ${result.data.financeApproval === 'APPROVED' ? 'Approved' : 'Rejected'} Expense`,
-        message: `Expense #${result.data.id} from employee has been ${result.data.financeApproval.toLowerCase()} by finance team.`,
+        type: `EXPENSE_FINANCE_${approval}`,
+        title: `Finance Team ${approval === 'APPROVED' ? 'Approved' : 'Rejected'} Expense`,
+        message: `Expense #${result.data.id} has been ${safeText} by finance team.`,
         expenseId: result.data.id,
         amount: result.data.amount,
-        financeApproval: result.data.financeApproval,
+        financeApproval: approval,
         paymentStatus: result.data.paymentStatus
       });
     }
