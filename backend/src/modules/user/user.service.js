@@ -746,11 +746,24 @@ const deleteUser = async (id, actor, ipAddress) => {
   return { success: true };
 };
 
-const getDashboardSummary = async ({ year, page = 1, limit = 10 }) => {
+const getDashboardSummary = async ({ year, page = 1, limit = 10, user }) => {
   try {
     const start = `${year}-01-01`;
     const end = `${year}-12-31`;
     const offset = (page - 1) * limit;
+
+    // 🔐 RBAC (IMPORTANT for your 403 issues)
+    if (!user) {
+      throw new Error("Unauthorized");
+    }
+
+    const isManager = user.role === "Manager";
+    const isFinance = user.role === "Finance";
+    const isAdmin = user.role === "Admin";
+    const isHR = user.role === "HR";
+    const canViewAll = isAdmin || isHR;
+    const canViewFinancials = isAdmin || isFinance;
+    const canViewLeaves = canViewAll || isManager;
 
     const [
       totalUsers,
@@ -766,19 +779,14 @@ const getDashboardSummary = async ({ year, page = 1, limit = 10 }) => {
       monthlySalary
     ] = await Promise.all([
       User.count(),
-      
+
       LeaveRequest.findAll({
-        attributes: [
-          'status',
-          [fn('COUNT', col('id')), 'count']
-        ],
-        where: {
-          startDate: { [Op.between]: [start, end] }
-        },
+        attributes: ['status', [fn('COUNT', col('id')), 'count']],
+        where: { startDate: { [Op.between]: [start, end] } },
         group: ['status'],
         raw: true
       }),
-      
+
       LeaveRequest.count({
         where: {
           createdAt: {
@@ -786,7 +794,7 @@ const getDashboardSummary = async ({ year, page = 1, limit = 10 }) => {
           }
         }
       }),
-      
+
       Expense.sum('amount', {
         where: {
           managerApprovalStatus: 'Approved',
@@ -794,14 +802,14 @@ const getDashboardSummary = async ({ year, page = 1, limit = 10 }) => {
           createdAt: { [Op.between]: [start, end] }
         }
       }),
-      
+
       Payroll.sum('net_salary', {
         where: {
           status: { [Op.in]: ['Processed', 'Locked'] },
           processedAt: { [Op.between]: [start, end] }
         }
       }),
-      
+
       LeaveRequest.findAll({
         attributes: [
           [fn('MONTH', col('start_date')), 'month'],
@@ -814,51 +822,35 @@ const getDashboardSummary = async ({ year, page = 1, limit = 10 }) => {
         group: [fn('MONTH', col('start_date'))],
         raw: true
       }),
-      
+
       User.findAndCountAll({
         attributes: { exclude: ['passwordHash'] },
         limit: Number(limit),
         offset: Number(offset),
         order: [['createdAt', 'DESC']]
       }),
-      
+
       LeaveRequest.findAndCountAll({
-        where: {
-          startDate: { [Op.between]: [start, end] }
-        },
+        where: { startDate: { [Op.between]: [start, end] } },
         include: [
-          {
-            model: User,
-            as: 'employee',
-            attributes: ['id', 'firstName', 'lastName', 'email']
-          },
-          {
-            model: User,
-            as: 'approver',
-            attributes: ['id', 'firstName', 'lastName', 'email']
-          }
+          { model: User, as: 'employee', attributes: ['id', 'firstName', 'lastName', 'email'] },
+          { model: User, as: 'approver', attributes: ['id', 'firstName', 'lastName', 'email'] }
         ],
         limit: Number(limit),
         offset: Number(offset),
         order: [['createdAt', 'DESC']]
       }),
-      
+
       Expense.findAndCountAll({
-        where: {
-          createdAt: { [Op.between]: [start, end] }
-        },
+        where: { createdAt: { [Op.between]: [start, end] } },
         include: [
-          {
-            model: User,
-            as: 'employee',
-            attributes: ['id', 'firstName', 'lastName', 'email']
-          }
+          { model: User, as: 'employee', attributes: ['id', 'firstName', 'lastName', 'email'] }
         ],
         limit: Number(limit),
         offset: Number(offset),
         order: [['createdAt', 'DESC']]
       }),
-      
+
       Expense.findAll({
         attributes: [
           [fn('MONTH', col('created_at')), 'month'],
@@ -872,7 +864,7 @@ const getDashboardSummary = async ({ year, page = 1, limit = 10 }) => {
         group: [fn('MONTH', col('created_at'))],
         raw: true
       }),
-      
+
       Payroll.findAll({
         attributes: [
           [fn('MONTH', col('processed_at')), 'month'],
@@ -887,15 +879,17 @@ const getDashboardSummary = async ({ year, page = 1, limit = 10 }) => {
       })
     ]);
 
+    // 🔥 Leave Map Safe Handling
     const leaveMap = { Approved: 0, Pending: 0, Rejected: 0 };
     leaveStats.forEach(item => {
       leaveMap[item.status] = Number(item.count);
     });
 
+    // 🔥 Always 12 months safe
     const formatMonthly = (data, key = 'count') => {
       const map = {};
       data.forEach(item => {
-        map[item.month] = Number(item[key]);
+        map[Number(item.month)] = Number(item[key]);
       });
 
       return Array.from({ length: 12 }, (_, i) => ({
@@ -904,6 +898,7 @@ const getDashboardSummary = async ({ year, page = 1, limit = 10 }) => {
       }));
     };
 
+    // ✅ FIXED LEAVES CLEANING
     const cleanLeaves = allLeavesList.rows.map(leave => ({
       id: leave.id,
       status: leave.status,
@@ -920,17 +915,26 @@ const getDashboardSummary = async ({ year, page = 1, limit = 10 }) => {
       approverEmail: leave.approver?.email || null
     }));
 
+    // 🚨 FIXED EXPENSE STATUS (BIG FIX)
     const cleanExpenses = expensesList.rows.map(exp => ({
       id: exp.id,
-      amount: exp.amount,
+      amount: Number(exp.amount),
       category: exp.category,
-      status: `${exp.managerApprovalStatus} / ${exp.financeApprovalStatus}`,
+      managerStatus: exp.managerApprovalStatus,
+      financeStatus: exp.financeApprovalStatus,
       createdAt: exp.createdAt,
       employeeName: exp.employee
         ? `${exp.employee.firstName} ${exp.employee.lastName}`
         : null,
       employeeEmail: exp.employee?.email || null
     }));
+
+    // 🔐 Role-based filtering (optional but powerful)
+    const filteredExpenses = isManager
+      ? cleanExpenses.filter(e => e.managerStatus === 'Pending')
+      : isFinance
+        ? cleanExpenses.filter(e => e.financeStatus === 'Pending')
+        : cleanExpenses;
 
     return {
       summary: {
@@ -942,11 +946,13 @@ const getDashboardSummary = async ({ year, page = 1, limit = 10 }) => {
         expensesClaimed: Number(expensesClaimed || 0),
         salaryPaid: Number(salaryPaid || 0)
       },
+
       charts: {
         leaves: formatMonthly(monthlyLeaves),
         expenses: formatMonthly(monthlyExpenses, 'total'),
         salary: formatMonthly(monthlySalary, 'total')
       },
+
       users: {
         data: usersData.rows,
         pagination: {
@@ -956,6 +962,7 @@ const getDashboardSummary = async ({ year, page = 1, limit = 10 }) => {
           totalPages: Math.ceil(usersData.count / limit)
         }
       },
+
       leaves: {
         pending: cleanLeaves.filter(l => l.status === 'Pending'),
         approved: cleanLeaves.filter(l => l.status === 'Approved'),
@@ -970,10 +977,11 @@ const getDashboardSummary = async ({ year, page = 1, limit = 10 }) => {
           }
         }
       },
+
       expenses: {
         total: Number(expensesClaimed || 0),
         all: {
-          data: cleanExpenses,
+          data: filteredExpenses,
           pagination: {
             total: expensesList.count,
             page: Number(page),
@@ -982,10 +990,12 @@ const getDashboardSummary = async ({ year, page = 1, limit = 10 }) => {
           }
         }
       },
+
       salary: {
         total: Number(salaryPaid || 0)
       }
     };
+
   } catch (error) {
     console.error('Dashboard Error:', error);
     throw error;
