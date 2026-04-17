@@ -1,8 +1,67 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { AlertCircle, RefreshCw, Building2, ChevronRight } from 'lucide-react';
+import {
+  Calendar,
+  Plus,
+  Clock,
+  CheckCircle,
+  AlertCircle,
+  RefreshCw,
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+  X,
+  Check,
+  Trash2,
+  Info,
+  AlertTriangle,
+  Sun,
+  Moon,
+  User,
+  Mail,
+  Briefcase,
+  TrendingUp,
+  CalendarDays,
+  Filter,
+  Download,
+  BarChart3,
+  PieChart,
+  Activity,
+  Users,
+  FileText,
+  Bell,
+  Search,
+  MoreVertical,
+  Eye,
+  Edit,
+  Copy,
+  Share2,
+  Printer,
+  Settings,
+  LogOut,
+  Home,
+  LayoutDashboard,
+  Menu,
+  ArrowUpRight,
+  ArrowDownRight,
+  Sparkles,
+  Zap,
+  Shield,
+  Award,
+  Target,
+  Coffee,
+  Umbrella,
+  Plane,
+  Heart,
+  Baby,
+  GraduationCap,
+  Building,
+  Laptop,
+  Smartphone,
+  Send
+} from 'lucide-react';
 import { AnimatePresence } from 'framer-motion';
-import { TrendingUp } from "lucide-react";
+
 // Helper function for color classes
 const getColorClass = (color) => {
   const colorMap = {
@@ -26,26 +85,30 @@ const StatCard = ({
   loading = false,
   trend,
   trendValue,
-  subtext,
-  color = "indigo"
+  subtitle,
+  color = "indigo",
+  onClick
 }) => {
-  const colorClasses = {
-    indigo: "bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400",
-    amber: "bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400",
-    rose: "bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400",
-    emerald: "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400",
+  const gradients = {
+    indigo: "from-indigo-500 to-indigo-600",
+    emerald: "from-emerald-500 to-emerald-600",
+    amber: "from-amber-500 to-amber-600",
+    rose: "from-rose-500 to-rose-600",
+    blue: "from-blue-500 to-blue-600",
+    purple: "from-purple-500 to-purple-600"
   };
 
-  const trendColors = {
-    up: "text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20",
-    down: "text-rose-600 bg-rose-50 dark:bg-rose-900/20",
-    neutral: "text-slate-600 bg-slate-50 dark:bg-slate-800"
+  const trendStyles = {
+    up: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
+    down: "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300",
+    neutral: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
   };
 
+  /* ---------------- LOADING ---------------- */
   if (loading) {
     return (
-      <div className="bg-white dark:bg-slate-900 rounded-xl p-6 border border-slate-200 dark:border-slate-800 animate-pulse">
-        <div className="flex items-start justify-between">
+      <div className="rounded-xl p-6 border bg-white dark:bg-slate-900 animate-pulse">
+        <div className="flex justify-between">
           <div className="space-y-3">
             <div className="h-4 w-24 bg-slate-200 dark:bg-slate-700 rounded"></div>
             <div className="h-8 w-20 bg-slate-200 dark:bg-slate-700 rounded"></div>
@@ -58,44 +121,61 @@ const StatCard = ({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
-      whileHover={{ scale: 1.02 }}
-      className="bg-white dark:bg-slate-900 rounded-xl p-6 border border-slate-200 dark:border-slate-800 shadow-md hover:shadow-xl transition-all"
+      whileHover={{ scale: 1.03 }}
+      onClick={onClick}
+      className={`relative overflow-hidden rounded-xl p-6 border bg-white dark:bg-slate-900 shadow-md hover:shadow-xl transition-all ${onClick ? "cursor-pointer" : ""
+        }`}
     >
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex-1">
-          <p className="text-sm font-medium text-slate-600 dark:text-slate-400">
-            {title}
-          </p>
-          <h3 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white">
-            {value}
-          </h3>
+      {/* Hover gradient glow */}
+      <div
+        className={`absolute inset-0 bg-gradient-to-br ${gradients[color]} opacity-0 hover:opacity-5 transition`}
+      />
+
+      <div className="relative">
+        {/* Top Section */}
+        <div className="flex justify-between items-start mb-4">
+          <div>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              {title}
+            </p>
+            <h3 className="text-3xl font-bold text-slate-900 dark:text-white">
+              {value}
+            </h3>
+          </div>
+
+          <div
+            className={`p-3 rounded-xl bg-gradient-to-br ${gradients[color]} shadow-lg`}
+          >
+            {typeof Icon === "string" ? (
+              <span className="text-white text-xl">{Icon}</span>
+            ) : (
+              <Icon className="h-6 w-6 text-white" />
+            )}
+          </div>
         </div>
 
-        <div className={`h-12 w-12 rounded-lg flex items-center justify-center ${colorClasses[color]}`}>
-          {typeof Icon === "string" ? (
-            <span className="text-xl">{Icon}</span>
-          ) : (
-            <Icon className="h-6 w-6" />
+        {/* Bottom Section */}
+        <div className="flex justify-between items-center">
+          {trend && trendValue && (
+            <div
+              className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${trendStyles[trend]}`}
+            >
+              {trend === "up" && <TrendingUp className="h-3 w-3" />}
+              {trend === "down" && (
+                <TrendingUp className="h-3 w-3 rotate-180" />
+              )}
+              <span>{trendValue}</span>
+            </div>
+          )}
+
+          {subtitle && (
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {subtitle}
+            </p>
           )}
         </div>
-      </div>
-
-      <div className="flex items-center justify-between">
-        {trend && trendValue && (
-          <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${trendColors[trend]}`}>
-            {trend === "up" && <TrendingUp className="h-3 w-3" />}
-            {trend === "down" && <TrendingUp className="h-3 w-3 rotate-180" />}
-            <span>{trendValue}</span>
-          </div>
-        )}
-
-        {subtext && (
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            {subtext}
-          </p>
-        )}
       </div>
     </motion.div>
   );
@@ -135,90 +215,166 @@ const TableSkeleton = () => (
   </div>
 );
 
-const EmptyState = ({ hasFilters = false, onRefresh }) => {
-  return (
-    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-8 lg:p-12 text-center transition-colors duration-200">
-      <div className="max-w-md mx-auto">
 
-        {/* ICON */}
-        <div className="w-20 h-20 mx-auto bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center">
-          <svg
-            className="w-10 h-10 text-gray-400 dark:text-gray-500"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-            />
-          </svg>
+const EmptyState = ({
+  title = "No data found",
+  description,
+  icon: Icon,
+  illustration,
+  action,
+  hasFilters = false,
+  onRefresh,
+  compact = false
+}) => {
+  return (
+    <div
+      className={`relative flex flex-col items-center justify-center text-center 
+      ${compact ? "py-10" : "py-16 px-6"} 
+      bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 
+      rounded-2xl shadow-sm transition-all`}
+    >
+      {/* Glow Background */}
+      <div className="absolute inset-0 bg-gradient-to-r from-indigo-400 to-purple-400 opacity-0 hover:opacity-5 blur-2xl transition" />
+
+      <div className="relative max-w-md mx-auto">
+        {/* ICON / ILLUSTRATION */}
+        <div className="mb-6 flex justify-center">
+          {illustration ? (
+            <img src={illustration} alt="empty" className="h-28 object-contain" />
+          ) : (
+            <div className="h-20 w-20 rounded-full bg-gradient-to-br from-indigo-100 to-purple-100 dark:from-indigo-900/30 dark:to-purple-900/30 flex items-center justify-center">
+              {Icon ? (
+                <Icon className="h-10 w-10 text-indigo-600 dark:text-indigo-400" />
+              ) : (
+                <svg
+                  className="h-10 w-10 text-gray-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeWidth={1.5}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                  />
+                </svg>
+              )}
+            </div>
+          )}
         </div>
 
         {/* TITLE */}
-        <h3 className="mt-6 text-xl font-semibold text-gray-900 dark:text-white">
-          No leave requests found
+        <h3 className="text-lg md:text-xl font-semibold text-gray-900 dark:text-white">
+          {title}
         </h3>
 
         {/* DESCRIPTION */}
         <p className="mt-2 text-gray-600 dark:text-gray-400">
-          {hasFilters
-            ? "Try adjusting your filters to see more results"
-            : "No leave requests found at this time."}
+          {description ||
+            (hasFilters
+              ? "Try adjusting your filters to see more results."
+              : "There’s nothing here yet.")}
         </p>
 
-        {/* REFRESH BUTTON (optional) */}
-        {onRefresh && (
-          <button
-            onClick={onRefresh}
-            className="mt-6 inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 transition-all duration-200 hover:shadow-lg"
-          >
-            <svg
-              className="w-4 h-4 mr-2"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+        {/* ACTION BUTTON / CUSTOM ACTION */}
+        <div className="mt-6 flex justify-center gap-3 flex-wrap">
+          {action}
+
+          {!action && onRefresh && (
+            <button
+              onClick={onRefresh}
+              className="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white 
+              bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 
+              transition-all hover:shadow-lg"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-              />
-            </svg>
-            Refresh
-          </button>
-        )}
+              <svg
+                className="w-4 h-4 mr-2"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                />
+              </svg>
+              Refresh
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
 };
-const ErrorState = ({ error, onRetry }) => (
-  <motion.div
-    initial={{ opacity: 0 }}
-    animate={{ opacity: 1 }}
-    className="flex flex-col items-center justify-center py-16 px-4"
-  >
-    <div className="w-24 h-24 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mb-4">
-      <AlertCircle className="w-12 h-12 text-red-600 dark:text-red-400" />
-    </div>
-    <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-      Failed to load data
-    </h3>
-    <p className="text-gray-500 dark:text-gray-400 text-center mb-4">
-      {error || 'An unexpected error occurred. Please try again.'}
-    </p>
-    <button
-      onClick={onRetry}
-      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+const ErrorState = ({
+  title = "Something went wrong",
+  message,
+  error,
+  icon: Icon,
+  onRetry,
+  action,
+  compact = false
+}) => {
+  const displayMessage =
+    message || error || "An unexpected error occurred. Please try again.";
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className={`relative flex flex-col items-center justify-center text-center 
+      ${compact ? "py-10" : "py-16 px-6"} 
+      bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 
+      rounded-2xl shadow-sm`}
     >
-      <RefreshCw className="w-4 h-4" />
-      Retry
-    </button>
-  </motion.div>
-);
+      {/* Glow Effect */}
+      <div className="absolute inset-0 bg-gradient-to-r from-rose-400 to-red-400 opacity-0 hover:opacity-5 blur-2xl transition" />
+
+      <div className="relative max-w-md mx-auto">
+        {/* ICON */}
+        <div className="mb-6 flex justify-center">
+          <div className="h-20 w-20 rounded-full bg-gradient-to-br from-rose-100 to-red-100 dark:from-rose-900/30 dark:to-red-900/30 flex items-center justify-center">
+            {Icon ? (
+              <Icon className="h-10 w-10 text-rose-600 dark:text-rose-400" />
+            ) : (
+              <AlertCircle className="h-10 w-10 text-rose-600 dark:text-rose-400" />
+            )}
+          </div>
+        </div>
+
+        {/* TITLE */}
+        <h3 className="text-lg md:text-xl font-semibold text-gray-900 dark:text-white">
+          {title}
+        </h3>
+
+        {/* MESSAGE */}
+        <p className="mt-2 text-gray-600 dark:text-gray-400">
+          {displayMessage}
+        </p>
+
+        {/* ACTION */}
+        <div className="mt-6 flex justify-center gap-3 flex-wrap">
+          {action}
+
+          {!action && onRetry && (
+            <button
+              onClick={onRetry}
+              className="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white 
+              bg-rose-600 hover:bg-rose-700 dark:bg-rose-500 dark:hover:bg-rose-600 
+              transition-all hover:shadow-lg"
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Try Again
+            </button>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  );
+};
 // Role Badge Component
 const RoleBadge = ({ role }) => {
   const styles = {
@@ -496,7 +652,180 @@ const formatDate = (dateString) => {
   });
 };
 
+const Badge = ({ children, variant = 'default', className = '', icon: Icon }) => {
+  const variants = {
+    default: 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 border-gray-200 dark:border-gray-600',
+    success: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200 border-emerald-200 dark:border-emerald-800',
+    warning: 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border-amber-200 dark:border-amber-800',
+    danger: 'bg-rose-100 dark:bg-rose-900/30 text-rose-800 dark:text-rose-200 border-rose-200 dark:border-rose-800',
+    info: 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 border-blue-200 dark:border-blue-800',
+    secondary: 'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-200 border-purple-200 dark:border-purple-800'
+  };
+
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium border transition-all duration-200 ${variants[variant]} ${className}`}>
+      {Icon && <Icon className="h-3 w-3" />}
+      {children}
+    </span>
+  );
+};
+
+const ProgressBar = ({ value, max = 100, color = 'indigo', showPercentage = true, height = 'h-2' }) => {
+  const percentage = Math.min((value / max) * 100, 100);
+
+  const colors = {
+    indigo: 'bg-indigo-600 dark:bg-indigo-500',
+    emerald: 'bg-emerald-600 dark:bg-emerald-500',
+    amber: 'bg-amber-600 dark:bg-amber-500',
+    rose: 'bg-rose-600 dark:bg-rose-500',
+    blue: 'bg-blue-600 dark:bg-blue-500',
+    purple: 'bg-purple-600 dark:bg-purple-500'
+  };
+
+  return (
+    <div className="space-y-1.5">
+      <div className={`w-full bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden ${height}`}>
+        <div
+          className={`${colors[color]} ${height} rounded-full transition-all duration-500 ease-out`}
+          style={{ width: `${percentage}%` }}
+        />
+      </div>
+      {showPercentage && (
+        <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400">
+          <span>{value} days</span>
+          <span>{Math.round(percentage)}%</span>
+        </div>
+      )}
+    </div>
+  );
+};
+
+
+
+const Modal = ({ open, onClose, title, children, size = 'md', showClose = true }) => {
+  if (!open) return null;
+
+  const sizes = {
+    sm: 'max-w-md',
+    md: 'max-w-lg',
+    lg: 'max-w-2xl',
+    xl: 'max-w-4xl',
+    full: 'max-w-6xl'
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div
+        className="fixed inset-0 bg-black/50 dark:bg-black/70 backdrop-blur-sm transition-opacity animate-in fade-in duration-200"
+        onClick={onClose}
+      />
+      <div className={`relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full ${sizes[size]} max-h-[90vh] overflow-hidden transform transition-all animate-in zoom-in-95 duration-200`}>
+        {title && (
+          <div className="sticky top-0 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 z-10 px-6 py-4">
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">{title}</h2>
+              {showClose && (
+                <button
+                  onClick={onClose}
+                  className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                  aria-label="Close modal"
+                >
+                  <X className="h-5 w-5 text-gray-500 dark:text-gray-400" />
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+        <div className="overflow-y-auto max-h-[calc(90vh-80px)]">
+          <div className="p-6">{children}</div>
+        </div>
+      </div>
+    </div>
+  );
+};
+const Pagination = ({ currentPage, totalPages, onPageChange, totalItems, itemsPerPage }) => {
+  if (totalPages <= 1) return null;
+
+  const startItem = (currentPage - 1) * itemsPerPage + 1;
+  const endItem = Math.min(currentPage * itemsPerPage, totalItems);
+
+  return (
+    <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+      <div className="flex-1 text-sm text-gray-700 dark:text-gray-300">
+        Showing <span className="font-medium">{startItem}</span> to{' '}
+        <span className="font-medium">{endItem}</span> of{' '}
+        <span className="font-medium">{totalItems}</span> results
+      </div>
+
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onPageChange(currentPage - 1)}
+          disabled={currentPage === 1}
+          className="dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+
+        <div className="flex items-center gap-1">
+          {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+            let pageNum;
+            if (totalPages <= 5) {
+              pageNum = i + 1;
+            } else if (currentPage <= 3) {
+              pageNum = i + 1;
+            } else if (currentPage >= totalPages - 2) {
+              pageNum = totalPages - 4 + i;
+            } else {
+              pageNum = currentPage - 2 + i;
+            }
+
+            return (
+              <Button
+                key={pageNum}
+                variant={currentPage === pageNum ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => onPageChange(pageNum)}
+                className={`w-8 h-8 ${currentPage === pageNum
+                    ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
+                    : 'dark:border-gray-600 dark:text-gray-300'
+                  }`}
+              >
+                {pageNum}
+              </Button>
+            );
+          })}
+        </div>
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onPageChange(currentPage + 1)}
+          disabled={currentPage === totalPages}
+          className="dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+};
+const LoadingState = ({ message = 'Loading...' }) => (
+  <div className="flex flex-col items-center justify-center py-16">
+    <div className="relative">
+      <div className="absolute inset-0 bg-gradient-to-r from-indigo-400 to-purple-400 rounded-full opacity-20 blur-xl animate-pulse" />
+      <Loader2 className="relative h-12 w-12 animate-spin text-indigo-600 dark:text-indigo-400" />
+    </div>
+    <p className="text-gray-600 dark:text-gray-400 mt-6 font-medium">{message}</p>
+  </div>
+);
 export { 
+  LoadingState,
+Modal,
+  Pagination,
+ProgressBar,
+Badge,
     LoadingSpinner, 
     formatDate,
     getStatusIcon,
