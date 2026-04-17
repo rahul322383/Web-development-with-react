@@ -13,8 +13,7 @@ router.get(
    notificationController.listMyNotifications
 );
 
-router.get(
-   '/unread-count',
+router.get('/unread-count',
    authorize('Employee', 'Manager', 'HR', 'Finance', 'Admin'),
    notificationController.getUnreadCount
 );
