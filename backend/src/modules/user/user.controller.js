@@ -30,8 +30,15 @@ const deleteUser = asyncHandler(async (req, res) => {
 
 const getDashboardSummary = asyncHandler(async (req, res) => {
   const year = Number(req.query.year || new Date().getFullYear());
+  const page = Number(req.query.page || 1);
+  const limit = Number(req.query.limit || 10);
 
-  const result = await userService.getDashboardSummary({ year });
+  const result = await userService.getDashboardSummary({
+    year,
+    page,
+    limit,
+    user: req.user   // 🔥 THIS FIXES YOUR ERROR
+  });
 
   res.status(200).json({
     success: true,
