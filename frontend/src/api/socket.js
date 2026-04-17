@@ -118,6 +118,7 @@ export const connectSocket = () => {
 
   const API_URL = import.meta.env.VITE_API_URL;
 
+
   socket = io(API_URL, {
     auth: { token },
     transports: ['websocket', 'polling'],
