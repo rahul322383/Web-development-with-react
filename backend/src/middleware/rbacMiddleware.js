@@ -9,7 +9,6 @@ const authorize = (...allowedRoles) => (req, res, next) => {
         data: null
       });
     }
-
     return next();
   } catch (err) {
     return res.status(500).json({
