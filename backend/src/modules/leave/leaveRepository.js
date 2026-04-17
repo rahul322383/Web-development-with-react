@@ -1,16 +1,8 @@
-
-
 const { Op } = require('sequelize');
 const { LeaveRequest, LeaveBalance, User } = require('../../database/initModels');
 
-/* =========================
-   EMPLOYEE / USER HELPERS
-========================= */
 const findEmployee = (id) => User.findByPk(id);
 
-/* =========================
-   LEAVE BALANCE
-========================= */
 const findLeaveBalance = (employeeId, year, transaction) =>
   LeaveBalance.findOne({
     where: { employeeId, year },
@@ -51,7 +43,6 @@ const resetAllLeaveBalances = async ({ totalAnnual, year }, transaction) => {
   return employees.length;
 };
 
-
 const createLeaveRequest = (payload, transaction) =>
   LeaveRequest.create(payload, { transaction });
 
@@ -73,9 +64,6 @@ const updateLeaveRequest = (id, data, transaction) =>
     transaction
   });
 
-/* =========================
-   MY LEAVES (CURSOR PAGINATION)
-========================= */
 const listEmployeeLeavesWithCursor = async ({ employeeId, cursor, limit }) => {
   const where = { employeeId };
 
@@ -90,36 +78,13 @@ const listEmployeeLeavesWithCursor = async ({ employeeId, cursor, limit }) => {
   });
 };
 
-/* =========================
-   MANAGER: PENDING LEAVES
-========================= */
-// const listPendingManagerLeaves = (managerId) =>
-//   LeaveRequest.findAll({
-//     where: { managerId, status: { [Op.in]: ['Pending', 'Approved', 'Rejected', 'Cancelled'] } },
-//     include: [
-//       {
-//         model: User,
-//         as: 'employee',
-//         attributes: ['id', 'firstName', 'lastName', 'email']
-//       }
-//     ],
-//     order: [['createdAt', 'ASC']]
-//   });
-
-
-
-
 const listPendingManagerLeaves = async (managerId) => {
   return LeaveRequest.findAll({
-    where: {
-      managerId,
-      // optional → remove if you want ALL statuses
-      // status: 'Pending'
-    },
+    where: { managerId },
     include: [
       {
         model: User,
-        as: 'employee', // 👈 MUST match association
+        as: 'employee',
         attributes: [
           'id',
           'firstName',
@@ -134,10 +99,6 @@ const listPendingManagerLeaves = async (managerId) => {
   });
 };
 
-
-/* =========================
-   TEAM LEAVES (MANAGER)
-========================= */
 const listTeamLeaves = async ({
   managerId,
   status,
@@ -165,9 +126,6 @@ const listTeamLeaves = async ({
   });
 };
 
-/* =========================
-   DASHBOARD / STATS
-========================= */
 const getDashboardSummary = async (employeeId) => {
   const year = new Date().getFullYear();
 
@@ -187,16 +145,26 @@ const getDashboardSummary = async (employeeId) => {
 
 const getLeaveStats = async ({ year }) => {
   const where = {};
+
   if (year) {
     where.createdAt = {
-      [Op.between]: [`${year}-01-01`, `${year}-12-31`]
+      [Op.between]: [
+        new Date(`${year}-01-01`),
+        new Date(`${year}-12-31`)
+      ]
     };
   }
 
   const total = await LeaveRequest.count({ where });
-  const approved = await LeaveRequest.count({ where: { ...where, status: 'Approved' } });
-  const pending = await LeaveRequest.count({ where: { ...where, status: 'Pending' } });
-  const rejected = await LeaveRequest.count({ where: { ...where, status: 'Rejected' } });
+  const approved = await LeaveRequest.count({
+    where: { ...where, status: 'Approved' }
+  });
+  const pending = await LeaveRequest.count({
+    where: { ...where, status: 'Pending' }
+  });
+  const rejected = await LeaveRequest.count({
+    where: { ...where, status: 'Rejected' }
+  });
 
   return {
     total,
@@ -205,7 +173,7 @@ const getLeaveStats = async ({ year }) => {
     rejected
   };
 };
-// approved leaves list for manager
+
 const listApprovedManagerLeaves = (managerId) =>
   LeaveRequest.findAll({
     where: { managerId, status: 'Approved' },
@@ -219,33 +187,19 @@ const listApprovedManagerLeaves = (managerId) =>
     order: [['createdAt', 'ASC']]
   });
 
-/* =========================
-   EXPORTS
-========================= */
 module.exports = {
-  // employee
   findEmployee,
-
-  // balance
   findLeaveBalance,
   createLeaveBalance,
   updateLeaveBalance,
   resetAllLeaveBalances,
-
-  // leave request
   createLeaveRequest,
   findLeaveRequestById,
   updateLeaveRequest,
-
-  // employee leaves
   listEmployeeLeavesWithCursor,
-
-  // manager
   listPendingManagerLeaves,
   listTeamLeaves,
   listApprovedManagerLeaves,
-
-  // dashboard
   getDashboardSummary,
   getLeaveStats
 };
