@@ -1,144 +1,3 @@
-
-// import React, { createContext, useContext, useState, useEffect } from 'react';
-// import { authApi } from '../api/authApi';
-// import { toast } from 'sonner';
-
-// const AuthContext = createContext();
-
-// export const useAuth = () => {
-//   const context = useContext(AuthContext);
-//   if (!context) {
-//     throw new Error('useAuth must be used within an AuthProvider');
-//   }
-//   return context;
-// };
-
-// export const AuthProvider = ({ children }) => {
-//   const [user, setUser] = useState(null);
-//   const [meta, setMeta] = useState(null);
-//   const [isAuthenticated, setIsAuthenticated] = useState(false);
-//   const [isLoading, setIsLoading] = useState(true);
-
-//   // Check authentication status on mount
-//   useEffect(() => {
-//     const checkAuth = async () => {
-//       const token = localStorage.getItem('accessToken');
-//       if (token) {
-//         try {
-//           const response = await authApi.getMe();
-//           const userData = response.data || response;
-//           setUser(userData.user);
-//           setMeta(userData.meta);
-//           setIsAuthenticated(true);
-//         } catch (error) {
-//           console.error('Auth check failed:', error);
-//           localStorage.removeItem('accessToken');
-//           localStorage.removeItem('refreshToken');
-//           setUser(null);
-//           setMeta(null);
-//           setIsAuthenticated(false);
-//         }
-//       }
-//       setIsLoading(false);
-//     };
-
-//     checkAuth();
-//   }, []);
-
-//   const login = async (credentials) => {
-//     try {
-//       const response = await authApi.login(credentials);
-//       const data = response.data || response;
-//       const { user, accessToken, refreshToken, meta } = data;
-
-//       localStorage.setItem('accessToken', accessToken);
-//       if (refreshToken) {
-//         localStorage.setItem('refreshToken', refreshToken);
-//       }
-      
-//       setUser(user);
-//       setMeta(meta || null);
-//       setIsAuthenticated(true);
-      
-//       toast.success('Login successful!');
-//       return { success: true, data };
-//     } catch (error) {
-//       toast.error(error.response?.data?.message || 'Login failed');
-//       return { success: false, error };
-//     }
-//   };
-
-//   const register = async (userData) => {
-//     try {
-//       const response = await authApi.register(userData);
-      
-//       // Handle the response structure correctly
-//       const data = response.data || response;
-//       const { user, accessToken, refreshToken, meta } = data;
-
-//       localStorage.setItem('accessToken', accessToken);
-//       if (refreshToken) {
-//         localStorage.setItem('refreshToken', refreshToken);
-//       }
-      
-//       setUser(user);
-//       setMeta(meta || null);
-//       setIsAuthenticated(true);
-      
-//       toast.success('Registration successful!');
-//       return { success: true, data };
-//     } catch (error) {
-//       toast.error(error.response?.data?.message || 'Registration failed');
-//       return { success: false, error };
-//     }
-//   };
-
-//   const logout = async () => {
-//     try {
-//       await authApi.logout();
-//     } catch (error) {
-//       console.error('Logout API error:', error);
-//     } finally {
-//       localStorage.removeItem('accessToken');
-//       localStorage.removeItem('refreshToken');
-//       setUser(null);
-//       setMeta(null);
-//       setIsAuthenticated(false);
-//       toast.success('Logged out successfully');
-//     }
-//   };
-
-//   const refreshUserData = async () => {
-//     try {
-//       const response = await authApi.getMe();
-//       const userData = response.data || response;
-//       setUser(userData.user);
-//       setMeta(userData.meta);
-//       return { success: true, data: userData };
-//     } catch (error) {
-//       console.error('Failed to refresh user data:', error);
-//       return { success: false, error };
-//     }
-//   };
-
-//   const value = {
-//     user,
-//     meta,
-//     isAuthenticated,
-//     isLoading,
-//     login,
-//     register,
-//     logout,
-//     refreshUserData
-//   };
-
-//   return (
-//     <AuthContext.Provider value={value}>
-//       {children}
-//     </AuthContext.Provider>
-//   );
-// };
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { authApi } from '../api/authApi';
 import { toast } from 'sonner';
@@ -148,9 +7,7 @@ const AuthContext = createContext();
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (!context) throw new Error('useAuth must be used within AuthProvider');
   return context;
 };
 
@@ -160,32 +17,62 @@ export const AuthProvider = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Check authentication status on mount
+  let isLoggingOut = false;
+
+  // 🔥 HANDLE GLOBAL LOGOUT EVENT (FROM AXIOS)
+  useEffect(() => {
+    const handleLogout = () => {
+      if (isLoggingOut) return;
+
+      isLoggingOut = true;
+
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+
+      disconnectSocket();
+
+      setUser(null);
+      setMeta(null);
+      setIsAuthenticated(false);
+
+      toast.error('Session expired, please login again');
+
+      window.location.href = '/login';
+    };
+
+    window.addEventListener('logout', handleLogout);
+    return () => window.removeEventListener('logout', handleLogout);
+  }, []);
+
+  // 🔥 CHECK AUTH
   useEffect(() => {
     const checkAuth = async () => {
       const token = localStorage.getItem('accessToken');
 
-      if (token) {
-        try {
-          const response = await authApi.getMe();
-          const userData = response.data || response;
-
-          setUser(userData.user);
-          setMeta(userData.meta);
-          setIsAuthenticated(true);
-
-          // ✅ Connect socket on page refresh if user is authenticated
-          connectSocket();
-
-        } catch (error) {
-          console.error('Auth check failed:', error);
-          localStorage.removeItem('accessToken');
-          localStorage.removeItem('refreshToken');
-          setUser(null);
-          setMeta(null);
-          setIsAuthenticated(false);
-        }
+      if (!token) {
+        setIsLoading(false);
+        return;
       }
+
+      try {
+        const response = await authApi.getMe();
+        const data = response.data || response;
+
+        setUser(data.user);
+        setMeta(data.meta);
+        setIsAuthenticated(true);
+
+        connectSocket();
+
+      } catch {
+        localStorage.removeItem('accessToken');
+        localStorage.removeItem('refreshToken');
+
+        setUser(null);
+        setMeta(null);
+        setIsAuthenticated(false);
+      }
+
       setIsLoading(false);
     };
 
@@ -196,103 +83,107 @@ export const AuthProvider = ({ children }) => {
     try {
       const response = await authApi.login(credentials);
       const data = response.data || response;
+
       const { user, accessToken, refreshToken, meta } = data;
 
-      // Store tokens
       localStorage.setItem('accessToken', accessToken);
-      if (refreshToken) {
-        localStorage.setItem('refreshToken', refreshToken);
-      }
+      if (refreshToken) localStorage.setItem('refreshToken', refreshToken);
 
-      // Update state
       setUser(user);
       setMeta(meta || null);
       setIsAuthenticated(true);
 
-      // ✅ Connect socket after successful login
       connectSocket();
 
-      toast.success('Login successful!');
+      toast.success('Login successful');
+
       return { success: true, data };
+
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Login failed');
-      return { success: false, error };
+      const message = error?.response?.data?.message || 'Login failed';
+      toast.error(message);
+      return { success: false, message };
     }
   };
 
-  const register = async (userData) => {
+  const register = async (payload) => {
     try {
-      const response = await authApi.register(userData);
-
-      // Handle the response structure correctly
+      const response = await authApi.register(payload);
       const data = response.data || response;
+
       const { user, accessToken, refreshToken, meta } = data;
 
       localStorage.setItem('accessToken', accessToken);
-      if (refreshToken) {
-        localStorage.setItem('refreshToken', refreshToken);
-      }
+      if (refreshToken) localStorage.setItem('refreshToken', refreshToken);
 
       setUser(user);
       setMeta(meta || null);
       setIsAuthenticated(true);
 
-      // ✅ Connect socket after successful registration
       connectSocket();
 
-      toast.success('Registration successful!');
+      toast.success('Registration successful');
+
       return { success: true, data };
+
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Registration failed');
-      return { success: false, error };
+      const message = error?.response?.data?.message || 'Registration failed';
+      toast.error(message);
+      return { success: false, message };
     }
   };
 
   const logout = async () => {
+    if (isLoggingOut) return;
+
+    isLoggingOut = true;
+
     try {
       await authApi.logout();
-    } catch (error) {
-      console.error('Logout API error:', error);
-    } finally {
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('refreshToken');
+    } catch { }
 
-      // ✅ Disconnect socket on logout
-      disconnectSocket();
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
 
-      setUser(null);
-      setMeta(null);
-      setIsAuthenticated(false);
-      toast.success('Logged out successfully');
-    }
+    disconnectSocket();
+
+    setUser(null);
+    setMeta(null);
+    setIsAuthenticated(false);
+
+    toast.success('Logged out');
+
+    window.location.href = '/login';
   };
 
   const refreshUserData = async () => {
     try {
       const response = await authApi.getMe();
-      const userData = response.data || response;
-      setUser(userData.user);
-      setMeta(userData.meta);
-      return { success: true, data: userData };
+      const data = response.data || response;
+
+      setUser(data.user);
+      setMeta(data.meta);
+
+      return { success: true, data };
+
     } catch (error) {
-      console.error('Failed to refresh user data:', error);
-      return { success: false, error };
+      return { success: false, message: 'Failed to refresh user' };
     }
   };
 
-  const value = {
-    user,
-    meta,
-    isAuthenticated,
-    isLoading,
-    login,
-    register,
-    logout,
-    refreshUserData
-  };
-
   return (
-    <AuthContext.Provider value={value}>
+    <AuthContext.Provider
+      value={{
+        user,
+        meta,
+        isAuthenticated,
+        isLoading,
+        login,
+        register,
+        logout,
+        refreshUserData
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
