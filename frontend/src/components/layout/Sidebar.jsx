@@ -32,8 +32,9 @@ import {
 } from 'lucide-react';
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
-import { toast } from 'sonner';
+import { BuildingOfficeIcon } from '@heroicons/react/24/outline';
 
+import { toast } from 'sonner';
 export const Sidebar = ({ isOpen, onClose }) => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -61,6 +62,12 @@ export const Sidebar = ({ isOpen, onClose }) => {
         icon: LayoutDashboard, 
         roles: ['Admin', 'Manager', 'Employee', 'HR', 'Finance'],
         showForAll: true 
+      },
+      {
+        name: 'Department Dashboard',
+        href: '/department-dashboard',
+        icon: BuildingOfficeIcon,
+        roles: ['Admin', 'HR', 'Manager', 'Finance']   
       },
       { 
         name: 'Profile', 
