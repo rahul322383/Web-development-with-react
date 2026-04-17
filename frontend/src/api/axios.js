@@ -10,38 +10,30 @@ const axiosInstance = axios.create({
 });
 
 let isRefreshing = false;
-let refreshSubscribers = [];
+let subscribers = [];
 
 const onRefreshed = (token) => {
-  refreshSubscribers.forEach((cb) => cb(token));
-  refreshSubscribers = [];
+  subscribers.forEach((cb) => cb(token));
+  subscribers = [];
 };
 
 const addSubscriber = (cb) => {
-  refreshSubscribers.push(cb);
+  subscribers.push(cb);
 };
 
-// ======================
-// REQUEST INTERCEPTOR
-// ======================
+// 🔥 REQUEST
 axiosInstance.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('accessToken');
-
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-
+    if (token) config.headers.Authorization = `Bearer ${token}`;
     return config;
   },
   (error) => Promise.reject(error)
 );
 
-// ======================
-// RESPONSE INTERCEPTOR
-// ======================
+// 🔥 RESPONSE
 axiosInstance.interceptors.response.use(
-  (response) => response,
+  (res) => res,
   async (error) => {
     const originalRequest = error.config;
 
@@ -50,6 +42,7 @@ axiosInstance.interceptors.response.use(
     }
 
     if (originalRequest._retry) {
+      window.dispatchEvent(new Event('logout'));
       return Promise.reject(error);
     }
 
@@ -58,15 +51,10 @@ axiosInstance.interceptors.response.use(
     const refreshToken = localStorage.getItem('refreshToken');
 
     if (!refreshToken) {
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('refreshToken');
       window.dispatchEvent(new Event('logout'));
       return Promise.reject(error);
     }
 
-    // ======================
-    // REFRESH LOCK SYSTEM
-    // ======================
     if (isRefreshing) {
       return new Promise((resolve) => {
         addSubscriber((token) => {
@@ -95,12 +83,11 @@ axiosInstance.interceptors.response.use(
       originalRequest.headers.Authorization = `Bearer ${accessToken}`;
 
       return axiosInstance(originalRequest);
-    } catch (refreshError) {
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('refreshToken');
-      window.dispatchEvent(new Event('logout'));
 
-      return Promise.reject(refreshError);
+    } catch {
+      window.dispatchEvent(new Event('logout'));
+      return Promise.reject(error);
+
     } finally {
       isRefreshing = false;
     }
