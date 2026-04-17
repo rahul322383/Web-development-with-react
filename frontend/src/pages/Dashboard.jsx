@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import { userApi } from "../api/userApi";
 import { toast } from "sonner";
-import useAuthStore from "../store/authStore";
+import {useAuth } from "../context/AuthContext"
 import { useNavigate } from "react-router-dom";
 import { StatCard } from "../components/ui/StatCardSkeleton";
 
@@ -174,7 +174,7 @@ const LoadingSpinner = ({ size = 'default', text = 'Loading...' }) => {
 // MAIN DASHBOARD COMPONENT
 // ========================
 export const Dashboard = () => {
-  const user = useAuthStore((state) => state.user);
+  const { user } = useAuth(); 
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
