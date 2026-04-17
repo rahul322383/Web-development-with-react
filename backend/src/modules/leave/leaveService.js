@@ -1,40 +1,41 @@
-
-
-
 const sequelize = require('../../database/sequelize');
 const env = require('../../config/env');
 const leaveRepository = require('./leaveRepository');
 const { cursorPaginate } = require('../../utils/pagination');
 const { logAuditEvent } = require('../../utils/auditLogger');
 const { clearCacheKeys } = require('../../utils/cache');
-const { LeaveRequest, LeaveBalance } = require('../../database/initModels');
+const { LeaveRequest, LeaveBalance, User } = require('../../database/initModels');
 const { Op } = require('sequelize');
- 
-// 📌 Calculate leave days
+
+/* -------------------- HELPERS -------------------- */
+
 const calculateRequestedDays = (startDate, endDate) => {
   const start = new Date(startDate);
   const end = new Date(endDate);
   return Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
 };
 
-// 📌 Ensure Leave Balance Exists
-const ensureLeaveBalance = async (employeeId, transaction) => {
-  const year = new Date().getFullYear();
-  const existing = await leaveRepository.findLeaveBalance(employeeId, year);
-  if (existing) return existing;
+const ensureLeaveBalance = async (employeeId, year, transaction) => {
+  let balance = await LeaveBalance.findOne({
+    where: { employeeId, year },
+    transaction,
+    lock: transaction.LOCK.UPDATE
+  });
 
-  return leaveRepository.createLeaveBalance(
-    {
+  if (!balance) {
+    balance = await LeaveBalance.create({
       employeeId,
       totalAnnual: env.DEFAULT_ANNUAL_LEAVE,
       used: 0,
       remaining: env.DEFAULT_ANNUAL_LEAVE,
       year
-    },
-    transaction
-  );
+    }, { transaction });
+  }
+
+  return balance;
 };
 
+/* -------------------- APPLY LEAVE -------------------- */
 
 const applyForLeave = async ({
   employeeId,
@@ -46,12 +47,14 @@ const applyForLeave = async ({
   try {
     const empId = Number(employeeId);
 
-    // ✅ Validate employeeId
     if (!empId || isNaN(empId)) {
       return { success: false, message: "Invalid employeeId" };
     }
 
-    // ✅ Parse dates
+    if (!reason || reason.trim().length < 5) {
+      return { success: false, message: "Reason must be at least 5 characters" };
+    }
+
     const start = new Date(startDate);
     const end = new Date(endDate);
 
@@ -63,7 +66,6 @@ const applyForLeave = async ({
       return { success: false, message: "startDate cannot be after endDate" };
     }
 
-    // ✅ Prevent past leave
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -71,57 +73,47 @@ const applyForLeave = async ({
       return { success: false, message: "Cannot apply for past dates" };
     }
 
+    const daysRequested = calculateRequestedDays(start, end);
+
+    if (daysRequested > 30) {
+      return { success: false, message: "Leave exceeds maximum allowed limit" };
+    }
+
     return await sequelize.transaction(async (transaction) => {
 
-      // ✅ Fetch employee
-      const employee = await leaveRepository.findEmployee(empId);
+      const employee = await User.findByPk(empId, { transaction });
 
-      if (!employee) {
-        throw new Error("Employee not found");
-      }
+      if (!employee) throw new Error("Employee not found");
+      if (!employee.managerId) throw new Error("Manager not assigned");
 
-      if (!employee.managerId) {
-        throw new Error("Employee manager mapping missing");
-      }
+      const manager = await User.findByPk(employee.managerId, { transaction });
+      if (!manager) throw new Error("Manager not found");
 
-      // ✅ Validate manager exists
-      const manager = await leaveRepository.findEmployee(employee.managerId);
-      console.log("Manager found:", manager ? manager.id : "No manager");
-
-      if (!manager) {
-        throw new Error("Assigned manager not found");
-      }
-
-      // ✅ Prevent overlapping leaves
-      const overlapping = await leaveRepository.findOverlappingLeaves(
-        empId,
-        start,
-        end,
+      const overlapping = await LeaveRequest.findOne({
+        where: {
+          employeeId: empId,
+          [Op.and]: [
+            { startDate: { [Op.lte]: end } },
+            { endDate: { [Op.gte]: start } }
+          ]
+        },
         transaction
-      );
+      });
 
       if (overlapping) {
         throw new Error("Leave already exists for selected dates");
       }
 
-      // ✅ Calculate days
-      const daysRequested = calculateRequestedDays(start, end);
+      const request = await LeaveRequest.create({
+        employeeId: empId,
+        managerId: employee.managerId,
+        startDate: start,
+        endDate: end,
+        reason,
+        daysRequested,
+        status: "Pending"
+      }, { transaction });
 
-      // ✅ Create leave
-      const request = await leaveRepository.createLeaveRequest(
-        {
-          employeeId: empId,
-          managerId: employee.managerId, // keep for history only
-          startDate: start,
-          endDate: end,
-          reason,
-          daysRequested,
-          status: "Pending"
-        },
-        transaction
-      );
-
-      // ✅ Audit log
       await logAuditEvent({
         userId: empId,
         moduleName: "Leave",
@@ -133,14 +125,12 @@ const applyForLeave = async ({
 
       return {
         success: true,
-        message: "Leave request submitted successfully",
+        message: "Leave applied successfully",
         data: request
       };
     });
 
   } catch (error) {
-    console.error("Apply Leave Error:", error);
-
     return {
       success: false,
       message: error.message || "Something went wrong"
@@ -148,90 +138,7 @@ const applyForLeave = async ({
   }
 };
 
-
-// const applyForLeave = async ({
-//   employeeId,
-//   startDate,
-//   endDate,
-//   reason,
-//   ipAddress
-// }) => {
-//   try {
-//     const empId = Number(employeeId);
-//     if (!empId || isNaN(empId)) {
-//       return { success: false, message: "Invalid employeeId" };
-//     }
-
-//     const start = new Date(startDate);
-//     const end = new Date(endDate);
-
-//     if (isNaN(start) || isNaN(end)) {
-//       return { success: false, message: "Invalid date format" };
-//     }
-
-//     if (start > end) {
-//       return { success: false, message: "startDate cannot be after endDate" };
-//     }
-
-//     const daysRequested = calculateRequestedDays(start, end);
-
-//     return await sequelize.transaction(async (transaction) => {
-
-//       const employee = await leaveRepository.findEmployee(empId);
-
-//       if (!employee?.managerId) {
-//         throw new Error("Employee manager mapping missing");
-//       }
-
-//       const request = await leaveRepository.createLeaveRequest(
-//         {
-//           employeeId: empId,
-//           managerId: employee.managerId,
-//           startDate: start,
-//           endDate: end,
-//           reason,
-//           daysRequested,
-//           status: "Pending"
-//         },
-//         transaction
-//       );
-
-//       await logAuditEvent({
-//         userId: empId,
-//         moduleName: "Leave",
-//         actionType: "CREATE",
-//         oldData: null,
-//         newData: request,
-//         ipAddress
-//       });
-
-//       return {
-//         success: true,
-//         message: "Leave request submitted successfully",
-//         data: request
-//       };
-//     });
-
-//   } catch (error) {
-//     return {
-//       success: false,
-//       message: error.message || "Something went wrong"
-//     };
-//   }
-// };
-
-const listTeamLeaves = async (managerId) => {
-  try {
-    const data = await leaveRepository.listTeamLeaves(managerId);
-
-    return {
-      success: true,
-      data
-    };
-  } catch (error) {
-    return { success: false, message: error.message };
-  }
-}
+/* -------------------- MANAGER DECISION -------------------- */
 
 const managerDecision = async ({
   managerId,
@@ -243,7 +150,7 @@ const managerDecision = async ({
 }) => {
   try {
     if (!["Approved", "Rejected"].includes(status)) {
-      throw new Error("Invalid status value");
+      return { success: false, message: "Invalid status" };
     }
 
     return await sequelize.transaction(async (transaction) => {
@@ -253,52 +160,38 @@ const managerDecision = async ({
         lock: transaction.LOCK.UPDATE
       });
 
-      if (!leaveRequest) {
-        throw new Error("Leave request not found");
-      }
+      if (!leaveRequest) throw new Error("Leave request not found");
+      if (leaveRequest.status !== "Pending") throw new Error("Already processed");
 
-      if (leaveRequest.status !== "Pending") {
-        throw new Error("Already processed");
-      }
+      const employee = await User.findByPk(leaveRequest.employeeId, { transaction });
 
       if (
-        leaveRequest.managerId !== managerId &&
+        employee.managerId !== managerId &&
         !["Admin", "HR"].includes(role)
       ) {
         throw new Error("Not authorized");
       }
 
-      // 🔥 UPDATE STATUS FIRST
-      await leaveRepository.updateLeaveRequest(
-        requestId,
-        { status, decisionNote },
-        transaction
-      );
+      await leaveRequest.update({ status, decisionNote }, { transaction });
 
-      let year = new Date(leaveRequest.startDate).getFullYear();
+      const year = new Date(leaveRequest.startDate).getFullYear();
 
-      // 🔥 ONLY ON APPROVAL → DEDUCT BALANCE
       if (status === "Approved") {
 
-        const balance = await leaveRepository.findLeaveBalance(
+        const balance = await ensureLeaveBalance(
           leaveRequest.employeeId,
           year,
           transaction
         );
 
-        if (!balance || balance.remaining < leaveRequest.daysRequested) {
-          throw new Error("Insufficient balance at approval time");
+        if (balance.remaining < leaveRequest.daysRequested) {
+          throw new Error("Insufficient leave balance");
         }
 
-        await leaveRepository.updateLeaveBalance(
-          leaveRequest.employeeId,
-          year,
-          {
-            used: balance.used + leaveRequest.daysRequested,
-            remaining: balance.remaining - leaveRequest.daysRequested
-          },
-          transaction
-        );
+        await balance.update({
+          used: balance.used + leaveRequest.daysRequested,
+          remaining: balance.remaining - leaveRequest.daysRequested
+        }, { transaction });
       }
 
       await logAuditEvent({
@@ -312,18 +205,14 @@ const managerDecision = async ({
 
       await clearCacheKeys([
         `dashboard_summary:${leaveRequest.employeeId}:${year}`,
-        `dashboard_summary:${managerId}:${year}`
+        `dashboard_summary:${managerId}:${year}`,
+        `leave_balance:${leaveRequest.employeeId}:${year}`
       ]);
-
-      const updated = await leaveRepository.findLeaveRequestById(
-        requestId,
-        transaction
-      );
 
       return {
         success: true,
         message: `Leave ${status.toLowerCase()} successfully`,
-        data: updated
+        data: leaveRequest
       };
     });
 
@@ -335,8 +224,8 @@ const managerDecision = async ({
   }
 };
 
+/* -------------------- LIST FUNCTIONS -------------------- */
 
-// 📄 List My Leaves
 const listMyLeaves = async ({ employeeId, cursor, limit }) => {
   try {
     const rows = await leaveRepository.listEmployeeLeavesWithCursor({
@@ -354,40 +243,33 @@ const listMyLeaves = async ({ employeeId, cursor, limit }) => {
   }
 };
 
-// 📄 Manager Pending Leaves
 const listPendingLeavesForManager = async (managerId) => {
   try {
     const data = await leaveRepository.listPendingManagerLeaves(managerId);
 
     return {
       success: true,
-      message: "Pending leaves fetched successfully",
       count: data.length,
       data
     };
   } catch (error) {
-    console.error("Error fetching pending leaves:", error);
-
     return {
       success: false,
-      message: "Failed to fetch pending leaves",
-      error: error.message
+      message: error.message
     };
   }
 };
 
-
-
-
+/* -------------------- LEAVE BALANCE -------------------- */
 
 const getMyLeaveBalance = async (employeeId) => {
   try {
     const year = new Date().getFullYear();
 
-    // leave balance
-    const leaveBalance = await leaveRepository.findLeaveBalance(employeeId, year);
+    const balance = await LeaveBalance.findOne({
+      where: { employeeId, year }
+    });
 
-    // full leave records
     const leaves = await LeaveRequest.findAll({
       where: {
         employeeId,
@@ -399,36 +281,14 @@ const getMyLeaveBalance = async (employeeId) => {
       order: [['createdAt', 'DESC']]
     });
 
-    // group full data
-    const groupedLeaves = {
-      all: leaves,
-      approved: [],
-      rejected: [],
-      pending: []
-    };
-
-    leaves.forEach((leave) => {
-      const status = leave.status?.toLowerCase();
-
-      if (status === 'approved') groupedLeaves.approved.push(leave);
-      else if (status === 'rejected') groupedLeaves.rejected.push(leave);
-      else groupedLeaves.pending.push(leave);
-    });
-
-    // default balance
-    if (!leaveBalance) {
-      return {
+    return {
+      ...(balance?.toJSON() || {
         totalAnnual: env.DEFAULT_ANNUAL_LEAVE,
         used: 0,
         remaining: env.DEFAULT_ANNUAL_LEAVE,
-        year,
-        leaves: groupedLeaves
-      };
-    }
-
-    return {
-      ...leaveBalance.toJSON(),
-      leaves: groupedLeaves
+        year
+      }),
+      leaves
     };
 
   } catch (error) {
@@ -436,84 +296,7 @@ const getMyLeaveBalance = async (employeeId) => {
   }
 };
 
-
-
-
-
-// 🔁 Yearly Reset
-const yearlyLeaveReset = async (year) => {
-  try {
-    await sequelize.transaction(async (transaction) => {
-      await leaveRepository.resetAllLeaveBalances(
-        {
-          totalAnnual: env.DEFAULT_ANNUAL_LEAVE,
-          year
-        },
-        transaction
-      );
-    });
-
-    return {
-      success: true,
-      message: 'Leave balances reset successfully'
-    };
-  } catch (error) {
-    return { success: false, message: error.message };
-  }
-};
-
-
-const deleteLeaveRequest = (id, transaction) =>
-  LeaveRequest.destroy({
-    where: { id },
-    transaction
-  });
-
-const updateLeaveRequest = (id, data, transaction) =>
-  LeaveRequest.update(data, {
-    where: { id },
-    transaction
-  });
-
-const findLeaveRequestById = (id, transaction) =>
-  LeaveRequest.findByPk(id, { transaction });
-
-const findLeaveBalance = (employeeId, year, transaction) =>
-  LeaveBalance.findOne({
-    where: { employeeId, year },
-    transaction
-  });
-
-const updateLeaveBalance = (employeeId, year, data, transaction) =>
-  LeaveBalance.update(data, {
-    where: { employeeId, year },
-    transaction
-  }); 
-
-const createLeaveBalance = async (payload, transaction) => LeaveBalance.create(payload, { transaction });
-
-const createLeaveRequest = async (payload, transaction) => LeaveRequest.create(payload, { transaction });  
-
-//find employee function is added in repository to be used in service layer for better transaction management and code organization.
-
-const findEmployee = async (id) => User.findByPk(id);
-const getLeaveStats = async ({ year }) => {
-  try {
-    const stats = await leaveRepository.getLeaveStats({ year });
-
-    return {
-      success: true,
-      data: stats
-    };
-  } catch (error) {
-    return {
-      success: false,
-      message: error.message
-    };
-  }
-};
-
-// get dashboard summary function is added in repository to be used in service layer for better transaction management and code organization.
+/* -------------------- DASHBOARD -------------------- */
 
 const getDashboardSummary = async ({ userId, year }) => {
   const selectedYear = year || new Date().getFullYear();
@@ -534,101 +317,57 @@ const getDashboardSummary = async ({ userId, year }) => {
   };
 };
 
-// Add these methods to your existing leaveService
+/* -------------------- RESET -------------------- */
+
+const yearlyLeaveReset = async (year) => {
+  try {
+    await sequelize.transaction(async (transaction) => {
+      await LeaveBalance.update(
+        {
+          totalAnnual: env.DEFAULT_ANNUAL_LEAVE,
+          used: 0,
+          remaining: env.DEFAULT_ANNUAL_LEAVE,
+          year
+        },
+        { where: {}, transaction }
+      );
+    });
+
+    return {
+      success: true,
+      message: "Leave reset done"
+    };
+  } catch (error) {
+    return { success: false, message: error.message };
+  }
+};
 
 const getHRTeamIds = async () => {
-  try {
-    const hrUsers = await prisma.user.findMany({
-      where: {
-        OR: [
-          { role: 'HR' },
-          { role: 'ADMIN' },
-          { role: 'HR_MANAGER' }
-        ]
-      },
-      select: {
-        id: true
-      }
-    });
-    return hrUsers.map(user => user.id);
-  } catch (error) {
-    console.error('Error fetching HR team IDs:', error);
-    return [];
-  }
-};
+  const hrUsers = await User.findAll({
+    where: { role: 'HR' },
+    attributes: ['id']
+  });
 
-const getAdminIds = async () => {
-  try {
-    const admins = await prisma.user.findMany({
-      where: {
-        role: 'ADMIN'
-      },
-      select: {
-        id: true
-      }
-    });
-    return admins.map(user => user.id);
-  } catch (error) {
-    console.error('Error fetching admin IDs:', error);
-    return [];
-  }
-};
-
-const getAllEmployeeIds = async () => {
-  try {
-    const employees = await prisma.user.findMany({
-      where: {
-        role: 'EMPLOYEE'
-      },
-      select: {
-        id: true
-      }
-    });
-    return employees.map(user => user.id);
-  } catch (error) {
-    console.error('Error fetching employee IDs:', error);
-    return [];
-  }
+  return hrUsers.map(user => user.id);
 };
 
 const getTeamMembers = async (managerId) => {
-  try {
-    const teamMembers = await prisma.user.findMany({
-      where: {
-        managerId: managerId
-      },
-      select: {
-        id: true
-      }
-    });
-    return teamMembers.map(user => user.id);
-  } catch (error) {
-    console.error('Error fetching team members:', error);
-    return [];
-  }
+  const users = await User.findAll({
+    where: { managerId },
+    attributes: ['id']
+  });
+
+  return users.map(u => u.id);
 };
 
-
 module.exports = {
-   getHRTeamIds,
-  getAdminIds,
-  getAllEmployeeIds,
   getTeamMembers,
-  getDashboardSummary,
-  listTeamLeaves,
-  findEmployee,
-  findLeaveBalance,
-  getLeaveStats,
-  createLeaveBalance,
-  updateLeaveBalance,
-  createLeaveRequest,
-  deleteLeaveRequest,
-  updateLeaveRequest,
-  findLeaveRequestById,
+  getHRTeamIds,
   applyForLeave,
   managerDecision,
   listMyLeaves,
   listPendingLeavesForManager,
   getMyLeaveBalance,
-  yearlyLeaveReset
+  yearlyLeaveReset,
+  getDashboardSummary
 };
