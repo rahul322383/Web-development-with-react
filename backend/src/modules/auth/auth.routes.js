@@ -83,3 +83,11 @@ router.get(
 );
 
 module.exports = router;
+
+
+
+
+// const { loginLimiter, registerLimiter, refreshLimiter } = require('./authRateLimiter');
+// router.post('/login', loginLimiter, authController.login);
+// router.post('/register', registerLimiter, authController.register);
+// router.post('/refresh', refreshLimiter, authController.refresh);
