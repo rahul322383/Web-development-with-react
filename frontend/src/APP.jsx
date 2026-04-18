@@ -37,6 +37,7 @@ import Privacy from "./Public/Privacy";
 import Terms from "./Public/Terms";
 import Security from "./Public/Security";
 import Help from "./Public/help";
+import Contact from './Public/contact'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -80,6 +81,7 @@ function AppRoutes() {
         <Route path="/terms" element={<Terms />} />
         <Route path="/security" element={<Security />} />
         <Route path="/help" element={<Help />} />
+        <Route path ="/contact" element={< Contact />} />
 
         {/* Protected Pages */}
         <Route path="/dashboard" element={
