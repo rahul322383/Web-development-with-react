@@ -166,7 +166,6 @@ export const Sidebar = ({ isOpen, onClose }) => {
     { name: 'Pricing', href: '/pricing', icon: CreditCard },
     { name: 'Demo', href: '/demo', icon: PlayCircle },
     { name: 'About', href: '/about', icon: Info },
-    { name: 'Careers', href: '/careers', icon: Briefcase },
     { name: 'Contact', href: '/contact', icon: MessageSquare },
   ];
 
