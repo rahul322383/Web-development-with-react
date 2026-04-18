@@ -16,7 +16,7 @@ const {
   deleteLogsSchema,
   auditCreateSchema,
   validate,
-} = require('./auditValidators');
+} = require('./Auditvalidators ');
 
 
 
