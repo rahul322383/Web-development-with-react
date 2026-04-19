@@ -386,7 +386,7 @@ const { clearCacheKeys } = require('../../utils/cache');
 const { LeaveRequest, LeaveBalance, User } = require('../../database/initModels');
 const { Op } = require('sequelize');
 const logger = require('../../config/logger');
-const eventBus = require('../../utils/eventBus ');
+const eventBus = require('../../utils/Eventbus ');
 const { assertPermission } = require('../../utils/permissions');
 const {
   applyLeaveSchema,
