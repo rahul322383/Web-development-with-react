@@ -8,10 +8,12 @@ const sequelize = new Sequelize(env.DB_NAME, env.DB_USER, env.DB_PASSWORD, {
   port: env.DB_PORT,
   dialect: 'mysql',
 
-  // logging: env.NODE_ENV === 'development'
-  //   ? (sql) => logger.debug({ sql }, 'sql-query')
-  //   : false,
+  logging: env.NODE_ENV === 'development'
+    ? (sql) => logger.debug({ sql }, 'sql-query')
+    : false,
   logging: false,
+  // logging:console.log,
+ 
 
   pool: {
     max: env.DB_POOL_MAX,
