@@ -234,11 +234,19 @@ export const Dashboard = () => {
         .reduce((sum, u) => sum + parseFloat(u.baseSalary || 0), 0) || 0
     }));
 
-    const totalLeaveRequests = (summary.approvedLeaves || 0) + 
-                              (summary.pendingLeaves || 0) + 
-                              (summary.rejectedLeaves || 0);
-    const attendanceRate = summary.totalUsers > 0 
-      ? Math.min(100, Math.max(0, Math.round(100 - (totalLeaveRequests / summary.totalUsers) * 5)))
+    const totalLeaveRequests =
+      (summary?.approvedLeaves || 0) +
+      (summary?.pendingLeaves || 0) +
+      (summary?.rejectedLeaves || 0);
+
+    const attendanceRate = summary?.totalUsers > 0
+      ? Math.min(
+        100,
+        Math.max(
+          0,
+          Math.round(100 - (totalLeaveRequests / summary.totalUsers) * 5)
+        )
+      )
       : 100;
 
     const recentActivities = [];
