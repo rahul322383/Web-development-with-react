@@ -395,7 +395,7 @@ const { sendNotification } = require('../../config/socket');
 const { User } = require('../../models');
 const notificationRepository = require('../notification/notificationRepository');
 const logger = require('../../config/logger');
-const eventBus = require('../../utils/eventBus ');
+const eventBus = require('../../utils/Eventbus ');
 const { assertPermission } = require('../../utils/permissions');
 const {
   submitExpenseSchema,
