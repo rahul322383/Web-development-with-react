@@ -6,7 +6,7 @@ const { logAuditEvent } = require('../../utils/auditLogger');
 const { clearCacheKeys } = require('../../utils/cache');
 const { sendNotification } = require('../../config/socket');
 const logger = require('../../config/logger');
-const eventBus = require('../../utils/eventBus ');
+const eventBus = require('../../utils/Eventbus ');
 const { assertPermission } = require('../../utils/permissions');
 const {
   processPayrollSchema,
