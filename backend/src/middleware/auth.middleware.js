@@ -47,13 +47,14 @@ const authenticate = async (req, res, next) => {
       jti: payload.jti,
       exp: payload.exp
     };
-    console.log("auth middle", req.user)
+   
+    
    
 
     next();
 
   } catch (error) {
-    console.error("Auth Middleware Error:", error);
+   
 
     return res.status(500).json({
       success: false,
