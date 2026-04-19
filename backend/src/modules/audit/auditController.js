@@ -1,120 +1,60 @@
+'use strict';
+
+const asyncHandler = require('../../utils/asyncHandler');
 const auditService = require('./auditService');
 
-const getAuditLogs = async (req, res) => {
-  try {
-    const result = await auditService.getAuditLogs(req.query);
-    res.status(200).json(result);
-  } catch (error) {
-    console.error('Error fetching audit logs:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching audit logs',
-      error: error.message
-    });
-  }
-};
+const getAuditLogs = asyncHandler(async (req, res) => {
+  const result = await auditService.getAuditLogs(req.query, req.user);
+  return res.status(200).json(result);
+});
 
-const getAuditLogById = async (req, res) => {
-  try {
-    const result = await auditService.getAuditLogById(req.params.id);
-    res.status(result.statusCode || 200).json(result);
-  } catch (error) {
-    console.error('Error fetching audit log:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching audit log',
-      error: error.message
-    });
-  }
-};
+const getAuditLogById = asyncHandler(async (req, res) => {
+  const result = await auditService.getAuditLogById(req.params.id, req.user);
+  return res.status(200).json(result);
+});
 
-const getAuditStats = async (req, res) => {
-  try {
-    const result = await auditService.getAuditStats(req.query);
-    res.status(200).json(result);
-  } catch (error) {
-    console.error('Error fetching audit stats:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching audit statistics',
-      error: error.message
-    });
-  }
-};
+const getAuditStats = asyncHandler(async (req, res) => {
+  const result = await auditService.getAuditStats(req.query, req.user);
+  return res.status(200).json(result);
+});
 
-const getAuditLogsByUser = async (req, res) => {
-  try {
-    const result = await auditService.getAuditLogsByUser(req.params.userId, req.query);
-    res.status(200).json(result);
-  } catch (error) {
-    console.error('Error fetching user audit logs:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching user audit logs',
-      error: error.message
-    });
-  }
-};
+const getAuditLogsByUser = asyncHandler(async (req, res) => {
+  const result = await auditService.getAuditLogsByUser(
+    req.params.userId,
+    req.query,
+    req.user
+  );
+  return res.status(200).json(result);
+});
 
-const getAuditLogsByModule = async (req, res) => {
-  try {
-    const result = await auditService.getAuditLogsByModule(req.params.moduleName, req.query);
-    res.status(200).json(result);
-  } catch (error) {
-    console.error('Error fetching module audit logs:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching module audit logs',
-      error: error.message
-    });
-  }
-};
+const getAuditLogsByModule = asyncHandler(async (req, res) => {
+  const result = await auditService.getAuditLogsByModule(
+    req.params.moduleName,
+    req.query,
+    req.user
+  );
+  return res.status(200).json(result);
+});
 
-const exportAuditLogs = async (req, res) => {
-  try {
-    const result = await auditService.exportAuditLogs(req.query);
-    res.status(200).json(result);
-  } catch (error) {
-    console.error('Error exporting audit logs:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error exporting audit logs',
-      error: error.message
-    });
-  }
-};
+const exportAuditLogs = asyncHandler(async (req, res) => {
+  res.setHeader('Content-Type', 'application/x-ndjson');
+  res.setHeader('Transfer-Encoding', 'chunked');
+  await auditService.exportAuditLogs(req.query, req.user, res);
+});
 
-const deleteOldAuditLogs = async (req, res) => {
-  try {
-    const { daysToKeep = 90 } = req.body;
-    const result = await auditService.deleteOldAuditLogs(daysToKeep, req.user, req.ip);
-    res.status(200).json(result);
-  } catch (error) {
-    console.error('Error deleting old audit logs:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error deleting old audit logs',
-      error: error.message
-    });
-  }
-};
+const deleteOldAuditLogs = asyncHandler(async (req, res) => {
+  const result = await auditService.deleteOldAuditLogs(
+    { daysToKeep: req.body.daysToKeep ?? 90 },
+    req.user,
+    req.ip
+  );
+  return res.status(200).json(result);
+});
 
-const createAuditLog = async (req, res) => {
-  try {
-    const log = await auditService.createAuditLog(req.body);
-    res.status(201).json({
-      success: true,
-      data: log
-    });
-  } catch (error) {
-    console.error('Error creating audit log:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error creating audit log',
-      error: error.message
-    });
-  }
-};
+const createAuditLog = asyncHandler(async (req, res) => {
+  const result = await auditService.createAuditLog(req.body, req.user);
+  return res.status(201).json(result);
+});
 
 module.exports = {
   getAuditLogs,
@@ -124,5 +64,5 @@ module.exports = {
   getAuditLogsByModule,
   exportAuditLogs,
   deleteOldAuditLogs,
-  createAuditLog
+  createAuditLog,
 };
