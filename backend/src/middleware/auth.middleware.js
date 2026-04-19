@@ -47,6 +47,8 @@ const authenticate = async (req, res, next) => {
       jti: payload.jti,
       exp: payload.exp
     };
+    console.log("auth middle", req.user)
+   
 
     next();
 
