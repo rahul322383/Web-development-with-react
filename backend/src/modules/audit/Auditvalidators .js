@@ -1,6 +1,7 @@
 'use strict';
 
 const Joi = require('joi');
+const AppError = require('../../utils/AppError');
 
 const paginationSchema = Joi.object({
     limit: Joi.number().integer().min(1).max(100).default(20),
@@ -40,12 +41,24 @@ const deleteLogsSchema = Joi.object({
     daysToKeep: Joi.number().integer().min(1).required(),
 });
 
+// FIX: auditCreateSchema was imported in the service but never defined
+const auditCreateSchema = Joi.object({
+    userId: Joi.number().integer().positive().required(),
+    moduleName: Joi.string().trim().required(),
+    actionType: Joi.string().trim().required(),
+    description: Joi.string().trim().max(1000).optional(),
+    oldData: Joi.object().optional().allow(null),
+    newData: Joi.object().optional().allow(null),
+    ipAddress: Joi.string().ip().optional().allow(null),
+});
+
 const validate = (schema, data) => {
     const { error, value } = schema.validate(data, { abortEarly: false, stripUnknown: true });
     if (error) {
-        const message = error.details.map(d => d.message).join(', ');
-        const err = new Error(message);
-        err.statusCode = 400;
+        const err = new AppError(
+            error.details.map(d => d.message).join(', '),
+            400,
+        );
         err.name = 'ValidationError';
         throw err;
     }
@@ -59,5 +72,6 @@ module.exports = {
     auditExportSchema,
     auditStatsSchema,
     deleteLogsSchema,
+    auditCreateSchema,
     validate,
 };
