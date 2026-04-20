@@ -1,21 +1,23 @@
+'use strict';
+
+const { Op } = require('sequelize');
 const { User, Payroll, PayrollItem } = require('../../database/initModels');
 
-const listActiveEmployees = async () =>
+const listActiveEmployees = () =>
   User.findAll({
     where: { isActive: true },
-    attributes: ['id', 'baseSalary']
+    attributes: ['id', 'baseSalary'],
   });
 
 const upsertPayroll = async ({ employeeId, month, year, netSalary, status, processedAt }, transaction) => {
   const [payroll] = await Payroll.findOrCreate({
     where: { employeeId, month, year },
     defaults: { employeeId, month, year, netSalary, status, processedAt },
-    transaction
+    transaction,
   });
 
-  if (payroll.status === 'Locked') {
-    return payroll;
-  }
+  // Never overwrite a locked payroll
+  if (payroll.status === 'Locked') return payroll;
 
   await payroll.update({ netSalary, status, processedAt }, { transaction });
   return payroll;
@@ -25,57 +27,59 @@ const upsertPayrollItems = async ({ payrollId, baseSalary, bonus, deductions }, 
   const [payrollItem] = await PayrollItem.findOrCreate({
     where: { payrollId },
     defaults: { payrollId, baseSalary, bonus, deductions },
-    transaction
+    transaction,
   });
 
   await payrollItem.update({ baseSalary, bonus, deductions }, { transaction });
   return payrollItem;
 };
 
-const listPayrollHistory = async (employeeId) =>
+const updatePayroll = (payrollId, data, transaction) =>
+  Payroll.update(data, { where: { id: payrollId }, transaction });
+
+const findPayrollById = (id) =>
+  Payroll.findByPk(id, { include: [{ model: PayrollItem, as: 'items' }] });
+
+const listPayrollHistory = (employeeId) =>
   Payroll.findAll({
     where: { employeeId },
     include: [{ model: PayrollItem, as: 'items' }],
-    order: [
-      ['year', 'DESC'],
-      ['month', 'DESC']
-    ]
+    order: [['year', 'DESC'], ['month', 'DESC']],
   });
 
-const findPayrollById = async (id) => Payroll.findByPk(id, { include: [{ model: PayrollItem, as: 'items' }] });
-
-const getPayrollByEmployee = async (employeeId) =>
+const getPayrollByEmployee = (employeeId) =>
   Payroll.findAll({
     where: { employeeId },
     include: [{ model: PayrollItem, as: 'items' }],
-    order: [
-      ['year', 'DESC'],
-      ['month', 'DESC']
-    ]
-  }); 
+    order: [['year', 'DESC'], ['month', 'DESC']],
+  });
 
-
-  const getAdminIds = async () => {
+// FIX: use Roles association instead of raw role column —
+// consistent with how the rest of the codebase fetches privileged users
+const getAdminIds = async () => {
   try {
-    const admins = await User.findAll({
-      where: {
-        role: { [Op.in]: ['ADMIN', 'HR', 'FINANCE'] }
-      },
+    const users = await User.findAll({
+      include: [{
+        association: 'Roles',
+        where: { name: ['Admin', 'HR', 'Finance'] },
+        attributes: [],
+      }],
       attributes: ['id'],
-      raw: true
     });
-    return admins.map(admin => admin.id);
+    return users.map((u) => u.id);
   } catch (error) {
     console.error('Error fetching admin IDs:', error);
     return [];
   }
 };
+
 module.exports = {
-  getAdminIds,
-  getPayrollByEmployee,
   listActiveEmployees,
   upsertPayroll,
   upsertPayrollItems,
+  updatePayroll,
+  findPayrollById,
   listPayrollHistory,
-  findPayrollById
+  getPayrollByEmployee,
+  getAdminIds,
 };
