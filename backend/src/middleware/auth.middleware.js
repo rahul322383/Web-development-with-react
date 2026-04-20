@@ -47,6 +47,7 @@ const authenticate = async (req, res, next) => {
       jti: payload.jti,
       exp: payload.exp
     };
+    
    
     
    
