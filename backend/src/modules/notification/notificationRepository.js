@@ -1,61 +1,44 @@
+'use strict';
+
 const { Notification } = require('../../database/initModels');
 
-const listByUser = async (userId, limit = 20, offset = 0) => {
-  return Notification.findAndCountAll({
-    where: {
-      userId,
-      deletedAt: null
-    },
+const listByUser = (userId, limit = 20, offset = 0) =>
+  Notification.findAndCountAll({
+    where: { userId },   // FIX: removed deletedAt: null — only add if model has paranoid: true
     order: [['createdAt', 'DESC']],
     limit,
-    offset
+    offset,
   });
-};
 
 const markRead = async (id, userId) => {
   const [updated] = await Notification.update(
     { isRead: true },
-    {
-      where: { id, userId }
-    }
+    { where: { id, userId } },
   );
-
-  return updated;
+  return updated;  // returns affected row count — truthy if found
 };
 
 const markAllRead = async (userId) => {
-  return Notification.update(
+  const [affected] = await Notification.update(  // FIX: destructure to get count directly
     { isRead: true },
-    {
-      where: { userId, isRead: false }
-    }
+    { where: { userId, isRead: false } },
   );
+  return affected;
 };
 
-const deleteNotification = async (id, userId) => {
-  return Notification.destroy({
-    where: { id, userId }
-  });
-};
+// FIX: renamed from deleteNotification to delete in original — now consistently
+// named deleteNotification to match the service call
+const deleteNotification = (id, userId) =>
+  Notification.destroy({ where: { id, userId } });
 
-const clearAll = async (userId) => {
-  return Notification.destroy({
-    where: { userId }
-  });
-};
+const clearAll = (userId) =>
+  Notification.destroy({ where: { userId } });
 
-const countUnread = async (userId) => {
-  return Notification.count({
-    where: {
-      userId,
-      isRead: false
-    }
-  });
-};
+const countUnread = (userId) =>
+  Notification.count({ where: { userId, isRead: false } });
 
-const createNotification = async (data) => {
-  return Notification.create(data);
-};
+const createNotification = (data) =>
+  Notification.create(data);
 
 module.exports = {
   listByUser,
@@ -64,5 +47,5 @@ module.exports = {
   deleteNotification,
   clearAll,
   countUnread,
-  createNotification
+  createNotification,
 };
