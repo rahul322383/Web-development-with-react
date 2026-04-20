@@ -23,7 +23,7 @@ router.post(
   validate(submitExpenseSchema),
   expenseController.submitExpense
 );
-router.get('/my', authorize('Employee', 'Manager', 'HR', 'Finance', 'Admin'), expenseController.listMyExpenses);
+router.get('/my', authenticate ,authorize('Employee', 'Manager', 'HR', 'Finance', 'Admin'), expenseController.listMyExpenses);
 router.get('/pending-manager', authorize('Manager','Admin','HR','Finance'), expenseController.listPendingManager);
 router.get('/pending-finance', authorize('Finance','Admin','HR','Manager'), expenseController.listPendingFinance);
 router.patch('/:id/manager-review', authorize('Manager','Admin','HR'), validate(managerDecisionSchema), expenseController.managerReviewExpense);
