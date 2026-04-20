@@ -16,7 +16,7 @@ router.get('/export', auditController.exportAuditLogs);
 router.get('/:id', auditController.getAuditLogById);
 router.get('/user/:userId', auditController.getAuditLogsByUser);
 router.get('/module/:moduleName', auditController.getAuditLogsByModule);
-router.post('/', authorize(['admin', 'super_admin']), auditController.createAuditLog);
-router.delete('/cleanup', authorize(['super_admin']), auditController.deleteOldAuditLogs);
+router.post('/', authorize(['Admin']), auditController.createAuditLog);
+router.delete('/cleanup', authorize(['Admin']), auditController.deleteOldAuditLogs);
 
 module.exports = router;
