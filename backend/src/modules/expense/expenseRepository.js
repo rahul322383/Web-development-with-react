@@ -6,13 +6,23 @@ const createExpense = async (payload, transaction) => Expense.create(payload, { 
 const createReceipt = async (payload, transaction) => ExpenseReceipt.create(payload, { transaction });
 
 
+// const getUsersByRoles = async (roles = []) => {
+//   return User.findAll({
+//     where: { role: roles },
+//    attributes: ['id', 'role', 'firstName', 'lastName']
+//   });
+// };
+
 const getUsersByRoles = async (roles = []) => {
   return User.findAll({
-    where: { role: roles },
-   attributes: ['id', 'role', 'firstName', 'lastName']
+    where: {
+      role: {
+        [Op.in]: roles, // ✅ FIX
+      },
+    },
+    attributes: ['id', 'role', 'firstName', 'lastName'],
   });
 };
-
 
 
 const findExpenseById = async (id) =>
