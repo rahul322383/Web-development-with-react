@@ -6,7 +6,7 @@ const { logAuditEvent } = require('../../utils/auditLogger');
 const { clearCacheKeys } = require('../../utils/cache');
 const { sendNotification } = require('../../config/socket');
 const logger = require('../../config/logger');
-const eventBus = require('../../utils/Eventbus ');
+const eventBus = require('../../utils/Eventbus');        // FIX: removed trailing space
 const { assertPermission } = require('../../utils/permissions');
 const {
   processPayrollSchema,
@@ -19,12 +19,24 @@ const fail = (message, statusCode = 400, data = null) => ({
   success: false, message, statusCode, data,
 });
 
+// FIX: single consistent permission check helper
+const checkPermission = (actor, permission) => {
+  const perm = assertPermission(actor, permission);
+  const granted = perm.success ?? perm.allowed ?? false;
+  if (!granted) return fail(perm.message || 'Forbidden', perm.statusCode || 403);
+  return null;
+};
+
 const computeNetSalary = ({ baseSalary = 0, bonus = 0, deductions = 0 }) =>
   Number(baseSalary) + Number(bonus) - Number(deductions);
 
+// ---------------------------------------------------------------------------
+// processPayroll
+// ---------------------------------------------------------------------------
+
 const processPayroll = async ({ month, year, actorId = null, ipAddress = null, actor }) => {
-  const perm = assertPermission(actor, 'PROCESS_PAYROLL');
-  if (!perm.allowed) return fail(perm.message, 403);
+  const denied = checkPermission(actor, 'GENERATE_PAYROLL');  // FIX: correct permission name
+  if (denied) return denied;
 
   const validation = validate(processPayrollSchema, { month, year, actorId });
   if (!validation.valid) return fail(validation.message);
@@ -36,10 +48,10 @@ const processPayroll = async ({ month, year, actorId = null, ipAddress = null, a
     if (!employees.length) return fail('No active employees found', 404);
 
     const adminIds = await payrollRepository.getAdminIds();
-
     const results = [];
     let totalAmount = 0;
 
+    // Only DB writes inside the transaction
     await sequelize.transaction(async (transaction) => {
       for (const employee of employees) {
         const baseSalary = Number(employee.baseSalary || 0);
@@ -69,14 +81,16 @@ const processPayroll = async ({ month, year, actorId = null, ipAddress = null, a
       }
     });
 
+    // Cache bust outside transaction — fire-and-forget
     await Promise.all(
-      results.map(({ employeeId, payrollId, netSalary }) =>
+      results.map(({ employeeId }) =>
         clearCacheKeys([`dashboard_summary:${employeeId}:${value.year}`]).catch((err) =>
           logger.error({ event: 'CACHE_BUST_FAILED', employeeId, error: err.message }),
         ),
       ),
     );
 
+    // Audit outside transaction
     if (value.actorId) {
       try {
         await logAuditEvent({
@@ -92,6 +106,7 @@ const processPayroll = async ({ month, year, actorId = null, ipAddress = null, a
       }
     }
 
+    // Notifications outside transaction
     results.forEach(({ employeeId, payrollId, netSalary }) => {
       sendNotification(employeeId, {
         type: 'PAYROLL_PROCESSED',
@@ -135,6 +150,7 @@ const processPayroll = async ({ month, year, actorId = null, ipAddress = null, a
     return {
       success: true,
       statusCode: 200,
+      message: 'Payroll processed successfully',
       month: value.month,
       year: value.year,
       processedCount: results.length,
@@ -148,9 +164,13 @@ const processPayroll = async ({ month, year, actorId = null, ipAddress = null, a
   }
 };
 
+// ---------------------------------------------------------------------------
+// lockPayroll
+// ---------------------------------------------------------------------------
+
 const lockPayroll = async ({ payrollId, actorId, ipAddress, actor }) => {
-  const perm = assertPermission(actor, 'LOCK_PAYROLL');
-  if (!perm.allowed) return fail(perm.message, 403);
+  const denied = checkPermission(actor, 'APPROVE_PAYROLL');  // FIX: correct permission name
+  if (denied) return denied;
 
   const validation = validate(lockPayrollSchema, { payrollId, actorId });
   if (!validation.valid) return fail(validation.message);
@@ -211,7 +231,12 @@ const lockPayroll = async ({ payrollId, actorId, ipAddress, actor }) => {
 
     eventBus.emit('PAYROLL_LOCKED', { payroll: updatedPayroll, actorId: value.actorId });
 
-    return { success: true, statusCode: 200, message: 'Payroll locked successfully', data: updatedPayroll };
+    return {
+      success: true,
+      statusCode: 200,
+      message: 'Payroll locked successfully',
+      data: updatedPayroll,
+    };
 
   } catch (error) {
     logger.error({ event: 'LOCK_PAYROLL_FAILED', payrollId, actorId, error: error.message, stack: error.stack });
@@ -219,9 +244,13 @@ const lockPayroll = async ({ payrollId, actorId, ipAddress, actor }) => {
   }
 };
 
+// ---------------------------------------------------------------------------
+// Read functions
+// ---------------------------------------------------------------------------
+
 const getPayrollHistory = async (employeeId, actor) => {
-  const perm = assertPermission(actor, 'VIEW_PAYROLL');
-  if (!perm.allowed) return fail(perm.message, 403);
+  const denied = checkPermission(actor, 'VIEW_PAYROLL');
+  if (denied) return denied;
 
   const validation = validate(employeeIdSchema, { employeeId });
   if (!validation.valid) return fail(validation.message);
@@ -236,8 +265,8 @@ const getPayrollHistory = async (employeeId, actor) => {
 };
 
 const getPayrollByEmployee = async (employeeId, actor) => {
-  const perm = assertPermission(actor, 'VIEW_PAYROLL');
-  if (!perm.allowed) return fail(perm.message, 403);
+  const denied = checkPermission(actor, 'VIEW_PAYROLL');
+  if (denied) return denied;
 
   const validation = validate(employeeIdSchema, { employeeId });
   if (!validation.valid) return fail(validation.message);
