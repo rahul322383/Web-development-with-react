@@ -383,7 +383,6 @@
 //   listPendingFinance
 // };
 
-
 'use strict';
 
 const sequelize = require('../../database/sequelize');
@@ -395,7 +394,7 @@ const { sendNotification } = require('../../config/socket');
 const { User } = require('../../models');
 const notificationRepository = require('../notification/notificationRepository');
 const logger = require('../../config/logger');
-const eventBus = require('../../utils/Eventbus ');
+const eventBus = require('../../utils/Eventbus');           // FIX: removed trailing space
 const { assertPermission } = require('../../utils/permissions');
 const {
   submitExpenseSchema,
@@ -420,13 +419,11 @@ const PAYMENT_STATUS = {
   PAID: 'Paid',
 };
 
-// How long (ms) to cache privileged user IDs in memory — 5 minutes
+// In-memory cache for privileged user IDs — 5 minute TTL.
+// NOTE: This is process-local. In a multi-process or serverless environment
+// each worker maintains its own cache. Call bustPrivilegedIdsCache() after
+// any role change to keep all workers consistent, or move this to Redis.
 const PRIVILEGED_IDS_TTL = 5 * 60 * 1000;
-
-// ---------------------------------------------------------------------------
-// In-memory cache for privileged user IDs
-// Prevents repeated expensive joins on every expense submission (N+1 fix)
-// ---------------------------------------------------------------------------
 
 let _privilegedIdsCache = null;
 let _privilegedIdsCachedAt = 0;
@@ -440,7 +437,7 @@ const getPrivilegedUserIds = async (forceRefresh = false) => {
   const users = await User.findAll({
     include: [{
       association: 'Roles',
-      where: { name: ['HR', 'Finance', 'Admin'] },
+      where: { name: ['HR', 'Finance', 'Admin', 'Finance'] },
       attributes: [],
     }],
     attributes: ['id'],
@@ -451,7 +448,6 @@ const getPrivilegedUserIds = async (forceRefresh = false) => {
   return _privilegedIdsCache;
 };
 
-// Expose so tests / bootstrap can bust the cache if roles change
 const bustPrivilegedIdsCache = () => {
   _privilegedIdsCache = null;
   _privilegedIdsCachedAt = 0;
@@ -478,13 +474,26 @@ const fail = (message, statusCode = 400, data = null) => ({
   data,
 });
 
+// FIX: single consistent permission check helper — the shape assertPermission
+// returns (.success vs .allowed) only needs to be reconciled in one place.
+// If you update assertPermission's return shape, update only this function.
+const checkPermission = (actor, permission) => {
+  const perm = assertPermission(actor, permission);
+  // Support both { success } and { allowed } return shapes during migration
+  const granted = perm.success ?? perm.allowed ?? false;
+  if (!granted) {
+    return fail(perm.message || 'Forbidden', perm.statusCode || 403);
+  }
+  return null; // null means permitted
+};
+
 // ---------------------------------------------------------------------------
 // submitExpense
 // ---------------------------------------------------------------------------
 
 const submitExpense = async ({ employeeId, payload, receiptBuffer, ipAddress, actor }) => {
-  const perm = assertPermission(actor, 'SUBMIT_EXPENSE');
-  if (!perm.allowed) return fail(perm.message, 403);
+  const denied = checkPermission(actor, 'SUBMIT_EXPENSE');
+  if (denied) return denied;
 
   if (!employeeId) return fail('Employee ID is required');
 
@@ -497,7 +506,6 @@ const submitExpense = async ({ employeeId, payload, receiptBuffer, ipAddress, ac
     const user = await User.findByPk(employeeId);
     if (!user) return fail('User not found', 404);
 
-    // FIX: idempotency check — prevents duplicate submissions on retry
     if (idempotencyKey) {
       const existing = await expenseRepository.findExpenseByIdempotencyKey(idempotencyKey, employeeId);
       if (existing) {
@@ -510,13 +518,12 @@ const submitExpense = async ({ employeeId, payload, receiptBuffer, ipAddress, ac
       }
     }
 
-    // Upload BEFORE the transaction — Cloudinary failure never rolls back DB
+    // Upload BEFORE the transaction — Cloudinary failure never rolls back DB writes
     let uploadResult = null;
     if (receiptBuffer?.length) {
       uploadResult = await uploadBuffer(receiptBuffer, 'hrms/expenses');
     }
 
-    // Only DB writes go inside the transaction
     const expense = await sequelize.transaction(async (transaction) => {
       const created = await expenseRepository.createExpense(
         {
@@ -549,8 +556,8 @@ const submitExpense = async ({ employeeId, payload, receiptBuffer, ipAddress, ac
       return created;
     });
 
-    // FIX: notifications moved OUTSIDE transaction — a notification failure
-    // no longer rolls back the expense creation
+    // Notifications run OUTSIDE the transaction — a notification failure
+    // must never roll back a committed expense
     const recipients = new Set();
     if (user.managerId) recipients.add(Number(user.managerId));
 
@@ -574,7 +581,6 @@ const submitExpense = async ({ employeeId, payload, receiptBuffer, ipAddress, ac
       ),
     );
 
-    // FIX: audit + cache bust outside transaction with isolated error handling
     try {
       await logAuditEvent({
         userId: employeeId, moduleName: 'Expense', actionType: 'CREATE',
@@ -584,15 +590,20 @@ const submitExpense = async ({ employeeId, payload, receiptBuffer, ipAddress, ac
       logger.error({ event: 'AUDIT_LOG_FAILED', error: auditErr.message });
     }
 
+    // Fire-and-forget — cache bust failure is logged but never surfaces to caller
     bustDashboardCache(employeeId).catch((err) =>
       logger.error({ event: 'CACHE_BUST_FAILED', error: err.message }),
     );
 
-    // FIX: event-driven — let listeners handle any additional side-effects
     eventBus.emit('EXPENSE_SUBMITTED', { expense, employeeId, fullName });
 
     const fullExpense = await expenseRepository.findExpenseById(expense.id);
-    return { success: true, message: 'Expense submitted successfully', statusCode: 201, data: fullExpense || expense };
+    return {
+      success: true,
+      message: 'Expense submitted successfully',
+      statusCode: 201,
+      data: fullExpense || expense,
+    };
 
   } catch (err) {
     logger.error({ event: 'SUBMIT_EXPENSE_FAILED', employeeId, error: err.message, stack: err.stack });
@@ -605,8 +616,8 @@ const submitExpense = async ({ employeeId, payload, receiptBuffer, ipAddress, ac
 // ---------------------------------------------------------------------------
 
 const managerReviewExpense = async ({ managerId, expenseId, status, comment, actor }) => {
-  const perm = assertPermission(actor, 'REVIEW_EXPENSE');
-  if (!perm.allowed) return fail(perm.message, 403);
+  const denied = checkPermission(actor, 'REVIEW_EXPENSE');
+  if (denied) return denied;
 
   const validation = validate(managerReviewSchema, { managerId, expenseId, status, comment });
   if (!validation.valid) return fail(validation.message);
@@ -626,10 +637,8 @@ const managerReviewExpense = async ({ managerId, expenseId, status, comment, act
       return fail('Expense has already been reviewed by a manager', 409);
     }
 
-    // FIX: race condition — status condition is enforced INSIDE the update query
-    // so two concurrent managers cannot both approve simultaneously.
-    // expenseRepository.updateExpenseConditional should use:
-    //   WHERE id = expenseId AND managerApprovalStatus = 'Pending'
+    // Race condition guard: the WHERE condition on managerApprovalStatus = 'Pending'
+    // is enforced inside the UPDATE query so two concurrent managers cannot both approve
     const affectedRows = await sequelize.transaction(async (transaction) => {
       return expenseRepository.updateExpenseConditional(
         value.expenseId,
@@ -650,7 +659,7 @@ const managerReviewExpense = async ({ managerId, expenseId, status, comment, act
     const updatedExpense = await expenseRepository.findExpenseById(value.expenseId);
     if (!updatedExpense) return fail('Failed to fetch updated expense', 500);
 
-    // Fire-and-forget — socket failure never surfaces as an API error
+    // Fire-and-forget — socket failure must never fail the API response
     sendNotification(updatedExpense.employeeId, {
       type: `EXPENSE_${value.status}`,
       title: `Expense ${finalStatus} by Manager`,
@@ -693,8 +702,8 @@ const managerReviewExpense = async ({ managerId, expenseId, status, comment, act
 // ---------------------------------------------------------------------------
 
 const financeReviewExpense = async ({ financeUserId, expenseId, status, paymentStatus, ipAddress, actor }) => {
-  const perm = assertPermission(actor, 'FINANCE_REVIEW');
-  if (!perm.allowed) return fail(perm.message, 403);
+  const denied = checkPermission(actor, 'FINANCE_REVIEW');
+  if (denied) return denied;
 
   const validation = validate(financeReviewSchema, { financeUserId, expenseId, status, paymentStatus });
   if (!validation.valid) return fail(validation.message);
@@ -719,7 +728,6 @@ const financeReviewExpense = async ({ financeUserId, expenseId, status, paymentS
         ? PAYMENT_STATUS.UNPAID
         : (value.paymentStatus || PAYMENT_STATUS.PROCESSING);
 
-    // FIX: race condition guard same as manager review
     const affectedRows = await sequelize.transaction(async (transaction) => {
       return expenseRepository.updateExpenseConditional(
         value.expenseId,
@@ -739,7 +747,6 @@ const financeReviewExpense = async ({ financeUserId, expenseId, status, paymentS
 
     const updatedExpense = await expenseRepository.findExpenseById(value.expenseId);
 
-    // Fire-and-forget
     sendNotification(updatedExpense.employeeId, {
       type: `EXPENSE_FINANCE_${value.status}`,
       title: `Expense ${finalStatus} by Finance`,
@@ -794,10 +801,24 @@ const financeReviewExpense = async ({ financeUserId, expenseId, status, paymentS
 // ---------------------------------------------------------------------------
 
 const listMyExpenses = async (employeeId, actor) => {
-  const perm = assertPermission(actor, 'LIST_MY_EXPENSES');
-  if (!perm.allowed) return fail(perm.message, 403);
+  const denied = checkPermission(actor, 'LIST_MY_EXPENSES');
+  if (denied) return denied;
 
   if (!employeeId) return fail('employeeId is required');
+
+  const actorRoles = [
+    actor?.primaryRole,
+    actor?.role
+  ].filter(Boolean);
+  console.log(actorRoles)
+
+  const canAccessAll = ['HR', 'Finance', 'Admin'].some(r =>
+    actorRoles.some(a => a.toLowerCase() === r.toLowerCase())
+  );
+
+  if (!canAccessAll && Number(actor?.id) !== Number(employeeId)) {
+    return fail('You can only view your own expenses', 403);
+  }
 
   try {
     const expenses = await expenseRepository.listExpensesForEmployee(employeeId);
@@ -809,8 +830,8 @@ const listMyExpenses = async (employeeId, actor) => {
 };
 
 const listPendingManager = async (managerId, actor) => {
-  const perm = assertPermission(actor, 'LIST_PENDING_MANAGER');
-  if (!perm.allowed) return fail(perm.message, 403);
+  const denied = checkPermission(actor, 'LIST_PENDING_MANAGER');
+  if (denied) return denied;
 
   if (!managerId) return fail('managerId is required');
 
@@ -824,8 +845,8 @@ const listPendingManager = async (managerId, actor) => {
 };
 
 const listPendingFinance = async (actor) => {
-  const perm = assertPermission(actor, 'LIST_PENDING_FINANCE');
-  if (!perm.allowed) return fail(perm.message, 403);
+  const denied = checkPermission(actor, 'LIST_PENDING_FINANCE');
+  if (denied) return denied;
 
   try {
     const expenses = await expenseRepository.listPendingFinanceExpenses();
