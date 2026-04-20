@@ -1,12 +1,9 @@
 'use strict';
 
-const eventBus = require('../utils/eventBus');
-const { sendNotification } = require('../config/socket');
-const logger = require('../config/logger');
+const eventBus = require('../../utils/Eventbus');   // FIX: correct path and casing
+const { sendNotification } = require('../../config/socket');
+const logger = require('../../config/logger');
 
-/**
- * Basic retry wrapper
- */
 const sendWithRetry = async (userId, payload, retries = 2) => {
     try {
         await sendNotification(userId, payload);
