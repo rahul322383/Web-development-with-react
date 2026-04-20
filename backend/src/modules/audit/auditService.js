@@ -2,11 +2,14 @@
 
 const { Transform, pipeline } = require('stream');
 const { promisify } = require('util');
+const EventEmitter = require('events');
 
 const auditRepository = require('./auditRepository');
 const AppError = require('../../utils/AppError');
 const logger = require('../../config/logger');
-const { assertPermission } = require('../../utils/Permissions');
+const { assertPermission } = require('../../utils/permissions');
+const { sendNotification } = require('../../config/socket');
+const eventBus = require('../../utils/Eventbus');
 const {
   auditListSchema,
   auditByUserSchema,
@@ -18,47 +21,13 @@ const {
   validate,
 } = require('./Auditvalidators ');
 
-
-
-const registerAuditListeners = () => {
-  eventBus.on('AUDIT_LOG_CREATED', (log) => {
-    try {
-      if (log?.userId) {
-        sendNotification(log.userId, { type: 'NEW_AUDIT_LOG', data: log });
-      }
-    } catch (err) {
-      logger.error({ event: 'AUDIT_LOG_CREATED_NOTIFY_FAILED', error: err.message });
-    }
-  });
-
-  eventBus.on('AUDIT_LOGS_DELETED', ({ deletedCount, daysToKeep, cutoffDate, actorId }) => {
-    try {
-      if (actorId) {
-        sendNotification(actorId, {
-          type: 'AUDIT_LOGS_CLEANED',
-          title: 'Audit Logs Cleaned',
-          message: `${deletedCount} audit logs older than ${daysToKeep} days have been deleted.`,
-          deletedCount,
-          daysToKeep,
-          cutoffDate,
-        });
-      }
-    } catch (err) {
-      logger.error({ event: 'AUDIT_LOGS_DELETED_NOTIFY_FAILED', error: err.message });
-    }
-  });
-};
-
-
-
 const pipelineAsync = promisify(pipeline);
 
-const EventEmitter = require('events');
-
-const eventBus = new EventEmitter();
-eventBus.setMaxListeners(50);
-
-
+const checkPermission = (actor, permission) => {
+  const perm = assertPermission(actor, permission);
+  const granted = perm.success ?? perm.allowed ?? false;
+  if (!granted) throw new AppError(perm.message || 'Forbidden', perm.statusCode || 403);
+};
 
 const buildPagination = (query) => {
   const limit = Math.min(Math.max(Number(query.limit) || 20, 1), 100);
@@ -89,19 +58,42 @@ const buildPaginatedResponse = (rows, count, page, limit) => ({
 
 const handleServiceError = (event, error, extra = {}) => {
   logger.error({ event, ...extra, error: error.message, stack: error.stack });
+  if (error.name === 'AppError' || error.name === 'ValidationError') throw error;
+  throw new AppError(error.message || 'Internal Server Error', error.statusCode || 500);
+};
 
-  if (error.name === 'AppError') throw error;
+const registerAuditListeners = () => {
+  eventBus.on('AUDIT_LOG_CREATED', (log) => {
+    try {
+      if (log?.userId) {
+        sendNotification(log.userId, { type: 'NEW_AUDIT_LOG', data: log });
+      }
+    } catch (err) {
+      logger.error({ event: 'AUDIT_LOG_CREATED_NOTIFY_FAILED', error: err.message });
+    }
+  });
 
-  throw new AppError(
-    error.message || 'Internal Server Error',
-    error.statusCode || 500,
-    { cause: error },
-  );
+  eventBus.on('AUDIT_LOGS_DELETED', ({ deletedCount, daysToKeep, cutoffDate, actorId }) => {
+    try {
+      if (actorId) {
+        sendNotification(actorId, {
+          type: 'AUDIT_LOGS_CLEANED',
+          title: 'Audit Logs Cleaned',
+          message: `${deletedCount} audit logs older than ${daysToKeep} days have been deleted.`,
+          deletedCount,
+          daysToKeep,
+          cutoffDate,
+        });
+      }
+    } catch (err) {
+      logger.error({ event: 'AUDIT_LOGS_DELETED_NOTIFY_FAILED', error: err.message });
+    }
+  });
 };
 
 const getAuditLogs = async (query, actor) => {
   try {
-    assertPermission(actor, 'VIEW_AUDIT_LOGS');
+    checkPermission(actor, 'VIEW_AUDIT_LOGS');
     const validated = validate(auditListSchema, query);
     const { limit, page, offset } = buildPagination(validated);
     const { rows, count } = await auditRepository.listAuditLogs({
@@ -115,7 +107,7 @@ const getAuditLogs = async (query, actor) => {
 
 const getAuditLogById = async (id, actor) => {
   try {
-    assertPermission(actor, 'VIEW_AUDIT_LOGS');
+    checkPermission(actor, 'VIEW_AUDIT_LOGS');
 
     if (!id || !Number.isInteger(Number(id)) || Number(id) < 1) {
       throw new AppError('Invalid audit log ID', 400);
@@ -132,7 +124,7 @@ const getAuditLogById = async (id, actor) => {
 
 const getAuditStats = async (query, actor) => {
   try {
-    assertPermission(actor, 'VIEW_AUDIT_STATS');
+    checkPermission(actor, 'VIEW_AUDIT_STATS');
     const validated = validate(auditStatsSchema, query);
     const stats = await auditRepository.getAuditStatistics(validated);
     return { success: true, data: stats };
@@ -143,7 +135,7 @@ const getAuditStats = async (query, actor) => {
 
 const getAuditLogsByUser = async (userId, query, actor) => {
   try {
-    assertPermission(actor, 'VIEW_USER_AUDIT');
+    checkPermission(actor, 'VIEW_USER_AUDIT');
 
     if (!userId || !Number.isInteger(Number(userId)) || Number(userId) < 1) {
       throw new AppError('Invalid userId', 400);
@@ -151,9 +143,7 @@ const getAuditLogsByUser = async (userId, query, actor) => {
 
     const validated = validate(auditByUserSchema, query);
     const { limit, page, offset } = buildPagination(validated);
-
-    const filters = buildFilters(validated);
-    filters.userId = Number(userId);
+    const filters = { ...buildFilters(validated), userId: Number(userId) };
 
     const { rows, count } = await auditRepository.listAuditLogs({ limit, offset, ...filters });
     return buildPaginatedResponse(rows, count, page, limit);
@@ -164,7 +154,7 @@ const getAuditLogsByUser = async (userId, query, actor) => {
 
 const getAuditLogsByModule = async (moduleName, query, actor) => {
   try {
-    assertPermission(actor, 'VIEW_MODULE_AUDIT');
+    checkPermission(actor, 'VIEW_MODULE_AUDIT');
 
     if (!moduleName || typeof moduleName !== 'string' || !moduleName.trim()) {
       throw new AppError('Invalid moduleName', 400);
@@ -172,9 +162,7 @@ const getAuditLogsByModule = async (moduleName, query, actor) => {
 
     const validated = validate(auditByModuleSchema, query);
     const { limit, page, offset } = buildPagination(validated);
-
-    const filters = buildFilters(validated);
-    filters.moduleName = moduleName.trim();
+    const filters = { ...buildFilters(validated), moduleName: moduleName.trim() };
 
     const { rows, count } = await auditRepository.listAuditLogs({ limit, offset, ...filters });
     return buildPaginatedResponse(rows, count, page, limit);
@@ -183,16 +171,9 @@ const getAuditLogsByModule = async (moduleName, query, actor) => {
   }
 };
 
-/**
- * Streams audit logs as newline-delimited JSON into the HTTP response.
- *
- * Controller usage:
- *   res.setHeader('Content-Type', 'application/x-ndjson');
- *   await auditService.exportAuditLogs(query, actor, res);
- */
 const exportAuditLogs = async (query, actor, responseStream) => {
   try {
-    assertPermission(actor, 'EXPORT_AUDIT_LOGS');
+    checkPermission(actor, 'EXPORT_AUDIT_LOGS');
     const validated = validate(auditExportSchema, query);
 
     responseStream.on('error', (err) => {
@@ -219,7 +200,7 @@ const exportAuditLogs = async (query, actor, responseStream) => {
 
 const deleteOldAuditLogs = async (params, actor, ipAddress) => {
   try {
-    assertPermission(actor, 'DELETE_AUDIT_LOGS');
+    checkPermission(actor, 'DELETE_AUDIT_LOGS');
 
     const { daysToKeep } = validate(deleteLogsSchema, params);
 
@@ -257,7 +238,7 @@ const deleteOldAuditLogs = async (params, actor, ipAddress) => {
 
 const createAuditLog = async (logData, actor) => {
   try {
-    assertPermission(actor, 'CREATE_AUDIT_LOG');
+    checkPermission(actor, 'CREATE_AUDIT_LOG');
     const validated = validate(auditCreateSchema, logData);
     const log = await auditRepository.createAuditLog(validated);
     eventBus.emit('AUDIT_LOG_CREATED', log);
@@ -268,6 +249,7 @@ const createAuditLog = async (logData, actor) => {
 };
 
 module.exports = {
+  registerAuditListeners,
   getAuditLogs,
   getAuditLogById,
   getAuditStats,
