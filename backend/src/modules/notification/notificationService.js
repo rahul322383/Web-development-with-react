@@ -11,7 +11,7 @@ const {
 
 const METADATA_MAX_SIZE = 5_000;
 
-const fail = (message, statusCode = 400) => ({ success: false, message, statusCode });
+const fail = (message, statusCode = 400) => ({ success: false, message, statusCode, data: null });
 
 const isValidId = (id) => Number.isInteger(Number(id)) && Number(id) > 0;
 
@@ -25,17 +25,27 @@ const sanitizeMetadata = (metadata) => {
   }
 };
 
+// FIX: single consistent permission check
+const checkPermission = (actor, permission) => {
+  const perm = assertPermission(actor, permission);
+  const granted = perm.success ?? perm.allowed ?? false;
+  if (!granted) return fail(perm.message || 'Forbidden', perm.statusCode || 403);
+  return null;
+};
+
 const buildPagination = (query) => {
   const limit = Math.min(Math.max(Number(query.limit) || 20, 1), 100);
   const offset = Math.max(Number(query.offset) || 0, 0);
   return { limit, offset };
 };
 
-const VALID_TYPES = ['EXPENSE', 'APPROVAL', 'SYSTEM', 'LEAVE', 'PAYROLL', 'SECURITY'];
+// ---------------------------------------------------------------------------
+// createNotification
+// ---------------------------------------------------------------------------
 
 const createNotification = async (userId, type, message, metadata = {}, actor) => {
-  const perm = assertPermission(actor, 'CREATE_NOTIFICATION');
-  if (!perm.allowed) return fail(perm.message, 403);
+  const denied = checkPermission(actor, 'SEND_NOTIFICATION'); // FIX: correct permission name
+  if (denied) return denied;
 
   if (!isValidId(userId)) return fail('Invalid userId');
 
@@ -61,9 +71,13 @@ const createNotification = async (userId, type, message, metadata = {}, actor) =
   }
 };
 
+// ---------------------------------------------------------------------------
+// getMyNotifications
+// ---------------------------------------------------------------------------
+
 const getMyNotifications = async (userId, query = {}, actor) => {
-  const perm = assertPermission(actor, 'VIEW_NOTIFICATIONS');
-  if (!perm.allowed) return fail(perm.message, 403);
+  const denied = checkPermission(actor, 'VIEW_NOTIFICATIONS');
+  if (denied) return denied;
 
   if (!isValidId(userId)) return fail('Invalid userId');
 
@@ -88,9 +102,13 @@ const getMyNotifications = async (userId, query = {}, actor) => {
   }
 };
 
+// ---------------------------------------------------------------------------
+// markNotificationRead
+// ---------------------------------------------------------------------------
+
 const markNotificationRead = async (notificationId, userId, actor) => {
-  const perm = assertPermission(actor, 'VIEW_NOTIFICATIONS');
-  if (!perm.allowed) return fail(perm.message, 403);
+  const denied = checkPermission(actor, 'VIEW_NOTIFICATIONS');
+  if (denied) return denied;
 
   if (!isValidId(userId)) return fail('Invalid userId');
   if (!isValidId(notificationId)) return fail('Invalid notificationId');
@@ -106,9 +124,13 @@ const markNotificationRead = async (notificationId, userId, actor) => {
   }
 };
 
+// ---------------------------------------------------------------------------
+// markAllNotificationsRead
+// ---------------------------------------------------------------------------
+
 const markAllNotificationsRead = async (userId, actor) => {
-  const perm = assertPermission(actor, 'VIEW_NOTIFICATIONS');
-  if (!perm.allowed) return fail(perm.message, 403);
+  const denied = checkPermission(actor, 'VIEW_NOTIFICATIONS');
+  if (denied) return denied;
 
   if (!isValidId(userId)) return fail('Invalid userId');
 
@@ -121,15 +143,19 @@ const markAllNotificationsRead = async (userId, actor) => {
   }
 };
 
+// ---------------------------------------------------------------------------
+// deleteNotification
+// ---------------------------------------------------------------------------
+
 const deleteNotification = async (notificationId, userId, actor) => {
-  const perm = assertPermission(actor, 'VIEW_NOTIFICATIONS');
-  if (!perm.allowed) return fail(perm.message, 403);
+  const denied = checkPermission(actor, 'VIEW_NOTIFICATIONS');
+  if (denied) return denied;
 
   if (!isValidId(userId)) return fail('Invalid userId');
   if (!isValidId(notificationId)) return fail('Invalid notificationId');
 
   try {
-    const deleted = await notificationRepository.delete(Number(notificationId), Number(userId));
+    const deleted = await notificationRepository.deleteNotification(Number(notificationId), Number(userId));
     if (!deleted) return fail('Notification not found or already deleted', 404);
 
     return { success: true, message: 'Notification deleted successfully', statusCode: 200, notificationId };
@@ -139,9 +165,13 @@ const deleteNotification = async (notificationId, userId, actor) => {
   }
 };
 
+// ---------------------------------------------------------------------------
+// clearAllNotifications
+// ---------------------------------------------------------------------------
+
 const clearAllNotifications = async (userId, actor) => {
-  const perm = assertPermission(actor, 'VIEW_NOTIFICATIONS');
-  if (!perm.allowed) return fail(perm.message, 403);
+  const denied = checkPermission(actor, 'VIEW_NOTIFICATIONS');
+  if (denied) return denied;
 
   if (!isValidId(userId)) return fail('Invalid userId');
 
@@ -154,9 +184,13 @@ const clearAllNotifications = async (userId, actor) => {
   }
 };
 
+// ---------------------------------------------------------------------------
+// getUnreadCount
+// ---------------------------------------------------------------------------
+
 const getUnreadCount = async (userId, actor) => {
-  const perm = assertPermission(actor, 'VIEW_NOTIFICATIONS');
-  if (!perm.allowed) return fail(perm.message, 403);
+  const denied = checkPermission(actor, 'VIEW_NOTIFICATIONS');
+  if (denied) return denied;
 
   if (!isValidId(userId)) return fail('Invalid userId');
 
