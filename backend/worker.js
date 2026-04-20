@@ -39,11 +39,11 @@ buildWorker('payroll-processing', processPayrollJob);
 buildWorker('leave-reset', processLeaveResetJob);
 buildWorker('year-end-summary', processYearEndJob);
 
-console.log('🔥 Workers started');
+
 
 // 🛑 Graceful shutdown
 process.on('SIGINT', async () => {
-  console.log('Shutting down workers...');
+  
   await Promise.all(workers.map((w) => w.close()));
   process.exit(0);
 });
