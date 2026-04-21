@@ -3,7 +3,7 @@
 
 const { Worker } = require('bullmq');
 const logger = console;
-const { redisConnectionOptions } = require('./src/redis/redisClient');
+
 
 const processPayrollJob = require('./src/jobs/payrollProcessor.job');
 const processLeaveResetJob = require('./src/jobs/leaveReset.job');
