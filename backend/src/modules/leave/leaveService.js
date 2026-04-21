@@ -485,7 +485,7 @@ const leaveRepository = require('./leaveRepository');
 const { cursorPaginate } = require('../../utils/pagination');
 const { logAuditEvent } = require('../../utils/auditLogger');
 const { clearCacheKeys } = require('../../utils/cache');
-const { LeaveRequest, LeaveBalance, User } = require('../../database/initModels');
+const { LeaveRequest, LeaveBalance, User,Role } = require('../../database/initModels');
 const { Op } = require('sequelize');
 const logger = require('../../config/logger');
 const eventBus = require('../../utils/Eventbus');   // FIX: removed trailing space
@@ -979,7 +979,12 @@ const yearlyLeaveReset = async (year, actor) => {
 const getHRTeamIds = async () => {
   try {
     const hrUsers = await User.findAll({
-      include: [{ association: 'Roles', where: { name: 'HR' }, attributes: [] }],
+      include: [{
+        model: Role,
+        as: 'role',        // FIX: singular
+        where: { name: 'HR' },
+        attributes: [],
+      }],
       attributes: ['id'],
     });
     return hrUsers.map((u) => u.id);
