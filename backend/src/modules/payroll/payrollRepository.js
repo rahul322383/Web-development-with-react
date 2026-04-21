@@ -1,7 +1,7 @@
 'use strict';
 
 const { Op } = require('sequelize');
-const { User, Payroll, PayrollItem } = require('../../database/initModels');
+const { User, Payroll, PayrollItem, Role } = require('../../database/initModels');
 
 const listActiveEmployees = () =>
   User.findAll({
@@ -54,13 +54,12 @@ const getPayrollByEmployee = (employeeId) =>
     order: [['year', 'DESC'], ['month', 'DESC']],
   });
 
-// FIX: use Roles association instead of raw role column —
-// consistent with how the rest of the codebase fetches privileged users
 const getAdminIds = async () => {
   try {
     const users = await User.findAll({
       include: [{
-        association: 'Roles',
+        model: Role,
+        as: 'role',        // FIX: singular
         where: { name: ['Admin', 'HR', 'Finance'] },
         attributes: [],
       }],
@@ -68,7 +67,7 @@ const getAdminIds = async () => {
     });
     return users.map((u) => u.id);
   } catch (error) {
-    console.error('Error fetching admin IDs:', error);
+    logger.error({ event: 'GET_ADMIN_IDS_FAILED', error: error.message });
     return [];
   }
 };
