@@ -25,7 +25,7 @@ const logout = asyncHandler(async (req, res) => {
 
 const me = asyncHandler(async (req, res) => {
   const result = await authService.getCurrentUser(req.user.id, req);
-  console.log("auth controller", result)
+
   return res.status(result.success ? 200 : (result.statusCode || 404)).json(result);
 });
 
