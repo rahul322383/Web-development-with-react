@@ -24,7 +24,7 @@ const startServer = async () => {
     // ======================
     if (env.NODE_ENV === 'development') {
       try {
-        sequelize.sync({ force: true }) // ⚠️ deletes old tables // ✅ no alter, no force
+        await sequelize.sync(); 
         logger.info('Database verified (no destructive changes)');
       } catch (err) {
         logger.error('DB SYNC ERROR:', err);
