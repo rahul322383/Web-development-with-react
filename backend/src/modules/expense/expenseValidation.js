@@ -9,7 +9,7 @@ const submitExpenseSchema = Joi.object({
   amount: Joi.number().positive().required(),
   currency: Joi.string().valid(...ALLOWED_CURRENCIES).required(),
   description: Joi.string().trim().max(1000).optional().allow(''),
-  idempotencyKey: Joi.string().trim().max(200).optional(),
+  idempotencyKey: Joi.string().trim().max(100).optional().allow(null),
 });
 
 const managerReviewSchema = Joi.object({
