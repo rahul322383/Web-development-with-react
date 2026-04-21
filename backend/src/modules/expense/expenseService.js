@@ -391,7 +391,7 @@ const expenseRepository = require('./expenseRepository');
 const { logAuditEvent } = require('../../utils/auditLogger');
 const { clearCacheKeys } = require('../../utils/cache');
 const { sendNotification } = require('../../config/socket');
-const { User } = require('../../models');
+const { User, Role } = require('../../models');
 const notificationRepository = require('../notification/notificationRepository');
 const logger = require('../../config/logger');
 const eventBus = require('../../utils/Eventbus');           // FIX: removed trailing space
@@ -436,8 +436,9 @@ const getPrivilegedUserIds = async (forceRefresh = false) => {
 
   const users = await User.findAll({
     include: [{
-      association: 'Roles',
-      where: { name: ['HR', 'Finance', 'Admin', 'Finance'] },
+      model: Role,
+      as: 'role',          // FIX: singular, matches the association alias
+      where: { name: ['HR', 'Finance', 'Admin'] },
       attributes: [],
     }],
     attributes: ['id'],
@@ -447,7 +448,6 @@ const getPrivilegedUserIds = async (forceRefresh = false) => {
   _privilegedIdsCachedAt = now;
   return _privilegedIdsCache;
 };
-
 const bustPrivilegedIdsCache = () => {
   _privilegedIdsCache = null;
   _privilegedIdsCachedAt = 0;
