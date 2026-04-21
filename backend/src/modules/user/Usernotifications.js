@@ -1,7 +1,7 @@
 'use strict';
 
 const logger = require('../../config/logger');
-const eventBus = require('../../utils/Eventbus ')
+const eventBus = require('../../utils/Eventbus')
 const { fullName } = require('./userFormatter');
 
 
