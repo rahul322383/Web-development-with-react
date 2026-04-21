@@ -287,3 +287,6 @@ module.exports = {
   getPayrollHistory,
   getPayrollByEmployee,
 };
+
+
+
