@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { LeaveRequest, LeaveBalance, User } = require('../../database/initModels');
+const { LeaveRequest, LeaveBalance, User, Role } = require('../../database/initModels');
 
 const findEmployee = (id) => User.findByPk(id);
 
