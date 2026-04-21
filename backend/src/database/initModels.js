@@ -1,9 +1,10 @@
+
+
 const { DataTypes } = require('sequelize');
 const sequelize = require('./sequelize');
 
 const defineUser = require('../models/user.model');
 const defineRole = require('../models/role.model');
-const defineUserRole = require('../models/UserRole');
 const defineLeaveRequest = require('../models/leave.model');
 const defineLeaveBalance = require('../models/leaveBalance.model');
 const defineExpense = require('../models/expense.model');
@@ -17,7 +18,6 @@ const defineNotification = require('../models/Notification');
 
 const User = defineUser(sequelize, DataTypes);
 const Role = defineRole(sequelize, DataTypes);
-const UserRole = defineUserRole(sequelize, DataTypes);
 const LeaveRequest = defineLeaveRequest(sequelize, DataTypes);
 const LeaveBalance = defineLeaveBalance(sequelize, DataTypes);
 const Expense = defineExpense(sequelize, DataTypes);
@@ -32,8 +32,9 @@ const Notification = defineNotification(sequelize, DataTypes);
 User.belongsTo(User, { as: 'manager', foreignKey: 'managerId' });
 User.hasMany(User, { as: 'reportees', foreignKey: 'managerId' });
 
-User.belongsToMany(Role, { through: UserRole, foreignKey: 'userId', otherKey: 'roleId' });
-Role.belongsToMany(User, { through: UserRole, foreignKey: 'roleId', otherKey: 'userId' });
+// FIX: belongsTo with roleId on users table — no junction table
+User.belongsTo(Role, { as: 'role', foreignKey: 'roleId' });
+Role.hasMany(User, { as: 'users', foreignKey: 'roleId' });
 
 User.hasOne(LeaveBalance, { foreignKey: 'employeeId', as: 'leaveBalance' });
 LeaveBalance.belongsTo(User, { foreignKey: 'employeeId', as: 'employee' });
@@ -68,7 +69,6 @@ module.exports = {
   sequelize,
   User,
   Role,
-  UserRole,
   LeaveRequest,
   LeaveBalance,
   Expense,
@@ -78,5 +78,5 @@ module.exports = {
   AuditLog,
   YearEndSummary,
   RefreshToken,
-  Notification
+  Notification,
 };
