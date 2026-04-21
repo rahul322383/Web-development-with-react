@@ -15,9 +15,15 @@ const Expense = ExpenseModel(sequelize, DataTypes);
 const Payroll = PayrollModel(sequelize, DataTypes);
 const YearEnd = YearEndModel(sequelize, DataTypes);
 
-// 🔥 ASSOCIATIONS (CRITICAL)
-User.belongsTo(Role, { foreignKey: 'roleId' });
-Role.hasMany(User, { foreignKey: 'roleId' });
+User.belongsTo(Role, {
+  as: 'role',           // ✅ ADD THIS
+  foreignKey: 'roleId'
+});
+
+Role.hasMany(User, {
+  as: 'users',          // ✅ (optional but good practice)
+  foreignKey: 'roleId'
+});
 
 module.exports = {
   sequelize,
