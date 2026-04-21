@@ -129,7 +129,7 @@ const register = async (payload, req = null) => {
         role = await Role.create({ name: formattedName }, { transaction });
       }
 
-      console.log('Role used:', role.name);
+      
 
       // 🆔 generate employee code
       const employeeCode = payload.employeeCode || `EMP${Date.now()}`;
@@ -277,6 +277,7 @@ const login = async ({ email, password }, req = null) => {
 
   try {
     const user = await authRepository.findUserByEmail(email);
+    
 
     if (!user) return { success: false, message: 'Invalid credentials', statusCode: 401 };
 
