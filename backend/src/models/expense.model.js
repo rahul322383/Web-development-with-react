@@ -1,3 +1,5 @@
+
+
 module.exports = (sequelize, DataTypes) => {
   const Expense = sequelize.define(
     'Expense',
@@ -17,13 +19,12 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: true,
         field: 'approved_by_manager_id'
       },
-      
-      //   approvedByFinanceId: {
-      //     type: DataTypes.BIGINT.UNSIGNED,
-      //     allowNull: true,
-      //     field: 'approved_by_finance_id'
-      //   }
-      // ,
+      idempotencyKey: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        unique: true,
+        field: 'idempotency_key'
+      },
       category: {
         type: DataTypes.STRING(100),
         allowNull: false
@@ -38,7 +39,8 @@ module.exports = (sequelize, DataTypes) => {
         defaultValue: 'USD'
       },
       description: {
-        type: DataTypes.STRING(300)
+        type: DataTypes.STRING(300),
+        allowNull: true
       },
       managerApprovalStatus: {
         type: DataTypes.ENUM('Pending', 'Approved', 'Rejected'),
@@ -60,6 +62,7 @@ module.exports = (sequelize, DataTypes) => {
       },
       paidAt: {
         type: DataTypes.DATE,
+        allowNull: true,
         field: 'paid_at'
       }
     },
