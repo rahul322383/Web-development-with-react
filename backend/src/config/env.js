@@ -21,6 +21,17 @@ const envSchema = Joi.object({
   JWT_ACCESS_EXPIRES_IN: Joi.string().default('1d'),
   JWT_REFRESH_EXPIRES_IN: Joi.string().default('7d'),
 
+
+  MAIL_HOST: Joi.string().required(),
+  MAIL_PORT: Joi.number().required(),
+  MAIL_USER: Joi.string().required(),
+  MAIL_PASS: Joi.string().required(),
+  MAIL_FROM_NAME: Joi.string().required(),
+  MAIL_FROM_ADDRESS: Joi.string().email().required(),
+
+  PASSWORD_RESET_EXPIRES_MINUTES: Joi.number().default(15),
+  FRONTEND_URL: Joi.string().uri().required(),
+
   REDIS_HOST: Joi.string().required(),
   REDIS_PORT: Joi.number().required(),
   REDIS_PASSWORD: Joi.string().allow('').optional(),
