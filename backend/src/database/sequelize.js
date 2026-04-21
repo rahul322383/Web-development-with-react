@@ -12,7 +12,7 @@ const sequelize = new Sequelize(env.DB_NAME, env.DB_USER, env.DB_PASSWORD, {
     ? (sql) => logger.debug({ sql }, 'sql-query')
     : false,
   logging: false,
-  // logging:console.log,
+ 
  
 
   pool: {
