@@ -1,120 +1,64 @@
-// 'use strict';
 
-// const { Op } = require('sequelize');
-// const { User, Role, UserRole, RefreshToken } = require('../../database/initModels');
-
-// const createUser = (payload, transaction) =>
-//   User.create(payload, { transaction });
-
-// const findUserByEmail = (email) =>
-//   User.findOne({
-//     where: { email },
-//     include: [{ model: Role, as: 'Roles', attributes: ['id', 'name', 'isPrimary'] }],
-//   });
-
-// const findUserById = (id) =>
-//   User.findByPk(id, {
-//     include: [{ model: Role, as: 'Roles', attributes: ['id', 'name', 'isPrimary'] }],
-//   });
-
-// const findRoleByName = (name, transaction) =>
-//   Role.findAll({ where: { name }, transaction });
-
-// const assignRoleToUser = (userId, roleId, transaction) =>
-//   UserRole.findOrCreate({
-//     where: { userId, roleId },
-//     defaults: { userId, roleId },
-//     transaction,
-//   });
-
-// const persistRefreshToken = (
-//   { userId, tokenId, tokenHash, ip, userAgent, expiresAt },
-//   transaction = null,
-// ) =>
-//   RefreshToken.create(
-//     { userId, tokenId, tokenHash, ip, userAgent, expiresAt },
-//     { transaction },
-//   );
-
-// const findRefreshTokenById = ({ tokenId, userId }) =>
-//   RefreshToken.findOne({ where: { tokenId, userId } });
-
-// const revokeRefreshToken = ({ tokenId }, transaction = null) =>
-//   RefreshToken.update(
-//     { revokedAt: new Date() },
-//     { where: { tokenId, revokedAt: null }, transaction },
-//   );
-
-// const revokeAllUserTokens = (userId, transaction = null) =>
-//   RefreshToken.update(
-//     { revokedAt: new Date() },
-//     { where: { userId, revokedAt: null }, transaction },
-//   );
-
-// const linkReplacementToken = ({ tokenId, replacedByTokenId }, transaction = null) =>
-//   RefreshToken.update(
-//     { replacedByTokenId },
-//     { where: { tokenId }, transaction },
-//   );
-
-// module.exports = {
-//   createUser,
-//   findUserByEmail,
-//   findUserById,
-//   findRoleByName,
-//   assignRoleToUser,
-//   persistRefreshToken,
-//   findRefreshTokenById,
-//   revokeRefreshToken,
-//   revokeAllUserTokens,
-//   linkReplacementToken,
-// };
+'use strict';
 
 const { Op } = require('sequelize');
-const { User, Role, UserRole, RefreshToken } = require('../../database/initModels');
+const { User, Role, RefreshToken } = require('../../database/initModels');
 
-const createUser = async (payload, transaction) => User.create(payload, { transaction });
+const createUser = (payload, transaction) =>
+  User.create(payload, { transaction });
 
-const findUserByEmail = async (email) =>
+const findUserByEmail = (email) =>
   User.findOne({
     where: { email },
-    include: [{ model: Role, attributes: ['id', 'name'] }]
+    include: [{ model: Role, as: 'role', attributes: ['id', 'name'] }],
   });
 
-const findUserById = async (id) =>
+const findUserById = (id) =>
   User.findByPk(id, {
-    attributes: { exclude: ['passwordHash'] },
-    include: [{ model: Role, attributes: ['id', 'name'] }]
+    include: [{ model: Role, as: 'role', attributes: ['id', 'name'] }],
   });
 
-const findRoleByName = async (name, transaction) =>
-  Role.findOrCreate({ where: { name }, defaults: { name }, transaction });
+// const findRoleByName = (name, transaction) =>
+//   Role.findOne({ where: { name }, transaction });
 
-const assignRoleToUser = async (userId, roleId, transaction) =>
-  UserRole.findOrCreate({ where: { userId, roleId }, defaults: { userId, roleId }, transaction });
+const findRoleByName = async (roleName, transaction = null) => {
+  console.log('Looking for role:', roleName);
 
-const persistRefreshToken = async ({ userId, tokenId, expiresAt }, transaction) =>
-  RefreshToken.create({ userId, tokenId, expiresAt }, { transaction });
+  // ADD THIS 👇
+  const allRoles = await Role.findAll();
+  console.log('All roles in DB:', JSON.stringify(allRoles, null, 2));
 
-const findValidRefreshToken = async ({ tokenId, userId }) =>
-  RefreshToken.findOne({
-    where: {
-      tokenId,
-      userId,
-      revokedAt: null,
-      expiresAt: { [Op.gt]: new Date() }
-    }
-  });
+  return await Role.findOne({ where: { name: roleName }, transaction });
+};
 
-const revokeRefreshToken = async ({ tokenId, replacedByTokenId = null }) =>
+const persistRefreshToken = (
+  { userId, tokenId, tokenHash, ip, userAgent, expiresAt },
+  transaction = null,
+) =>
+  RefreshToken.create(
+    { userId, tokenId, tokenHash, ip, userAgent, expiresAt },
+    { transaction },
+  );
+
+const findRefreshTokenById = ({ tokenId, userId }) =>
+  RefreshToken.findOne({ where: { tokenId, userId } });
+
+const revokeRefreshToken = ({ tokenId }, transaction = null) =>
   RefreshToken.update(
-    { revokedAt: new Date(), replacedByTokenId },
-    {
-      where: {
-        tokenId,
-        revokedAt: null
-      }
-    }
+    { revokedAt: new Date() },
+    { where: { tokenId, revokedAt: null }, transaction },
+  );
+
+const revokeAllUserTokens = (userId, transaction = null) =>
+  RefreshToken.update(
+    { revokedAt: new Date() },
+    { where: { userId, revokedAt: null }, transaction },
+  );
+
+const linkReplacementToken = ({ tokenId, replacedByTokenId }, transaction = null) =>
+  RefreshToken.update(
+    { replacedByTokenId },
+    { where: { tokenId }, transaction },
   );
 
 module.exports = {
@@ -122,8 +66,9 @@ module.exports = {
   findUserByEmail,
   findUserById,
   findRoleByName,
-  assignRoleToUser,
   persistRefreshToken,
-  findValidRefreshToken,
-  revokeRefreshToken
+  findRefreshTokenById,
+  revokeRefreshToken,
+  revokeAllUserTokens,
+  linkReplacementToken,
 };
