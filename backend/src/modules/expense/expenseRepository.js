@@ -1,28 +1,24 @@
-const { fn, col } = require('sequelize');
-const { Expense, ExpenseReceipt, User } = require('../../database/initModels');
+const { fn, col, Op } = require('sequelize');
+const { Expense, ExpenseReceipt, User, Role } = require('../../database/initModels');
 
 const createExpense = async (payload, transaction) => Expense.create(payload, { transaction });
 
 const createReceipt = async (payload, transaction) => ExpenseReceipt.create(payload, { transaction });
 
 
-// const getUsersByRoles = async (roles = []) => {
-//   return User.findAll({
-//     where: { role: roles },
-//    attributes: ['id', 'role', 'firstName', 'lastName']
-//   });
-// };
 
-const getUsersByRoles = async (roles = []) => {
-  return User.findAll({
-    where: {
-      role: {
-        [Op.in]: roles, // ✅ FIX
-      },
-    },
-    attributes: ['id', 'role', 'firstName', 'lastName'],
+const getUsersByRoles = (roles = []) =>
+ 
+  User.findAll({
+    include: [{
+      model: Role,
+      as: 'role',          // FIX: singular 'role' matches User.belongsTo alias
+      where: { name: { [Op.in]: roles } },
+      attributes: ['id', 'name'],
+    }],
+    attributes: ['id', 'firstName', 'lastName'],
   });
-};
+
 
 
 const findExpenseById = async (id) =>
@@ -42,19 +38,6 @@ const listExpensesForEmployee = async (employeeId) =>
     order: [['createdAt', 'DESC']]
   });
 
-// const listPendingManagerExpenses = async (managerId) =>
-//   Expense.findAll({
-//     where: { managerApprovalStatus: 'Pending' },
-//     include: [
-//       {
-//         model: User,
-//         as: 'employee',
-//         where: { managerId },
-//         attributes: ['id', 'firstName', 'lastName', 'email']
-//       }
-//     ],
-//     order: [['createdAt', 'ASC']]
-//   });
 
 const listPendingManagerExpenses = async (managerId) => {
   return Expense.findAll({
@@ -90,8 +73,22 @@ const expenseAggregateByEmployee = async (employeeId) =>
   });
 
   
+const findExpenseByIdempotencyKey = async (idempotencyKey, employeeId) => {
+  return Expense.findOne({
+    where: {
+      idempotencyKey,
+      employeeId
+    },
+    include: [
+      { model: ExpenseReceipt, as: 'receipt', required: false },
+      { model: User, as: 'employee', attributes: ['id', 'firstName', 'lastName'] }
+    ]
+  });
+};
+
 
 module.exports = {
+  findExpenseByIdempotencyKey,
   createExpense,
   createReceipt,
   findExpenseById,
