@@ -15,7 +15,11 @@ const defineAuditLog = require('../models/auditLog.model');
 const defineYearEndSummary = require('../models/yearEndSummary.model');
 const defineRefreshToken = require('../models/refreshToken.model');
 const defineNotification = require('../models/Notification');
+const defineSetting = require('../models/setting.model');
+//  const defineAttendance = require('../models/attendance.model');
 
+
+//  const Attendance = defineAttendance(sequelize, DataTypes);
 const User = defineUser(sequelize, DataTypes);
 const Role = defineRole(sequelize, DataTypes);
 const LeaveRequest = defineLeaveRequest(sequelize, DataTypes);
@@ -28,6 +32,7 @@ const AuditLog = defineAuditLog(sequelize, DataTypes);
 const YearEndSummary = defineYearEndSummary(sequelize, DataTypes);
 const RefreshToken = defineRefreshToken(sequelize, DataTypes);
 const Notification = defineNotification(sequelize, DataTypes);
+const Setting = defineSetting(sequelize, DataTypes);
 
 User.belongsTo(User, { as: 'manager', foreignKey: 'managerId' });
 User.hasMany(User, { as: 'reportees', foreignKey: 'managerId' });
@@ -65,7 +70,17 @@ RefreshToken.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 User.hasMany(Notification, { foreignKey: 'userId', as: 'notifications' });
 Notification.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 
+
+User.hasMany(Setting, { foreignKey: 'userId', as: 'settings' });
+Setting.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
+
+// User.hasMany(Attendance, { foreignKey: 'employeeId', as: 'attendances' });
+// Attendance.belongsTo(User, { foreignKey: 'employeeId', as: 'employee' });
+// Attendance.belongsTo(User, { foreignKey: 'approvedBy', as: 'approver' });
+
 module.exports = {
+  // Attendance,
   sequelize,
   User,
   Role,
@@ -79,4 +94,5 @@ module.exports = {
   YearEndSummary,
   RefreshToken,
   Notification,
+  Setting,
 };
