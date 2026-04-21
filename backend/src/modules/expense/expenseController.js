@@ -91,12 +91,12 @@ const listMyExpenses = asyncHandler(async (req, res) => {
 });
 
 const listPendingManager = asyncHandler(async (req, res) => {
-  console.log('controller req.user:', req.user)
+  
   const result = await expenseService.listPendingManager(
     req.user.id,
     req.user
   );
-  console.log(result)
+
   return res.status(result.success ? 200 : (result.statusCode || 400)).json(result);
 });
 
