@@ -4,13 +4,22 @@ const { Op, fn, col, literal } = require('sequelize');
 const { User, LeaveRequest, Expense, Payroll } = require('../../database/initModels');
 const { formatMonthly, buildPagination, cleanLeave, cleanExpense } = require('./userFormatter');
 
-// -----------------------------
-// Helpers
-// -----------------------------
-const buildDateRange = (year) => ({
-    start: new Date(`${year}-01-01T00:00:00.000Z`),
-    end: new Date(`${year}-12-31T23:59:59.999Z`)
-});
+
+
+const buildDateRange = (yearInput) => {
+    const year = Number(
+        typeof yearInput === 'object' ? yearInput.year : yearInput
+    );
+
+    if (!Number.isInteger(year)) {
+        throw new Error(`Invalid year received: ${year}`);
+    }
+
+    return {
+        start: new Date(Date.UTC(year, 0, 1)),
+        end: new Date(Date.UTC(year, 11, 31, 23, 59, 59, 999))
+    };
+};
 
 const getLast7DaysRange = () => ({
     last7Days: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
