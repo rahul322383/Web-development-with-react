@@ -2,111 +2,101 @@
 
 const { Op } = require('sequelize');
 const { Attendance, User } = require('../../database/initModels');
-const AppError = require('../utils/AppError');
 
-const SHIFT = {
-  startHour: 9,
-  startMinute: 0,
-  endHour: 18,
-  endMinute: 0,
-  graceMinutes: 15,
-  standardMinutes: 9 * 60,
-};
+const SHIFT_START_MINS = 9 * 60;
+const SHIFT_END_MINS = 18 * 60;
+const GRACE_MINS = 15;
+const STANDARD_MINS = SHIFT_END_MINS - SHIFT_START_MINS;
 
-const timeToMinutes = (timeStr) => {
-  const [h, m] = timeStr.split(':').map(Number);
+const toMins = (t) => {
+  const [h, m] = t.split(':').map(Number);
   return h * 60 + m;
 };
 
-const minutesToHHMM = (mins) => {
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+const todayISO = () => new Date().toISOString().slice(0, 10);
+
+const makeError = (msg, code = 400) => {
+  const e = new Error(msg);
+  e.statusCode = code;
+  return e;
 };
 
-const todayDate = () => new Date().toISOString().slice(0, 10);
+const calcMetrics = (checkIn, checkOut) => {
+  const cinM = toMins(checkIn);
+  const coutM = toMins(checkOut);
 
-const calculateAttendanceMetrics = (checkIn, checkOut) => {
-  const cinMins = timeToMinutes(checkIn);
-  const coutMins = timeToMinutes(checkOut);
+  if (coutM <= cinM) throw makeError('Check-out time must be after check-in time.');
 
-  if (coutMins <= cinMins) {
-    throw new AppError('Check-out time must be after check-in time.', 400);
-  }
-
-  const shiftStartMins = SHIFT.startHour * 60 + SHIFT.startMinute;
-  const graceLimit = shiftStartMins + SHIFT.graceMinutes;
-
-  const workedMinutes = coutMins - cinMins;
-  const isLate = cinMins > graceLimit;
-  const lateMinutes = isLate ? cinMins - shiftStartMins : 0;
-  const overtimeMinutes = Math.max(0, workedMinutes - SHIFT.standardMinutes);
+  const workedMinutes = coutM - cinM;
+  const isLate = cinM > (SHIFT_START_MINS + GRACE_MINS);
+  const lateMinutes = isLate ? cinM - SHIFT_START_MINS : 0;
+  const overtimeMinutes = Math.max(0, workedMinutes - STANDARD_MINS);
   const hasOvertime = overtimeMinutes > 0;
 
   let status;
-  if (workedMinutes < SHIFT.standardMinutes / 2) {
-    status = 'half_day';
-  } else if (isLate) {
-    status = 'late';
-  } else {
-    status = 'present';
-  }
+  if (workedMinutes < STANDARD_MINS / 2) status = 'half_day';
+  else if (isLate) status = 'late';
+  else status = 'present';
 
-  return {
-    workedMinutes,
-    isLate,
-    lateMinutes,
-    overtimeMinutes,
-    hasOvertime,
-    status,
-  };
+  return { workedMinutes, isLate, lateMinutes, overtimeMinutes, hasOvertime, status };
 };
 
 const checkIn = async ({ employeeId, checkInTime, ip }) => {
-  const date = todayDate();
+  if (!employeeId) throw makeError('employeeId is required.', 500);
+
+  const date = todayISO();
 
   const existing = await Attendance.findOne({ where: { employeeId, date } });
+
   if (existing) {
-    if (existing.checkIn) throw new AppError('Already checked in today.', 409);
-    await existing.update({ checkIn: checkInTime, checkInIp: ip, status: 'present' });
-    return existing;
+    if (existing.checkIn) throw makeError('Already checked in today.', 409);
+
+    const cinM = toMins(checkInTime);
+    const isLate = cinM > (SHIFT_START_MINS + GRACE_MINS);
+
+    await existing.update({
+      checkIn: checkInTime,
+      checkInIp: ip || null,
+      isLate,
+      lateMinutes: isLate ? cinM - SHIFT_START_MINS : 0,
+      status: isLate ? 'late' : 'present',
+    });
+
+    return existing.reload();
   }
 
-  const shiftStartMins = SHIFT.startHour * 60 + SHIFT.startMinute;
-  const graceLimit = shiftStartMins + SHIFT.graceMinutes;
-  const cinMins = timeToMinutes(checkInTime);
-  const isLate = cinMins > graceLimit;
-  const lateMinutes = isLate ? cinMins - shiftStartMins : 0;
+  const cinM = toMins(checkInTime);
+  const isLate = cinM > (SHIFT_START_MINS + GRACE_MINS);
 
-  const record = await Attendance.create({
+  return Attendance.create({
     employeeId,
     date,
     checkIn: checkInTime,
-    checkInIp: ip,
-    status: isLate ? 'late' : 'present',
+    checkInIp: ip || null,
     isLate,
-    lateMinutes,
+    lateMinutes: isLate ? cinM - SHIFT_START_MINS : 0,
+    status: isLate ? 'late' : 'present',
   });
-
-  return record;
 };
 
 const checkOut = async ({ employeeId, checkOutTime, ip }) => {
-  const date = todayDate();
+  if (!employeeId) throw makeError('employeeId is required.', 500);
+
+  const date = todayISO();
   const record = await Attendance.findOne({ where: { employeeId, date } });
 
-  if (!record) throw new AppError('No check-in record found for today.', 404);
-  if (!record.checkIn) throw new AppError('Cannot check out without checking in first.', 400);
-  if (record.checkOut) throw new AppError('Already checked out today.', 409);
+  if (!record) throw makeError('No check-in record found for today.', 404);
+  if (!record.checkIn) throw makeError('Cannot check out without checking in first.', 400);
+  if (record.checkOut) throw makeError('Already checked out today.', 409);
 
-  const metrics = calculateAttendanceMetrics(record.checkIn, checkOutTime);
-
-  await record.update({ checkOut: checkOutTime, checkOutIp: ip, ...metrics });
-  return record;
+  const metrics = calcMetrics(record.checkIn, checkOutTime);
+  await record.update({ checkOut: checkOutTime, checkOutIp: ip || null, ...metrics });
+  return record.reload();
 };
 
-const adminRecord = async ({ employeeId, date, checkIn: ci, checkOut: co, notes, approvedBy }) => {
-  const metrics = ci && co ? calculateAttendanceMetrics(ci, co) : {};
+const adminRecord = async ({ employeeId, date, checkIn: ci, checkOut: co, status, notes, approvedBy }) => {
+  const metrics = ci && co ? calcMetrics(ci, co) : {};
+  const finalStatus = status || metrics.status || 'absent';
 
   const [record, created] = await Attendance.upsert({
     employeeId,
@@ -114,7 +104,8 @@ const adminRecord = async ({ employeeId, date, checkIn: ci, checkOut: co, notes,
     checkIn: ci || null,
     checkOut: co || null,
     notes: notes || null,
-    approvedBy,
+    approvedBy: approvedBy || null,
+    status: finalStatus,
     ...metrics,
   }, { returning: true });
 
@@ -122,19 +113,25 @@ const adminRecord = async ({ employeeId, date, checkIn: ci, checkOut: co, notes,
 };
 
 const getTodaySummary = async () => {
-  const date = todayDate();
+  const date = todayISO();
   const records = await Attendance.findAll({
     where: { date },
-    include: [{ model: User, as: 'employee', attributes: ['id', 'firstName', 'lastName', 'email'] }],
+    include: [{
+      model: User,
+      as: 'employee',
+      attributes: ['id', 'first_name', 'last_name', 'email'],
+    }],
   });
 
-  const summary = { present: 0, late: 0, absent: 0, half_day: 0, on_leave: 0 };
+  const summary = { present: 0, late: 0, absent: 0, half_day: 0, on_leave: 0, holiday: 0 };
   records.forEach(r => { if (summary[r.status] !== undefined) summary[r.status]++; });
 
   return { date, summary, records };
 };
 
 const getMyAttendance = async ({ employeeId, startDate, endDate, page = 1, limit = 20 }) => {
+  if (!employeeId) throw makeError('employeeId is required.', 500);
+
   const where = { employeeId };
 
   if (startDate || endDate) {
@@ -143,11 +140,11 @@ const getMyAttendance = async ({ employeeId, startDate, endDate, page = 1, limit
     if (endDate) where.date[Op.lte] = endDate;
   }
 
-  const offset = (page - 1) * limit;
+  const offset = (Number(page) - 1) * Number(limit);
   const { count, rows } = await Attendance.findAndCountAll({
     where,
     order: [['date', 'DESC']],
-    limit,
+    limit: Number(limit),
     offset,
   });
 
@@ -160,7 +157,7 @@ const getMyAttendance = async ({ employeeId, startDate, endDate, page = 1, limit
   };
 
   return {
-    meta: { count, page, limit, totalPages: Math.ceil(count / limit) },
+    meta: { count, page: Number(page), limit: Number(limit), totalPages: Math.ceil(count / limit) },
     stats,
     records: rows,
   };
@@ -168,7 +165,7 @@ const getMyAttendance = async ({ employeeId, startDate, endDate, page = 1, limit
 
 const getTeamReport = async ({ startDate, endDate, employeeId, status, page = 1, limit = 50 }) => {
   const where = {};
-  if (employeeId) where.employeeId = employeeId;
+  if (employeeId) where.employeeId = Number(employeeId);
   if (status) where.status = status;
   if (startDate || endDate) {
     where.date = {};
@@ -176,55 +173,61 @@ const getTeamReport = async ({ startDate, endDate, employeeId, status, page = 1,
     if (endDate) where.date[Op.lte] = endDate;
   }
 
-  const offset = (page - 1) * limit;
+  const offset = (Number(page) - 1) * Number(limit);
   const { count, rows } = await Attendance.findAndCountAll({
     where,
-    include: [{ model: User, as: 'employee', attributes: ['id', 'firstName', 'lastName', 'email', 'department'] }],
-    order: [['date', 'DESC'], ['employee_id', 'ASC']],
-    limit,
+    include: [{
+      model: User,
+      as: 'employee',
+      attributes: ['id', 'first_name', 'last_name', 'email'],
+    }],
+    order: [['date', 'DESC']],
+    limit: Number(limit),
     offset,
   });
 
   return {
-    meta: { count, page, limit, totalPages: Math.ceil(count / limit) },
+    meta: { count, page: Number(page), limit: Number(limit), totalPages: Math.ceil(count / limit) },
     records: rows,
+  };
+};
+
+const getOvertimeSummary = async ({ employeeId, month, year }) => {
+  const mm = String(month).padStart(2, '0');
+  const startDate = `${year}-${mm}-01`;
+  const endDate = new Date(year, Number(month), 0).toISOString().slice(0, 10);
+
+  const records = await Attendance.findAll({
+    where: {
+      employeeId: Number(employeeId),
+      date: { [Op.between]: [startDate, endDate] },
+      hasOvertime: true,
+    },
+  });
+
+  const totalOvertimeMinutes = records.reduce((s, r) => s + (r.overtimeMinutes || 0), 0);
+
+  return {
+    employeeId: Number(employeeId),
+    month: Number(month),
+    year: Number(year),
+    overtimeDays: records.length,
+    totalOvertimeMinutes,
+    totalOvertimeHours: +(totalOvertimeMinutes / 60).toFixed(2),
+    records,
   };
 };
 
 const getById = async (id) => {
   const record = await Attendance.findByPk(id, {
     include: [
-      { model: User, as: 'employee', attributes: ['id', 'firstName', 'lastName', 'email'] },
-      { model: User, as: 'approver', attributes: ['id', 'firstName', 'lastName'] },
+      { model: User, as: 'employee', attributes: ['id', 'first_name', 'last_name', 'email'] },
+      { model: User, as: 'approver', attributes: ['id', 'first_name', 'last_name'] },
     ],
   });
-  if (!record) throw new AppError('Attendance record not found.', 404);
+
+  if (!record) throw makeError('Attendance record not found.', 404);
   return record;
-};
-
-const getOvertimeSummary = async ({ employeeId, month, year }) => {
-  const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
-  const endDate = new Date(year, month, 0).toISOString().slice(0, 10);
-
-  const records = await Attendance.findAll({
-    where: {
-      employeeId,
-      date: { [Op.between]: [startDate, endDate] },
-      hasOvertime: true,
-    },
-  });
-
-  const totalOvertimeMinutes = records.reduce((s, r) => s + r.overtimeMinutes, 0);
-
-  return {
-    employeeId,
-    month,
-    year,
-    overtimeDays: records.length,
-    totalOvertimeMinutes,
-    totalOvertimeHours: +(totalOvertimeMinutes / 60).toFixed(2),
-    records,
-  };
 };
 
 module.exports = {
@@ -236,6 +239,5 @@ module.exports = {
   getTeamReport,
   getById,
   getOvertimeSummary,
-  calculateAttendanceMetrics,
-  minutesToHHMM,
+  calcMetrics,
 };
