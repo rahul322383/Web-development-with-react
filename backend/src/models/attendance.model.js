@@ -2,15 +2,17 @@
 
 module.exports = (sequelize, DataTypes) => {
   const Attendance = sequelize.define('Attendance', {
+
     id: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       autoIncrement: true,
       primaryKey: true,
     },
 
     employeeId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
+      field: 'employee_id',
       references: { model: 'users', key: 'id' },
     },
 
@@ -22,39 +24,44 @@ module.exports = (sequelize, DataTypes) => {
     checkIn: {
       type: DataTypes.TIME,
       allowNull: true,
-      comment: 'Actual check-in time (HH:MM:SS)',
+      field: 'check_in',
     },
 
     checkOut: {
       type: DataTypes.TIME,
       allowNull: true,
-      comment: 'Actual check-out time (HH:MM:SS)',
+      field: 'check_out',
     },
 
-    
     workedMinutes: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      defaultValue: null,
-      comment: 'Total minutes between checkIn and checkOut',
+      field: 'worked_minutes',
     },
 
     overtimeMinutes: {
       type: DataTypes.INTEGER,
       allowNull: true,
       defaultValue: 0,
-      comment: 'Minutes beyond the standard shift length',
+      field: 'overtime_minutes',
     },
 
     lateMinutes: {
       type: DataTypes.INTEGER,
       allowNull: true,
       defaultValue: 0,
-      comment: 'Minutes past grace window at check-in',
+      field: 'late_minutes',
     },
 
     status: {
-      type: DataTypes.ENUM('present', 'late', 'absent', 'half_day', 'on_leave', 'holiday'),
+      type: DataTypes.ENUM(
+        'present',
+        'late',
+        'absent',
+        'half_day',
+        'on_leave',
+        'holiday'
+      ),
       allowNull: false,
       defaultValue: 'absent',
     },
@@ -63,12 +70,14 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: false,
+      field: 'is_late',
     },
 
     hasOvertime: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: false,
+      field: 'has_overtime',
     },
 
     notes: {
@@ -76,34 +85,58 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
     },
 
-    // IP / device for audit trail
     checkInIp: {
       type: DataTypes.STRING(45),
       allowNull: true,
+      field: 'check_in_ip',
     },
 
     checkOutIp: {
       type: DataTypes.STRING(45),
       allowNull: true,
+      field: 'check_out_ip',
     },
 
-    // Which manager / HR last touched this record
     approvedBy: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: true,
+      field: 'approved_by',
       references: { model: 'users', key: 'id' },
     },
+
   }, {
     tableName: 'attendances',
     underscored: true,
     timestamps: true,
-    paranoid: true,                          // soft-delete (deleted_at)
+    paranoid: true,
+
+    createdAt: 'created_at',
+    updatedAt: 'updated_at',
+    deletedAt: 'deleted_at',
+
     indexes: [
-      { fields: ['employee_id', 'date'], unique: true },   // one record per employee per day
-      { fields: ['date'] },
-      { fields: ['status'] },
+      {
+        unique: true,
+        fields: ['employee_id', 'date'],
+        name: 'ux_attendance_employee_date',
+      },
+      { fields: ['date'], name: 'idx_attendance_date' },
+      { fields: ['status'], name: 'idx_attendance_status' },
     ],
   });
+
+  // 🔥 Associations (VERY IMPORTANT)
+  Attendance.associate = (models) => {
+    Attendance.belongsTo(models.User, {
+      foreignKey: 'employee_id',
+      as: 'employee',
+    });
+
+    Attendance.belongsTo(models.User, {
+      foreignKey: 'approved_by',
+      as: 'approver',
+    });
+  };
 
   return Attendance;
 };
