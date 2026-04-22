@@ -1,59 +1,77 @@
-const { fn, col } = require('sequelize');
+'use strict';
+
+const { Op, fn, col, literal } = require('sequelize');
 const {
   User,
   Payroll,
   LeaveRequest,
   Expense,
-  YearEndSummary
+  YearEndSummary,
 } = require('../../database/initModels');
 
-const listActiveEmployees = async () => User.findAll({ where: { isActive: true }, attributes: ['id'] });
-
-const getSalaryTotal = async (employeeId, year) => {
-  const row = await Payroll.findOne({
-    where: { employeeId, year, status: ['Processed', 'Locked'] },
-    attributes: [[fn('COALESCE', fn('SUM', col('net_salary')), 0), 'total']]
+// FIX: accepts transaction so reads are consistent within the same transaction
+const listActiveEmployees = (transaction) =>
+  User.findAll({
+    where: { isActive: true },
+    attributes: ['id'],
+    transaction,
   });
-  return Number(row?.get('total') || 0);
+
+// FIX: added transaction param, raw: true, and group clause so Sequelize
+// actually executes the SUM and returns a plain value
+const getSalaryTotal = async (employeeId, year, transaction) => {
+  const row = await Payroll.findOne({
+    where: {
+      employeeId,
+      year,
+      status: { [Op.in]: ['Processed', 'Locked'] },
+    },
+    attributes: [[fn('COALESCE', fn('SUM', col('net_salary')), 0), 'total']],
+    group: ['employeeId'],
+    raw: true,
+    transaction,
+  });
+  return Number(row?.total || 0);
 };
 
-const getApprovedLeavesCount = async (employeeId, year) =>
+const getApprovedLeavesCount = (employeeId, year, transaction) =>
   LeaveRequest.count({
     where: {
       employeeId,
       status: 'Approved',
-      startDate: {
-        [require('sequelize').Op.gte]: `${year}-01-01`
-      },
-      endDate: {
-        [require('sequelize').Op.lte]: `${year}-12-31`
-      }
-    }
+      startDate: { [Op.gte]: `${year}-01-01` },
+      endDate: { [Op.lte]: `${year}-12-31` },
+    },
+    transaction,
   });
 
-const getExpenseTotal = async (employeeId, year) => {
+// FIX: added transaction param, raw: true, and group clause
+const getExpenseTotal = async (employeeId, year, transaction) => {
   const row = await Expense.findOne({
     where: {
       employeeId,
       financeApprovalStatus: 'Approved',
       createdAt: {
-        [require('sequelize').Op.gte]: `${year}-01-01`,
-        [require('sequelize').Op.lte]: `${year}-12-31`
-      }
+        [Op.gte]: new Date(`${year}-01-01`),
+        [Op.lte]: new Date(`${year}-12-31T23:59:59.999Z`),
+      },
     },
-    attributes: [[fn('COALESCE', fn('SUM', col('amount')), 0), 'total']]
+    attributes: [[fn('COALESCE', fn('SUM', col('amount')), 0), 'total']],
+    group: ['employeeId'],
+    raw: true,
+    transaction,
   });
-
-  return Number(row?.get('total') || 0);
+  return Number(row?.total || 0);
 };
 
 const upsertYearSummary = async (payload, transaction) => {
   const [summary] = await YearEndSummary.findOrCreate({
     where: { employeeId: payload.employeeId, year: payload.year },
     defaults: payload,
-    transaction
+    transaction,
   });
 
+  // Only update if not yet finalized — never overwrite a locked summary
   if (!summary.isFinalized) {
     await summary.update(payload, { transaction });
   }
@@ -61,11 +79,15 @@ const upsertYearSummary = async (payload, transaction) => {
   return summary;
 };
 
-const listYearSummaries = async (year) =>
+const listYearSummaries = (year) =>
   YearEndSummary.findAll({
     where: { year },
-    include: [{ model: User, as: 'employee', attributes: ['id', 'firstName', 'lastName', 'email'] }],
-    order: [['employeeId', 'ASC']]
+    include: [{
+      model: User,
+      as: 'employee',
+      attributes: ['id', 'firstName', 'lastName', 'email'],
+    }],
+    order: [['employeeId', 'ASC']],
   });
 
 module.exports = {
@@ -74,5 +96,5 @@ module.exports = {
   getApprovedLeavesCount,
   getExpenseTotal,
   upsertYearSummary,
-  listYearSummaries
+  listYearSummaries,
 };
