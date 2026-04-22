@@ -1,18 +1,26 @@
+'use strict';
+
 const asyncHandler = require('../../utils/asyncHandler');
 const yearEndService = require('./yearEndService');
 
 const generateSummary = asyncHandler(async (req, res) => {
-  const result = await yearEndService.generateYearSummary(req.body.year);
-  res.status(200).json({ count: result.length, result });
+  const result = await yearEndService.generateYearSummary({
+    year: req.body.year,
+    actor: req.user                     // FIX: pass actor
+  });
+  return res.status(result.success ? 200 : (result.statusCode || 400)).json(result);
 });
 
 const listSummaries = asyncHandler(async (req, res) => {
-  const year = Number(req.query.year || new Date().getFullYear() - 1);
-  const result = await yearEndService.getYearSummaries(year);
-  res.status(200).json(result);
+  const year = parseInt(req.query.year) || new Date().getFullYear() - 1;
+  const result = await yearEndService.getYearSummaries({
+    year,
+    actor: req.user                     // FIX: pass actor
+  });
+  return res.status(result.success ? 200 : (result.statusCode || 400)).json(result);
 });
 
 module.exports = {
   generateSummary,
-  listSummaries
+  listSummaries,
 };
