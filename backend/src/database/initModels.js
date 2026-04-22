@@ -16,10 +16,10 @@ const defineYearEndSummary = require('../models/yearEndSummary.model');
 const defineRefreshToken = require('../models/refreshToken.model');
 const defineNotification = require('../models/Notification');
 const defineSetting = require('../models/setting.model');
-//  const defineAttendance = require('../models/attendance.model');
+ const defineAttendance = require('../models/attendance.model');
 
 
-//  const Attendance = defineAttendance(sequelize, DataTypes);
+ const Attendance = defineAttendance(sequelize, DataTypes);
 const User = defineUser(sequelize, DataTypes);
 const Role = defineRole(sequelize, DataTypes);
 const LeaveRequest = defineLeaveRequest(sequelize, DataTypes);
@@ -75,12 +75,12 @@ User.hasMany(Setting, { foreignKey: 'userId', as: 'settings' });
 Setting.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 
 
-// User.hasMany(Attendance, { foreignKey: 'employeeId', as: 'attendances' });
-// Attendance.belongsTo(User, { foreignKey: 'employeeId', as: 'employee' });
-// Attendance.belongsTo(User, { foreignKey: 'approvedBy', as: 'approver' });
+User.hasMany(Attendance, { foreignKey: 'employeeId', as: 'attendances' });
+Attendance.belongsTo(User, { foreignKey: 'employeeId', as: 'employee' });
+Attendance.belongsTo(User, { foreignKey: 'approvedBy', as: 'approver' });
 
 module.exports = {
-  // Attendance,
+  Attendance,
   sequelize,
   User,
   Role,
