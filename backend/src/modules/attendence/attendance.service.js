@@ -15,7 +15,7 @@ const toMins = (t) => {
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
-const makeError = (msg, code = 400) => {
+const makeResponse = (msg, code = 400) => {
   const e = new Error(msg);
   e.statusCode = code;
   return e;
@@ -25,7 +25,7 @@ const calcMetrics = (checkIn, checkOut) => {
   const cinM = toMins(checkIn);
   const coutM = toMins(checkOut);
 
-  if (coutM <= cinM) throw makeError('Check-out time must be after check-in time.');
+  if (coutM <= cinM) throw makeResponse('Check-out time must be after check-in time.');
 
   const workedMinutes = coutM - cinM;
   const isLate = cinM > (SHIFT_START_MINS + GRACE_MINS);
@@ -42,14 +42,14 @@ const calcMetrics = (checkIn, checkOut) => {
 };
 
 const checkIn = async ({ employeeId, checkInTime, ip }) => {
-  if (!employeeId) throw makeError('employeeId is required.', 500);
+  if (!employeeId) throw makeResponse('employeeId is required.', 500);
 
   const date = todayISO();
 
   const existing = await Attendance.findOne({ where: { employeeId, date } });
 
   if (existing) {
-    if (existing.checkIn) throw makeError('Already checked in today.', 409);
+    if (existing.checkIn) throw makeResponse('Already checked in today.', 409);
 
     const cinM = toMins(checkInTime);
     const isLate = cinM > (SHIFT_START_MINS + GRACE_MINS);
@@ -80,14 +80,14 @@ const checkIn = async ({ employeeId, checkInTime, ip }) => {
 };
 
 const checkOut = async ({ employeeId, checkOutTime, ip }) => {
-  if (!employeeId) throw makeError('employeeId is required.', 500);
+  if (!employeeId) throw makeResponse('employeeId is required.', 500);
 
   const date = todayISO();
   const record = await Attendance.findOne({ where: { employeeId, date } });
 
-  if (!record) throw makeError('No check-in record found for today.', 404);
-  if (!record.checkIn) throw makeError('Cannot check out without checking in first.', 400);
-  if (record.checkOut) throw makeError('Already checked out today.', 409);
+  if (!record) throw makeResponse('No check-in record found for today.', 404);
+  if (!record.checkIn) throw makeResponse('Cannot check out without checking in first.', 400);
+  if (record.checkOut) throw makeResponse('Already checked out today.', 409);
 
   const metrics = calcMetrics(record.checkIn, checkOutTime);
   await record.update({ checkOut: checkOutTime, checkOutIp: ip || null, ...metrics });
@@ -130,7 +130,7 @@ const getTodaySummary = async () => {
 };
 
 const getMyAttendance = async ({ employeeId, startDate, endDate, page = 1, limit = 20 }) => {
-  if (!employeeId) throw makeError('employeeId is required.', 500);
+  if (!employeeId) throw makeResponse('employeeId is required.', 500);
 
   const where = { employeeId };
 
@@ -226,7 +226,7 @@ const getById = async (id) => {
     ],
   });
 
-  if (!record) throw makeError('Attendance record not found.', 404);
+  if (!record) throw makeResponse('Attendance record not found.', 404);
   return record;
 };
 
