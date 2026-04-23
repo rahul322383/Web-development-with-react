@@ -16,7 +16,7 @@ const requestLogger = morgan(
   ':method :url :status :response-time ms - :request-id',
   {
     stream,
-    skip: (req) => req.url === '/health', // optional
+    skip: (req) => req.url === '/health',
   }
 );
 
