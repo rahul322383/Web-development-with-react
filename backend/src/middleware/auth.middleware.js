@@ -42,8 +42,8 @@ const authenticate = async (req, res, next) => {
     req.user = {
       id: Number(payload.sub),
       email: payload.email,
-      role: payload.role,        // keep this
-      primaryRole: payload.role, // optional for compatibility
+      role: payload.role,        
+      primaryRole: payload.role, 
       jti: payload.jti,
       exp: payload.exp
     };
