@@ -56,18 +56,31 @@ const getUsersByDepartment = asyncHandler(async (req, res) => {
   const department = req.params.department?.trim().toLowerCase();
 
   if (!department) {
-    return res.status(400).json({ success: false, message: 'Department is required' });
+    return res.status(400).json({
+      success: false,
+      message: 'Department is required'
+    });
   }
 
-  const users = await userService.getUsersByDepartment(department);
+  const result = await userService.getUsersByDepartment(
+    department,
+    req.user
+  );
 
-  res.status(200).json({
+  if (result?.success === false) {
+    return res.status(result.statusCode || 400).json(result);
+  }
+
+  return res.status(200).json({
     success: true,
-    message: users.length ? 'Users fetched successfully' : 'No users found for this department',
-    count: users.length,
-    data: users
+    message: result.length ? 'Users fetched successfully' : 'No users found',
+    count: result.length,
+    data: result
   });
 });
+
+
+
 const assignManagerController = async (req, res) => {
   const { employeeId, managerId } = req.body;
 
