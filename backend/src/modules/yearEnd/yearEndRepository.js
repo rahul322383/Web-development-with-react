@@ -9,14 +9,13 @@ const {
   YearEndSummary,
 } = require('../../database/initModels');
 
-// FIX: accepts transaction so reads are consistent within the same transaction
 const listActiveEmployees = (transaction) =>
   User.findAll({
     where: { isActive: true },
     attributes: ['id'],
     transaction,
   });
-
+  
 // FIX: added transaction param, raw: true, and group clause so Sequelize
 // actually executes the SUM and returns a plain value
 const getSalaryTotal = async (employeeId, year, transaction) => {
@@ -64,17 +63,30 @@ const getExpenseTotal = async (employeeId, year, transaction) => {
   return Number(row?.total || 0);
 };
 
+// const upsertYearSummary = async (payload, transaction) => {
+//   const [summary] = await YearEndSummary.findOrCreate({
+//     where: { employeeId: payload.employeeId, year: payload.year },
+//     defaults: payload,
+//     transaction,
+//   });
+
+//   // Only update if not yet finalized — never overwrite a locked summary
+//   if (!summary.isFinalized) {
+//     await summary.update(payload, { transaction });
+//   }
+
+//   return summary;
+// };
+
 const upsertYearSummary = async (payload, transaction) => {
-  const [summary] = await YearEndSummary.findOrCreate({
+  const [summary, created] = await YearEndSummary.findOrCreate({
     where: { employeeId: payload.employeeId, year: payload.year },
     defaults: payload,
     transaction,
   });
 
-  // Only update if not yet finalized — never overwrite a locked summary
-  if (!summary.isFinalized) {
-    await summary.update(payload, { transaction });
-  }
+  // ✅ ALWAYS update values (finalized just means "ready", not "immutable")
+  await summary.update(payload, { transaction });
 
   return summary;
 };
