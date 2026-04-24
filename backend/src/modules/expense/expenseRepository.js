@@ -86,8 +86,21 @@ const findExpenseByIdempotencyKey = async (idempotencyKey, employeeId) => {
   });
 };
 
+const updateExpenseConditional = async (id, payload, condition, transaction) => {
+  const [affectedRows] = await Expense.update(payload, {
+    where: {
+      id,
+      ...condition
+    },
+    transaction
+  });
+
+  return affectedRows;
+};
+
 
 module.exports = {
+  updateExpenseConditional ,
   findExpenseByIdempotencyKey,
   createExpense,
   createReceipt,
