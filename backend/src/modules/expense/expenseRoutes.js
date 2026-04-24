@@ -7,8 +7,8 @@ const expenseController = require('./expenseController');
 
 const {
   submitExpenseSchema,
-  managerDecisionSchema,
-  financeDecisionSchema
+  managerReviewSchema,
+  financeReviewSchema,
 } = require('./expenseValidation');
 
 const upload = multer({ storage: multer.memoryStorage() });
@@ -26,7 +26,7 @@ router.post(
 router.get('/my', authenticate ,authorize('Employee', 'Manager', 'HR', 'Finance', 'Admin'), expenseController.listMyExpenses);
 router.get('/pending-manager', authorize('Manager','Admin','HR','Finance'), expenseController.listPendingManager);
 router.get('/pending-finance', authorize('Finance','Admin','HR','Manager'), expenseController.listPendingFinance);
-router.patch('/:id/manager-review', authorize('Manager','Admin','HR'), validate(managerDecisionSchema), expenseController.managerReviewExpense);
-router.patch('/:id/finance-review', authorize('Finance', 'Admin', 'Manager'), validate(financeDecisionSchema), expenseController.financeReviewExpense);
+router.patch('/:id/manager-review', authorize('Manager', 'Admin', 'HR'), validate(managerReviewSchema), expenseController.managerReviewExpense);
+router.patch('/:id/finance-review', authorize('Finance', 'Admin', 'Manager'), validate(financeReviewSchema), expenseController.financeReviewExpense);
 
 module.exports = router;
