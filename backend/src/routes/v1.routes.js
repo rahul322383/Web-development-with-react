@@ -11,6 +11,7 @@ const notificationModule = require('../modules/notification');
 const settingModule = require('../modules/settings');
 const reportsModule = require('../modules/reports'); 
 const attendanceModule = require('../modules/attendence');
+const AImodules = require('../modules/AI')
 
 
 const router = express.Router();
@@ -25,6 +26,7 @@ router.use('/year-end', yearEndModule.routes);
 router.use('/notifications', notificationModule.routes);
 router.use('/attendance', attendanceModule.routes);
 router.use('/settings', settingModule.routes);
+router.use('/ai', AImodules.routes)
 
 // ✅ FIX REPORTS
 router.use('/reports', reportsModule.routes);
