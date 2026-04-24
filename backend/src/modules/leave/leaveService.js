@@ -154,74 +154,146 @@ const applyForLeave = async ({ employeeId, startDate, endDate, reason, ipAddress
 };
 
 
-const managerDecision = async ({ managerId, role, requestId, status, decisionNote, ipAddress, actor }) => {
+const managerDecision = async ({
+  managerId,
+  role,
+  requestId,
+  status,
+  decisionNote,
+  ipAddress,
+  actor,
+}) => {
+
+  // 🔐 HARD SECURITY GATE
+  const allowedRoles = ['Manager', 'Admin'];
+
+  if (!allowedRoles.includes(role)) {
+    return {
+      success: false,
+      statusCode: 403,
+      message: 'Only Manager or Admin can approve/reject leave requests',
+    };
+  }
+
   const denied = checkPermission(actor, 'REVIEW_LEAVE');
   if (denied) return denied;
-
-  const validation = validate(managerDecisionSchema, { managerId, requestId, status, decisionNote });
-  if (!validation.valid) return fail(validation.message);
 
   try {
     let oldLeaveData;
 
     const leaveRequest = await sequelize.transaction(async (transaction) => {
+
+      // 🔒 Lock leave request
       const req = await LeaveRequest.findByPk(requestId, {
         transaction,
         lock: Transaction.LOCK.UPDATE,
       });
 
-      if (!req) throw Object.assign(new Error('Leave request not found'), { statusCode: 404 });
-      if (req.status !== LEAVE_STATUS.PENDING) throw Object.assign(new Error('Leave request has already been processed'), { statusCode: 409 });
+      if (!req) {
+        throw Object.assign(new Error('Leave request not found'), { statusCode: 404 });
+      }
 
+      if (req.status !== LEAVE_STATUS.PENDING) {
+        throw Object.assign(new Error('Leave request has already been processed'), { statusCode: 409 });
+      }
+
+      // 👤 Get employee
       const employee = await User.findByPk(req.employeeId, { transaction });
 
+      if (!employee) {
+        throw Object.assign(new Error('Employee not found'), { statusCode: 404 });
+      }
+
+      // 🔐 Authorization check
       if (Number(employee.managerId) !== Number(managerId) && !['Admin', 'HR'].includes(role)) {
         throw Object.assign(new Error('Not authorized to review this leave request'), { statusCode: 403 });
       }
 
-      oldLeaveData = { status: req.status, decisionNote: req.decisionNote };
+      oldLeaveData = {
+        status: req.status,
+        decisionNote: req.decisionNote,
+      };
 
-      await req.update({ status, decisionNote: decisionNote || null }, { transaction });
+      // 🧠 Normalize status
+      const normalizedStatus = status.toLowerCase();
 
-      if (status === LEAVE_STATUS.APPROVED) {
+      // ✅ Handle APPROVAL
+      if (normalizedStatus === LEAVE_STATUS.APPROVED.toLowerCase()) {
+
         const year = new Date(req.startDate).getFullYear();
+
+        // Ensure balance row exists
         await ensureLeaveBalance(req.employeeId, year, transaction);
 
-        const [affected] = await LeaveBalance.update(
-          {
-            used: sequelize.literal(`used + ${req.daysRequested}`),
-            remaining: sequelize.literal(`remaining - ${req.daysRequested}`),
+        // 🔒 Lock balance row
+        const balance = await LeaveBalance.findOne({
+          where: {
+            employeeId: req.employeeId,
+            year,
           },
-          {
-            where: {
-              employeeId: req.employeeId,
-              year,
-              remaining: { [Op.gte]: req.daysRequested },
-            },
-            transaction,
-          },
-        );
+          transaction,
+          lock: Transaction.LOCK.UPDATE,
+        });
 
-        if (!affected) throw Object.assign(new Error('Insufficient leave balance'), { statusCode: 422 });
+        if (!balance) {
+          throw Object.assign(new Error('Leave balance record not found'), { statusCode: 404 });
+        }
+
+        // ❌ Insufficient balance
+        if (balance.remaining < req.daysRequested) {
+          throw Object.assign(
+            new Error(
+              `Insufficient leave balance. Available: ${balance.remaining}, Requested: ${req.daysRequested}`
+            ),
+            { statusCode: 422 }
+          );
+        }
+
+        // ✅ Update balance safely
+        await balance.update(
+          {
+            used: balance.used + req.daysRequested,
+            remaining: balance.remaining - req.daysRequested,
+          },
+          { transaction }
+        );
       }
+
+      // ✅ Finally update leave request
+      await req.update(
+        {
+          status: normalizedStatus,
+          decisionNote: decisionNote || null,
+        },
+        { transaction }
+      );
 
       return req;
     });
 
     const year = new Date(leaveRequest.startDate).getFullYear();
 
+    // 📝 Audit log (non-blocking)
     try {
       await logAuditEvent({
-        userId: managerId, moduleName: 'Leave',
-        actionType: status === LEAVE_STATUS.APPROVED ? 'APPROVE' : 'REJECT',
-        oldData: oldLeaveData, newData: { status, decisionNote }, ipAddress,
+        userId: managerId,
+        moduleName: 'Leave',
+        actionType:
+          status.toLowerCase() === LEAVE_STATUS.APPROVED.toLowerCase()
+            ? 'APPROVE'
+            : 'REJECT',
+        oldData: oldLeaveData,
+        newData: { status, decisionNote },
+        ipAddress,
       });
     } catch (auditErr) {
       logger.error({ event: 'AUDIT_LOG_FAILED', error: auditErr.message });
     }
 
+    // 🧹 Cache clear
     bustLeaveCacheKeys(leaveRequest.employeeId, managerId, year);
 
+    // 📢 Event emit
     eventBus.emit('LEAVE_DECISION', { leaveRequest, managerId, status });
 
     return {
@@ -232,8 +304,18 @@ const managerDecision = async ({ managerId, role, requestId, status, decisionNot
     };
 
   } catch (error) {
-    logger.error({ event: 'MANAGER_DECISION_FAILED', managerId, requestId, error: error.message, stack: error.stack });
-    return fail(error.message || 'Failed to process leave decision', error.statusCode || 500);
+    logger.error({
+      event: 'MANAGER_DECISION_FAILED',
+      managerId,
+      requestId,
+      error: error.message,
+      stack: error.stack,
+    });
+
+    return fail(
+      error.message || 'Failed to process leave decision',
+      error.statusCode || 500
+    );
   }
 };
 
@@ -295,33 +377,167 @@ const listMyLeaves = async ({ employeeId, cursor, limit, actor }) => {
   }
 };
 
-const listPendingLeavesForManager = async (managerId, actor) => {
-  const denied = checkPermission(actor, 'REVIEW_LEAVE');
+// const listPendingLeavesForManager = async (
+//   managerId,
+//   actor,
+//   { limit = 10, page = 1 } = {}
+// ) => {
+//   const denied = checkPermission(actor, 'REVIEW_LEAVE');
+//   if (denied) return denied;
+
+//   if (!managerId) return fail('managerId is required');
+
+//   const offset = (page - 1) * limit;
+
+//   try {
+//     const result = await leaveRepository.listPendingManagerLeaves(
+//       managerId,
+//       { limit, offset }
+//     );
+    
+
+//     return {
+//       success: true,
+//       statusCode: 200,
+//       count: result.count,
+//       data: result.rows
+//     };
+//   } catch (error) {
+//     logger.error({
+//       event: 'LIST_PENDING_LEAVES_FAILED',
+//       managerId,
+//       error: error.message
+//     });
+//     return fail(error.message || 'Failed to fetch pending leaves', 500);
+//   }
+// };
+
+const listPendingLeaves = async (
+  { actor, limit = 10, page = 1 }
+) => {
+  const denied = checkPermission(actor, 'VIEW_LEAVE');
   if (denied) return denied;
 
-  if (!managerId) return fail('managerId is required');
+  const offset = (page - 1) * limit;
 
   try {
-    const data = await leaveRepository.listPendingManagerLeaves(managerId);
-    return { success: true, statusCode: 200, count: data.length, data };
+    let where = { status: 'Pending' };
+
+    // 🔥 ROLE LOGIC
+    if (actor.primaryRole === 'Manager') {
+      where.managerId = actor.id;
+    }
+
+    // Admin sees everything → no filter
+
+    const result = await leaveRepository.listPendingLeaves(where, {
+      limit,
+      offset
+    });
+
+    return {
+      success: true,
+      statusCode: 200,
+      data: result.rows,
+      count: result.count
+    };
+
   } catch (error) {
-    logger.error({ event: 'LIST_PENDING_LEAVES_FAILED', managerId, error: error.message });
-    return fail(error.message || 'Failed to fetch pending leaves', 500);
+    logger.error({
+      event: 'LIST_PENDING_LEAVES_FAILED',
+      actor: actor.id,
+      error: error.message
+    });
+
+    return {
+      success: false,
+      statusCode: 500,
+      message: error.message || 'Failed to fetch pending leaves'
+    };
   }
 };
 
-const listTeamLeaves = async (managerId, actor) => {
-  const denied = checkPermission(actor, 'REVIEW_LEAVE');
-  if (denied) return denied;
 
-  if (!managerId) return fail('managerId is required');
+const listTeamLeaves = async ({
+  managerId,
+  status,
+  limit = 20,
+  page = 1
+}) => {
+  const offset = (page - 1) * limit;
 
   try {
-    const data = await leaveRepository.listTeamLeaves({ managerId });
-    return { success: true, statusCode: 200, data };
+    const result = await leaveRepository.listTeamLeaves({
+      managerId,
+      status,
+      limit,
+      offset
+    });
+
+    const data = result?.rows || [];
+    const total = result?.count || 0;
+
+    const safeData = Array.isArray(data) ? data : [];
+
+    const grouped = {
+      pending: safeData.filter(l => l.status === 'Pending'),
+      approved: safeData.filter(l => l.status === 'Approved'),
+      rejected: safeData.filter(l => l.status === 'Rejected')
+    };
+
+    return {
+      success: true,
+      statusCode: 200,
+      data: {
+        summary: {
+          total,
+          pending: grouped.pending.length,
+          approved: grouped.approved.length,
+          rejected: grouped.rejected.length
+        },
+        pagination: {
+          total,
+          page: Number(page),
+          limit: Number(limit),
+          totalPages: Math.ceil(total / limit)
+        },
+        grouped,
+        list: safeData
+      }
+    };
+
   } catch (error) {
-    logger.error({ event: 'LIST_TEAM_LEAVES_FAILED', managerId, error: error.message });
-    return fail(error.message || 'Failed to fetch team leaves', 500);
+    logger.error({
+      event: 'LIST_TEAM_LEAVES_FAILED',
+      managerId,
+      error: error.message
+    });
+
+    return {
+      success: false,
+      statusCode: 500,
+      message: error.message || 'Failed to fetch team leaves',
+      data: {
+        summary: {
+          total: 0,
+          pending: 0,
+          approved: 0,
+          rejected: 0
+        },
+        pagination: {
+          total: 0,
+          page: Number(page),
+          limit: Number(limit),
+          totalPages: 0
+        },
+        grouped: {
+          pending: [],
+          approved: [],
+          rejected: []
+        },
+        list: []
+      }
+    };
   }
 };
 
@@ -424,20 +640,33 @@ const getLeaveStats = async ({ year, actor }) => {
 
   try {
     const where = {};
+
     if (year) {
       where.createdAt = {
-        [Op.between]: [new Date(`${year}-01-01`), new Date(`${year}-12-31`)]
+        [Op.between]: [
+          new Date(`${year}-01-01`),
+          new Date(`${year}-12-31`)
+        ]
       };
     }
 
     const [total, approved, pending, rejected] = await Promise.all([
-      LeaveRequest.count({ where }),
-      LeaveRequest.count({ where: { ...where, status: 'Approved' } }),
-      LeaveRequest.count({ where: { ...where, status: 'Pending' } }),
-      LeaveRequest.count({ where: { ...where, status: 'Rejected' } }),
+      LeaveRequest.findAll({ where }),
+      LeaveRequest.findAll({ where: { ...where, status: 'Approved' } }),
+      LeaveRequest.findAll({ where: { ...where, status: 'Pending' } }),
+      LeaveRequest.findAll({ where: { ...where, status: 'Rejected' } }),
     ]);
 
-    return { success: true, statusCode: 200, data: { total, approved, pending, rejected } };
+    return {
+      success: true,
+      statusCode: 200,
+      data: {
+        total,
+        approved,
+        pending,
+        rejected
+      }
+    };
 
   } catch (error) {
     logger.error({ event: 'GET_LEAVE_STATS_FAILED', error: error.message });
@@ -521,7 +750,7 @@ module.exports = {
   managerDecision,
   cancelLeave,
   listMyLeaves,
-  listPendingLeavesForManager,
+  listPendingLeaves,
   listTeamLeaves,
   findLeaveRequestById,
   getMyLeaveBalance,
