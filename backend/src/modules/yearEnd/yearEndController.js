@@ -17,6 +17,7 @@ const listSummaries = asyncHandler(async (req, res) => {
     year,
     actor: req.user                     // FIX: pass actor
   });
+  console.log(result)
   return res.status(result.success ? 200 : (result.statusCode || 400)).json(result);
 });
 
