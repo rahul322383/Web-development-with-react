@@ -1,10 +1,19 @@
-// src/components/ui/Card.jsx
-import React from 'react';
-
-export const Card = ({ children, className = '', ...props }) => {
+export const Card = ({
+  children,
+  className = "",
+  onClick,
+  ...props
+}) => {
   return (
     <div
-      className={`bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow duration-200 ${className}`}
+      onClick={onClick}
+      className={`
+        bg-white dark:bg-gray-800 
+        border border-gray-200 dark:border-gray-700 
+        rounded-xl shadow-sm 
+        hover:shadow-md transition-shadow duration-200
+        ${className}
+      `}
       {...props}
     >
       {children}
