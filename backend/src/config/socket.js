@@ -1,11 +1,6 @@
 'use strict';
 
-/**
- * src/config/socket.js
- *
- * FIX: sendNotification was using `user_${userId}` but socket.join uses `user:${userId}`
- * This meant NO notifications ever reached the client. Fixed to use consistent `user:${userId}`.
- */
+
 
 const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
@@ -55,17 +50,14 @@ const initSocket = (server) => {
     socket.emit('CONNECTED', { success: true, userId, socketId: socket.id });
 
     socket.on('disconnect', () => {
-      logger.debug({ event: 'SOCKET_DISCONNECTED', userId, socketId: socket.id });
+      // logger.debug({ event: 'SOCKET_DISCONNECTED', userId, socketId: socket.id });
     });
   });
 
   logger.info('Socket.IO initialised');
 };
 
-/**
- * Send a real-time notification to one user (all their devices/tabs).
- * ✅ FIX: was `user_${userId}` — now correctly `user:${userId}`
- */
+
 const sendNotification = (userId, payload) => {
   if (!io) return;
   io.to(`user:${userId}`).emit('NOTIFICATION', {
