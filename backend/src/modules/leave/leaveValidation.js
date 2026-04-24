@@ -16,12 +16,6 @@ const managerDecisionSchema = Joi.object({
   decisionNote: Joi.string().trim().max(500).optional().allow(''),
 });
 
-const validate = (schema, data) => {
-  const { error, value } = schema.validate(data, { abortEarly: false, stripUnknown: true });
-  if (error) {
-    return { valid: false, message: error.details.map(d => d.message).join(', ') };
-  }
-  return { valid: true, value };
-};
 
-module.exports = { applyLeaveSchema, managerDecisionSchema, validate };
+
+module.exports = { applyLeaveSchema, managerDecisionSchema};
