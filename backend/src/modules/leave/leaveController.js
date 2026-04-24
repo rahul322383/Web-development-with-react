@@ -44,7 +44,49 @@ const applyLeave = asyncHandler(async (req, res) => {
   return res.status(result.success ? 201 : (result.statusCode || 400)).json(result);
 });
 
+// const reviewLeave = asyncHandler(async (req, res) => {
+//   const result = await leaveService.managerDecision({
+//     managerId: req.user.id,
+//     role: req.user.role,
+//     requestId: Number(req.params.id),
+//     status: req.body.status,
+//     decisionNote: req.body.decisionNote,
+//     ipAddress: req.ip,
+//     actor: req.user                          // FIX: pass actor
+//   });
+
+//   if (result.success) {
+//     const leaveRequest = result.data;
+
+//     sendNotification(leaveRequest.employeeId, {
+//       type: `LEAVE_${leaveRequest.status.toUpperCase()}`,
+//       title: `Leave ${leaveRequest.status}`,
+//       message: `Your leave from ${leaveRequest.startDate} to ${leaveRequest.endDate} has been ${leaveRequest.status.toLowerCase()}.`,
+//       leaveId: leaveRequest.id,
+//       status: leaveRequest.status,
+//       decisionNote: req.body.decisionNote,
+//       days: leaveRequest.daysRequested
+//     });
+
+//     // Balance updates, HR notifications, team notifications
+//     // are handled via eventBus listeners in the service
+//   }
+
+//   return res.status(result.success ? 200 : (result.statusCode || 400)).json(result);
+// });
+
+
+
 const reviewLeave = asyncHandler(async (req, res) => {
+  const allowedRoles = ['Manager', 'Admin'];
+
+  if (!allowedRoles.includes(req.user.role)) {
+    return res.status(403).json({
+      success: false,
+      message: 'Access denied: Only Manager or Admin can review leaves',
+    });
+  }
+
   const result = await leaveService.managerDecision({
     managerId: req.user.id,
     role: req.user.role,
@@ -52,7 +94,7 @@ const reviewLeave = asyncHandler(async (req, res) => {
     status: req.body.status,
     decisionNote: req.body.decisionNote,
     ipAddress: req.ip,
-    actor: req.user                          // FIX: pass actor
+    actor: req.user
   });
 
   if (result.success) {
@@ -67,9 +109,6 @@ const reviewLeave = asyncHandler(async (req, res) => {
       decisionNote: req.body.decisionNote,
       days: leaveRequest.daysRequested
     });
-
-    // Balance updates, HR notifications, team notifications
-    // are handled via eventBus listeners in the service
   }
 
   return res.status(result.success ? 200 : (result.statusCode || 400)).json(result);
@@ -117,13 +156,32 @@ const listMyLeaves = asyncHandler(async (req, res) => {
   return res.status(result.success ? 200 : (result.statusCode || 400)).json(result);
 });
 
-const listPendingForManager = asyncHandler(async (req, res) => {
-  const result = await leaveService.listPendingLeavesForManager(
-    req.user.id,
-    req.user                                 // FIX: pass actor
-  );
+// const listPendingForManager = asyncHandler(async (req, res) => {
+//   const { limit = 10, page = 1 } = req.query;
+
+//   const result = await leaveService.listPendingLeavesForManager(
+//     req.user.id,
+//     req.user,
+//     { limit: Number(limit), page: Number(page) }
+//   );
+
+//   return res.status(result.success ? 200 : (result.statusCode || 400)).json(result);
+// });
+
+
+const listPendingLeaves = asyncHandler(async (req, res) => {
+  const { limit = 10, page = 1 } = req.query;
+  const actor = req.user;
+
+  const result = await leaveService.listPendingLeaves({
+    actor,
+    limit: Number(limit),
+    page: Number(page)
+  });
+
   return res.status(result.success ? 200 : (result.statusCode || 400)).json(result);
 });
+
 
 const getLeaveBalance = asyncHandler(async (req, res) => {
   const result = await leaveService.getMyLeaveBalance(
@@ -142,11 +200,26 @@ const getLeaveById = asyncHandler(async (req, res) => {
 });
 
 const listTeamLeaves = asyncHandler(async (req, res) => {
-  const result = await leaveService.listTeamLeaves(
-    req.user.id,
-    req.user                                 // FIX: pass actor
-  );
-  return res.status(result.success ? 200 : (result.statusCode || 400)).json(result);
+  const managerId = req.user?.id;
+
+
+  if (!managerId) {
+    return res.status(400).json({
+      success: false,
+      message: "Manager ID missing in request"
+    });
+  }
+
+  const result = await leaveService.listTeamLeaves({
+    managerId,
+    status: req.query.status,
+    limit: req.query.limit,
+    page: req.query.page
+  });
+
+  return res
+    .status(result.success ? 200 : (result.statusCode || 400))
+    .json(result);
 });
 
 const getDashboardSummary = asyncHandler(async (req, res) => {
@@ -179,7 +252,7 @@ module.exports = {
   reviewLeave,
   cancelLeave,
   listMyLeaves,
-  listPendingForManager,
+  listPendingLeaves,
   getLeaveBalance,
   getLeaveById,
   listTeamLeaves,
