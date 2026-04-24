@@ -78,9 +78,11 @@ const listEmployeeLeavesWithCursor = async ({ employeeId, cursor, limit }) => {
   });
 };
 
-const listPendingManagerLeaves = async (managerId) => {
-  return LeaveRequest.findAll({
-    where: { managerId },
+
+
+const listPendingLeaves = async (where, { limit = 10, offset = 0 }) => {
+  return LeaveRequest.findAndCountAll({
+    where,
     include: [
       {
         model: User,
@@ -95,9 +97,41 @@ const listPendingManagerLeaves = async (managerId) => {
         ]
       }
     ],
-    order: [['createdAt', 'DESC']]
+    order: [['createdAt', 'DESC']],
+    limit,
+    offset
   });
 };
+
+
+// const listPendingManagerLeaves = async (
+//   managerId,
+//   { limit = 10, offset = 0 } = {}
+// ) => {
+//   return LeaveRequest.findAndCountAll({
+//     where: {
+//       managerId,
+//       status: 'Pending'
+//     },
+//     include: [
+//       {
+//         model: User,
+//         as: 'employee',
+//         attributes: [
+//           'id',
+//           'firstName',
+//           'lastName',
+//           'email',
+//           'employeeCode',
+//           'department'
+//         ]
+//       }
+//     ],
+//     order: [['createdAt', 'DESC']],
+//     limit,
+//     offset
+//   });
+// };
 
 const listTeamLeaves = async ({
   managerId,
@@ -117,7 +151,7 @@ const listTeamLeaves = async ({
       {
         model: User,
         as: 'employee',
-        attributes: ['id', 'firstName', 'lastName', 'email']
+        attributes: ['id', 'firstName', 'lastName', 'email', 'employeeCode', 'department']
       }
     ],
     order: [['createdAt', 'DESC']],
@@ -197,7 +231,7 @@ module.exports = {
   findLeaveRequestById,
   updateLeaveRequest,
   listEmployeeLeavesWithCursor,
-  listPendingManagerLeaves,
+  listPendingLeaves,
   listTeamLeaves,
   listApprovedManagerLeaves,
   getDashboardSummary,
