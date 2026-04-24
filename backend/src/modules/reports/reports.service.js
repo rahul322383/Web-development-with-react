@@ -27,11 +27,21 @@ const safe = async (fn, event, extra = {}) => {
 
 const getEmployeeReport = async (query) => {
     const { from, to } = query.from && query.to ? query : defaultRange();
+
     return safe(async () => ({
-        summary: (await repo.getEmployeeSummary())[0],
+
+        // ❌ remove summary completely if you want pure full data
+        // summary: (await repo.getEmployeeSummary())[0],
+
         byDepartment: await repo.getEmployeesByDepartment(),
+
         byRole: await repo.getEmployeesByRole(),
+
         newHires: await repo.getNewHires(from, to),
+
+        // 🔥 optional full flat list
+        list: await repo.getAllEmployees(),
+
     }), 'EMPLOYEE_REPORT_FAILED');
 };
 
@@ -74,24 +84,38 @@ const getExpenseReport = async (query) => {
 
 const getDashboard = async (query) => {
     const { from, to } = query.from && query.to ? query : defaultRange();
+
     return safe(async () => ({
         employees: {
             summary: (await repo.getEmployeeSummary())[0],
             byDepartment: await repo.getEmployeesByDepartment(),
             byRole: await repo.getEmployeesByRole(),
+            list: await repo.getAllEmployees(), // 🔥 full data
         },
+
         payroll: {
             summary: (await repo.getPayrollSummary(from, to))[0],
             trend: await repo.getPayrollTrend(from, to),
+            byDepartment: await repo.getPayrollByDepartment(from, to),
+            list: await repo.getAllPayrolls(from, to), // 🔥 full data
         },
+
         leave: {
             summary: (await repo.getLeaveSummary(from, to))[0],
-            byStatus: await repo.getLeaveByStatus(from, to),  // ✅ fixed
+            byStatus: await repo.getLeaveByStatus(from, to),
+            trend: await repo.getLeaveTrend(from, to),
+            topUsers: await repo.getTopLeaveUsers(from, to),
+            list: await repo.getAllLeaves(from, to), // 🔥 full data
         },
+
         expenses: {
             summary: (await repo.getExpenseSummary(from, to))[0],
             byCategory: await repo.getExpenseByCategory(from, to),
+            trend: await repo.getExpenseTrend(from, to),
+            topSpenders: await repo.getTopSpenders(from, to),
+            list: await repo.getAllExpenses(from, to), // 🔥 full data
         },
+
     }), 'DASHBOARD_FAILED');
 };
 
