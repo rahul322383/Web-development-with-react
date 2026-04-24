@@ -1,41 +1,34 @@
 // DepartmentDashboard.jsx
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Users, 
-  UserCheck, 
-  Briefcase, 
-  Search, 
-  Grid, 
-  List, 
-  Moon,
-  Sun,
+import {
+  Users,
+  UserCheck,
+  Briefcase,
+  Search,
+  Grid,
+  List,
   RefreshCw,
   Filter,
-  X
+  X,
+  Building2,
+  ChevronDown
 } from 'lucide-react';
-
-// Import your existing components
 import { userApi } from '../api/userApi';
-// import { ThemeContext } from '../context/ThemeContext';
-import { 
-  LoadingSpinner, 
-  formatDate,
-  getStatusIcon,
-  StatCard, 
-  StatCardSkeleton, 
-  TableSkeleton, 
-  EmptyState, 
-  getStatusBadgeStyle, 
-  AlertMessage,
+import {
+  LoadingSpinner,
+  StatCard,
+  StatCardSkeleton,
+  TableSkeleton,
+  EmptyState,
+  ErrorState,
   UserCard,
-  UserTable,
-  ErrorState 
+  UserTable
 } from '../components/ui/StatCardSkeleton';
 
 const DepartmentDashboard = () => {
-  // State Management
-  const [selectedDepartment, setSelectedDepartment] = useState('it');
+  // State
+  const [selectedDepartment, setSelectedDepartment] = useState('Engineering');
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -49,18 +42,19 @@ const DepartmentDashboard = () => {
   const [roleFilter, setRoleFilter] = useState('all');
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+  const [availableDepartments, setAvailableDepartments] = useState([]);
 
-  // Available departments (matching API endpoint pattern)
-  const departments = [
-    { id: 'it', name: 'IT Department', icon: '💻' },
-    { id: 'hr', name: 'HR Department', icon: '👥' },
-    { id: 'finance', name: 'Finance Department', icon: '💰' },
-    { id: 'marketing', name: 'Marketing Department', icon: '📢' },
-    { id: 'sales', name: 'Sales Department', icon: '📊' },
-    { id: 'operations', name: 'Operations Department', icon: '⚙️' }
-  ];
+  // --- Department list (can be fetched from an API or hardcoded) ---
+  const departmentList = useMemo(() => [
+    { id: 'Engineering', name: 'Engineering', icon: '⚙️' },
+    { id: 'Marketing', name: 'Marketing', icon: '📢' },
+    { id: 'Sales', name: 'Sales', icon: '📊' },
+    { id: 'Finance', name: 'Finance', icon: '💰' },
+    { id: 'HR', name: 'Human Resources', icon: '👥' },
+    { id: 'Operations', name: 'Operations', icon: '🔧' }
+  ], []);
 
-  // Debounce search term
+  // Debounce search input
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearchTerm(searchTerm);
@@ -68,38 +62,57 @@ const DepartmentDashboard = () => {
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
-  // Fetch users based on selected department using your userApi
+  // Fetch users by department using your userApi
   const fetchUsersByDepartment = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      
-      // Using your existing userApi method
-      const data = await userApi.getUsersByDepartment(selectedDepartment);
-      
-      // Handle the response structure
-      if (data && Array.isArray(data)) {
-        setUsers(data);
-      } else if (data && data.data && Array.isArray(data.data)) {
-        setUsers(data.data);
-      } else {
-        setUsers([]);
+
+      // Call the API endpoint (e.g., /users/department/Engineering)
+      const response = await userApi.getUsersByDepartment(selectedDepartment);
+
+      // Handle different possible response shapes (array, or { data: [] })
+      let userList = [];
+      if (Array.isArray(response)) {
+        userList = response;
+      } else if (response?.data && Array.isArray(response.data)) {
+        userList = response.data;
+      } else if (response?.users) {
+        userList = response.users;
       }
+
+      // Transform backend snake_case to frontend camelCase
+      const transformed = userList.map(u => ({
+        id: u.id,
+        employeeCode: u.employee_code,
+        roleId: u.role_id,
+        firstName: u.first_name,
+        lastName: u.last_name,
+        email: u.email,
+        managerId: u.manager_id,
+        department: u.department,
+        baseSalary: u.base_salary,
+        isActive: u.is_active === 1 || u.is_active === true,
+        createdAt: u.created_at,
+        updatedAt: u.updated_at,
+        role: getRoleFromId(u.role_id) // helper to get role string
+      }));
+
+      setUsers(transformed);
     } catch (err) {
-      console.error('Error fetching users:', err);
-      setError(err.message || 'An error occurred while fetching users');
+      console.error('Error fetching department users:', err);
+      setError(err.message || 'Failed to load department data');
       setUsers([]);
     } finally {
       setLoading(false);
     }
   }, [selectedDepartment]);
 
-  // Fetch when department changes
   useEffect(() => {
     fetchUsersByDepartment();
   }, [fetchUsersByDepartment]);
 
-  // Handle window resize
+  // Window resize → switch view mode
   useEffect(() => {
     const handleResize = () => {
       setViewMode(window.innerWidth < 768 ? 'grid' : 'table');
@@ -108,74 +121,84 @@ const DepartmentDashboard = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Filter and search users
+  // Helper: role id → string
+  const getRoleFromId = (roleId) => {
+    switch (roleId) {
+      case 1: return 'employee';
+      case 2: return 'manager';
+      case 5: return 'admin';
+      default: return 'unknown';
+    }
+  };
+
+  // Filter and search
   const filteredUsers = useMemo(() => {
     return users.filter(user => {
       if (roleFilter !== 'all' && user.role !== roleFilter) return false;
       if (debouncedSearchTerm) {
-        const searchLower = debouncedSearchTerm.toLowerCase();
+        const term = debouncedSearchTerm.toLowerCase();
         const fullName = `${user.firstName} ${user.lastName}`.toLowerCase();
-        return fullName.includes(searchLower) || user.email.toLowerCase().includes(searchLower);
+        return fullName.includes(term) || user.email.toLowerCase().includes(term);
       }
       return true;
     });
   }, [users, roleFilter, debouncedSearchTerm]);
 
-  // Calculate statistics
+  // Stats
   const stats = useMemo(() => ({
     totalEmployees: users.length,
     activeUsers: users.filter(u => u.isActive).length,
     managementUsers: users.filter(u => u.role === 'manager' || u.role === 'admin').length
   }), [users]);
 
-  // Clear all filters
+  // Clear filters
   const clearFilters = () => {
     setSearchTerm('');
     setRoleFilter('all');
     setDebouncedSearchTerm('');
+    setShowFilters(false);
   };
 
-  // Get current department name
-  const currentDepartment = departments.find(d => d.id === selectedDepartment)?.name || selectedDepartment;
+  // Get current department label
+  const currentDeptLabel = departmentList.find(d => d.id === selectedDepartment)?.name || selectedDepartment;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        
+
         {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
-        >
+        <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+              <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-3">
+                <Building2 className="w-8 h-8 text-blue-600" />
                 Department Dashboard
               </h1>
               <p className="text-gray-600 dark:text-gray-400">
-                View and manage employees across different departments
+                Manage employees by department
               </p>
             </div>
-            
-            {/* <div className="flex items-center gap-3">
-              <ThemeToggle />
-            </div> */}
+            <button
+              onClick={fetchUsersByDepartment}
+              className="inline-flex items-center px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Refresh
+            </button>
           </div>
         </motion.div>
 
         {/* Department Tabs */}
         <div className="mb-6 overflow-x-auto">
           <div className="flex gap-2 pb-2 min-w-max">
-            {departments.map((dept) => (
+            {departmentList.map((dept) => (
               <button
                 key={dept.id}
                 onClick={() => setSelectedDepartment(dept.id)}
-                className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 ${
-                  selectedDepartment === dept.id
+                className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 ${selectedDepartment === dept.id
                     ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30'
                     : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700'
-                }`}
+                  }`}
               >
                 <span>{dept.icon}</span>
                 <span>{dept.name}</span>
@@ -201,11 +224,10 @@ const DepartmentDashboard = () => {
           {/* Filter Toggle */}
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className={`px-4 py-2.5 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 ${
-              showFilters || roleFilter !== 'all' || searchTerm
+            className={`px-4 py-2.5 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 ${showFilters || roleFilter !== 'all' || searchTerm
                 ? 'bg-blue-600 text-white'
                 : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-700'
-            }`}
+              }`}
           >
             <Filter className="w-4 h-4" />
             Filters
@@ -220,21 +242,19 @@ const DepartmentDashboard = () => {
           <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
             <button
               onClick={() => setViewMode('grid')}
-              className={`p-2 rounded-md transition-all ${
-                viewMode === 'grid'
+              className={`p-2 rounded-md transition-all ${viewMode === 'grid'
                   ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm'
                   : 'text-gray-500 hover:text-gray-700'
-              }`}
+                }`}
             >
               <Grid className="w-4 h-4" />
             </button>
             <button
               onClick={() => setViewMode('table')}
-              className={`p-2 rounded-md transition-all ${
-                viewMode === 'table'
+              className={`p-2 rounded-md transition-all ${viewMode === 'table'
                   ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm'
                   : 'text-gray-500 hover:text-gray-700'
-              }`}
+                }`}
             >
               <List className="w-4 h-4" />
             </button>
@@ -267,7 +287,7 @@ const DepartmentDashboard = () => {
                       <option value="employee">Employee</option>
                     </select>
                   </div>
-                  
+
                   {(roleFilter !== 'all' || searchTerm) && (
                     <button
                       onClick={clearFilters}
@@ -283,7 +303,7 @@ const DepartmentDashboard = () => {
           )}
         </AnimatePresence>
 
-        {/* Statistics Cards - Using your StatCard component */}
+        {/* Statistics Cards */}
         {loading ? (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
             <StatCardSkeleton />
@@ -294,11 +314,11 @@ const DepartmentDashboard = () => {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
             <StatCard icon={Users} title="Total Employees" value={stats.totalEmployees} color="total" />
             <StatCard icon={UserCheck} title="Active Users" value={stats.activeUsers} color="approved" />
-            <StatCard icon={Briefcase} title="Management Team" value={stats.managementUsers} color="pending" />
+            <StatCard icon={Briefcase} title="Management" value={stats.managementUsers} color="pending" />
           </div>
         )}
 
-        {/* Main Content - Using your existing UserTable and UserCard components */}
+        {/* Main Content */}
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
           {loading ? (
             viewMode === 'table' ? <TableSkeleton /> : (
@@ -313,8 +333,8 @@ const DepartmentDashboard = () => {
           ) : error ? (
             <ErrorState error={error} onRetry={fetchUsersByDepartment} />
           ) : filteredUsers.length === 0 ? (
-            <EmptyState 
-              hasFilters={!!(searchTerm || roleFilter !== 'all')} 
+            <EmptyState
+              hasFilters={!!(searchTerm || roleFilter !== 'all')}
               onRefresh={clearFilters}
             />
           ) : (
@@ -332,10 +352,10 @@ const DepartmentDashboard = () => {
                   </div>
                 </div>
               )}
-              
+
               <div className="px-6 py-3 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Showing {filteredUsers.length} of {users.length} employees in {currentDepartment}
+                  Showing {filteredUsers.length} of {users.length} employees in {currentDeptLabel}
                 </p>
               </div>
             </>
