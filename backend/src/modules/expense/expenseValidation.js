@@ -26,21 +26,12 @@ const financeReviewSchema = Joi.object({
   paymentStatus: Joi.string().valid('Processing', 'Paid').optional(),
 });
 
-const validate = (schema, data) => {
-  const { error, value } = schema.validate(data, { abortEarly: false, stripUnknown: true });
-  if (error) {
-    return {
-      valid: false,
-      message: error.details.map(d => d.message).join(', '),
-    };
-  }
-  return { valid: true, value };
-};
+
 
 module.exports = {
   submitExpenseSchema,
   managerReviewSchema,
   financeReviewSchema,
-  validate,
+ 
   ALLOWED_CURRENCIES,
 };
