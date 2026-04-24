@@ -22,11 +22,11 @@ const findUserById = (id) =>
 //   Role.findOne({ where: { name }, transaction });
 
 const findRoleByName = async (roleName, transaction = null) => {
-  console.log('Looking for role:', roleName);
+ 
 
-  // ADD THIS 👇
+  
   const allRoles = await Role.findAll();
-  console.log('All roles in DB:', JSON.stringify(allRoles, null, 2));
+
 
   return await Role.findOne({ where: { name: roleName }, transaction });
 };
