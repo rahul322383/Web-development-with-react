@@ -8,7 +8,7 @@ const { yearSchema } = require('./yearEndValidation');
 const router = express.Router();
 router.use(authenticate);
 
-router.get('/', authorize('Admin', 'HR', 'Finance'), yearEndController.listSummaries);
-router.post('/generate', authorize('Admin', 'Finance'), validate(yearSchema), yearEndController.generateSummary);
+router.get('/', authorize('Admin', 'HR', 'Finance', 'Manager'), yearEndController.listSummaries);
+router.post('/generate', authorize('Admin', 'HR', 'Finance', 'Manager'), validate(yearSchema), yearEndController.generateSummary);
 
 module.exports = router;
