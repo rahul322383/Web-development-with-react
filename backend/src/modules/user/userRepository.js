@@ -1,9 +1,11 @@
 
 'use strict';
 
-const { Op, fn, col } = require('sequelize');
+const { Op, fn, col, QueryTypes } = require('sequelize');
 const { User, LeaveRequest, Expense, Payroll } = require('../../database/initModels');
 const { formatMonthly, buildPagination, cleanLeave, cleanExpense } = require('./userFormatter');
+const sequelize = require('../../database/sequelize');
+
 
 const buildDateRange = (year) => {
   if (!Number.isInteger(year)) {
@@ -315,7 +317,31 @@ const findUsers = async ({ limit, offset, search }) => {
   });
 };
 
+const getUsersByDepartment = (department) => {
+  return sequelize.query(`
+    SELECT 
+      id,
+      employee_code,
+      role_id,
+      first_name,
+      last_name,
+      email,
+      manager_id,
+      department,
+      base_salary,
+      is_active,
+      created_at,
+      updated_at
+    FROM users
+    WHERE LOWER(department) = :department
+  `, {
+    replacements: { department: department.toLowerCase() },
+    type: QueryTypes.SELECT
+  });
+};
+
 module.exports = {
+  getUsersByDepartment,
   findUsers,
   getSummaryStats,
   getChartData,
