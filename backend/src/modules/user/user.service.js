@@ -306,10 +306,17 @@ const getUsersByDepartment = async (department, actor) => {
   if (!validation.valid) return fail(validation.message);
 
   try {
-    const users = await userRepository.getUsersByDepartment(validation.value.department);
-    return { success: true, statusCode: 200, data: users };
+    const users = await userRepository.getUsersByDepartment(
+      validation.value.department
+    );
+
+    return users; // ✅ ONLY DATA
   } catch (error) {
-    return handleError('GET_USERS_BY_DEPARTMENT_FAILED', error, 'Failed to fetch department users');
+    return handleError(
+      'GET_USERS_BY_DEPARTMENT_FAILED',
+      error,
+      'Failed to fetch department users'
+    );
   }
 };
 
