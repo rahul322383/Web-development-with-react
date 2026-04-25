@@ -1,8 +1,10 @@
+
+
 import axios from 'axios';
 
 const API_BASE_URL = 'http://localhost:8001/api/v1';
 
-const axiosInstance = axios.create({
+const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json'
@@ -21,8 +23,8 @@ const addSubscriber = (cb) => {
   subscribers.push(cb);
 };
 
-// 🔥 REQUEST
-axiosInstance.interceptors.request.use(
+// 🔐 REQUEST
+api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('accessToken');
     if (token) config.headers.Authorization = `Bearer ${token}`;
@@ -31,8 +33,8 @@ axiosInstance.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// 🔥 RESPONSE
-axiosInstance.interceptors.response.use(
+// 🔁 RESPONSE (refresh token logic)
+api.interceptors.response.use(
   (res) => res,
   async (error) => {
     const originalRequest = error.config;
@@ -59,7 +61,7 @@ axiosInstance.interceptors.response.use(
       return new Promise((resolve) => {
         addSubscriber((token) => {
           originalRequest.headers.Authorization = `Bearer ${token}`;
-          resolve(axiosInstance(originalRequest));
+          resolve(api(originalRequest));
         });
       });
     }
@@ -76,13 +78,13 @@ axiosInstance.interceptors.response.use(
       localStorage.setItem('accessToken', accessToken);
       localStorage.setItem('refreshToken', newRefreshToken);
 
-      axiosInstance.defaults.headers.Authorization = `Bearer ${accessToken}`;
+      api.defaults.headers.Authorization = `Bearer ${accessToken}`;
 
       onRefreshed(accessToken);
 
       originalRequest.headers.Authorization = `Bearer ${accessToken}`;
 
-      return axiosInstance(originalRequest);
+      return api(originalRequest);
 
     } catch {
       window.dispatchEvent(new Event('logout'));
@@ -94,4 +96,4 @@ axiosInstance.interceptors.response.use(
   }
 );
 
-export default axiosInstance;
+export default api;
