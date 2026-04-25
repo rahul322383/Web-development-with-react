@@ -820,8 +820,29 @@ const LoadingState = ({ message = 'Loading...' }) => (
     <p className="text-gray-600 dark:text-gray-400 mt-6 font-medium">{message}</p>
   </div>
 );
+
+const SkeletonLoader = ({ rows = 5 }) => (
+    <div className="space-y-4 p-6">
+        {Array.from({ length: rows }).map((_, i) => (
+            <div key={i} className="animate-pulse">
+                <div className="bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200 dark:from-gray-700 dark:via-gray-600 dark:to-gray-700 h-14 rounded-xl" />
+            </div>
+        ))}
+    </div>
+);
+
+ const RoleGuard = ({ children, allowedRoles, user }) => {
+    if (!user?.role) return null;
+    const userRole = user.role.toLowerCase();
+    const hasAccess = allowedRoles.map(r => r.toLowerCase()).includes(userRole);
+
+    if (!hasAccess) return null;
+    return children;
+};
 export { 
   LoadingState,
+  RoleGuard,
+  SkeletonLoader,
 Modal,
   Pagination,
 ProgressBar,
