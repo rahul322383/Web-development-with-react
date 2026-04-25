@@ -64,8 +64,7 @@ export const Navbar = ({ onMenuClick, theme, onThemeToggle }) => {
   };
 
   const markAllAsRead = () => {
-    // Implement mark all as read functionality
-    console.log('Mark all as read');
+   
   };
 
   const handleNotificationClick = (notification) => {
