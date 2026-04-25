@@ -16,15 +16,10 @@
 //   Hash,
 //   Shield,
 //   AlertCircle,
-//   CheckCircle,
 //   ArrowRight,
-//   Home,
-//   Info,
-//   HelpCircle,
 //   Scale,
 //   Lock as LockIcon
 // } from 'lucide-react';
-// import { authApi } from '../api/authApi';
 // import { useAuth } from '../context/AuthContext';
 
 // // Reusable Input Field Component
@@ -187,7 +182,7 @@
 // // Main Component
 // const Register = () => {
 //   const navigate = useNavigate();
-//   const { login } = useAuth();
+//   const { register } = useAuth(); // ✅ Use register from AuthContext
   
 //   const [loading, setLoading] = useState(false);
 //   const [showPassword, setShowPassword] = useState(false);
@@ -284,23 +279,13 @@
 //         managerId: formData.managerId || undefined
 //       };
 
-// const response = await authApi.register(submitData);
-
-// const user = response.user || response.data?.user;
-// const accessToken = response.accessToken || response.data?.accessToken;
-// const refreshToken = response.refreshToken || response.data?.refreshToken;
-
-// setUser(user);
-// setIsAuthenticated(true);
-
-// localStorage.setItem('accessToken', accessToken);
-// if (refreshToken) {
-//   localStorage.setItem('refreshToken', refreshToken);
-// }
-
-//       toast.success('Registration successful! Welcome to HRMS');
-//       setTimeout(() => navigate('/dashboard'), 1000);
+//       // ✅ Use the register function from AuthContext
+//       const result = await register(submitData);
       
+//       if (result.success) {
+//         // Success toast is already shown in the register function
+//         setTimeout(() => navigate('/dashboard'), 1000);
+//       }
 //     } catch (error) {
 //       toast.error(error.response?.data?.message || 'Registration failed. Please try again.');
 //     } finally {
@@ -595,8 +580,6 @@
 //           </div>
 //         </motion.div>
 //       </div>
-
-      
 //     </div>
 //   );
 // };
@@ -653,13 +636,12 @@ const InputField = ({
       <div className="relative">
         {Icon && (
           <div className="absolute left-3 top-1/2 -translate-y-1/2 z-10">
-            <Icon className={`w-5 h-5 transition-colors duration-200 ${
-              error && touched
+            <Icon className={`w-5 h-5 transition-colors duration-200 ${error && touched
                 ? 'text-rose-500'
                 : isFocused
-                ? 'text-indigo-600 dark:text-indigo-400'
-                : 'text-slate-400'
-            }`} />
+                  ? 'text-indigo-600 dark:text-indigo-400'
+                  : 'text-slate-400'
+              }`} />
           </div>
         )}
 
@@ -672,10 +654,9 @@ const InputField = ({
             border-2 rounded-xl outline-none transition-all duration-200
             ${Icon ? 'pl-10' : 'pl-4'}
             ${showPasswordToggle ? 'pr-12' : 'pr-4'}
-            ${
-              error && touched
-                ? 'border-rose-500 focus:border-rose-500 ring-4 ring-rose-500/10'
-                : isFocused
+            ${error && touched
+              ? 'border-rose-500 focus:border-rose-500 ring-4 ring-rose-500/10'
+              : isFocused
                 ? 'border-indigo-600 dark:border-indigo-400 ring-4 ring-indigo-500/10'
                 : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
             }
@@ -690,10 +671,9 @@ const InputField = ({
           <label
             className={`
               absolute left-10 transition-all duration-200 pointer-events-none
-              ${
-                isFocused || hasValue
-                  ? 'text-xs -top-6 left-0 text-slate-500 dark:text-slate-400'
-                  : 'top-1/2 -translate-y-1/2 text-slate-400'
+              ${isFocused || hasValue
+                ? 'text-xs -top-6 left-0 text-slate-500 dark:text-slate-400'
+                : 'top-1/2 -translate-y-1/2 text-slate-400'
               }
               ${error && touched && !isFocused ? 'text-rose-500' : ''}
             `}
@@ -744,8 +724,9 @@ const PasswordStrength = ({ password }) => {
     if (pass.match(/[a-z]/)) score += 1;
     if (pass.match(/[A-Z]/)) score += 1;
     if (pass.match(/[0-9]/)) score += 1;
+    // Symbol is optional but gives extra point
     if (pass.match(/[^a-zA-Z0-9]/)) score += 1;
-    return score;
+    return Math.min(score, 5);
   };
 
   const strength = getStrength(password);
@@ -779,7 +760,7 @@ const PasswordStrength = ({ password }) => {
         </span>
       </div>
       <p className="text-xs text-slate-500 dark:text-slate-500">
-        Use at least 8 characters with uppercase, lowercase, numbers & symbols
+        At least 8 characters with uppercase, lowercase, and a number
       </p>
     </motion.div>
   );
@@ -788,8 +769,8 @@ const PasswordStrength = ({ password }) => {
 // Main Component
 const Register = () => {
   const navigate = useNavigate();
-  const { register } = useAuth(); // ✅ Use register from AuthContext
-  
+  const { register } = useAuth();
+
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
@@ -823,14 +804,26 @@ const Register = () => {
         return !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? 'Invalid email format' : '';
       case 'password':
         if (!value) return 'Password is required';
-        return value.length < 8 ? 'Password must be at least 8 characters' : '';
+        if (value.length < 8) return 'Password must be at least 8 characters';
+        if (value.length > 64) return 'Password must be at most 64 characters';
+        if (!/[a-z]/.test(value)) return 'Password must contain at least one lowercase letter';
+        if (!/[A-Z]/.test(value)) return 'Password must contain at least one uppercase letter';
+        if (!/[0-9]/.test(value)) return 'Password must contain at least one number';
+        return '';
       case 'role':
         return !value ? 'Role is required' : '';
       case 'department':
         return !value ? 'Department is required' : '';
       case 'baseSalary':
-        if (!value) return 'Base salary is required';
-        return value <= 0 ? 'Salary must be greater than 0' : '';
+        // Optional field, but if provided must be valid number
+        if (value && (isNaN(value) || parseFloat(value) <= 0)) {
+          return 'Salary must be a positive number';
+        }
+        return '';
+      case 'managerId':
+        // Optional field, but if provided must be valid number
+        if (value && isNaN(value)) return 'Manager ID must be a number';
+        return '';
       default:
         return '';
     }
@@ -838,11 +831,21 @@ const Register = () => {
 
   const validateForm = () => {
     const newErrors = {};
-    const requiredFields = ['employeeCode', 'firstName', 'lastName', 'email', 'password', 'role', 'department', 'baseSalary'];
+    // Required fields (baseSalary is NOT required)
+    const requiredFields = ['employeeCode', 'firstName', 'lastName', 'email', 'password', 'role', 'department'];
     requiredFields.forEach(key => {
       const error = validateField(key, formData[key]);
       if (error) newErrors[key] = error;
     });
+    // Validate optional fields if they have values
+    if (formData.baseSalary) {
+      const error = validateField('baseSalary', formData.baseSalary);
+      if (error) newErrors.baseSalary = error;
+    }
+    if (formData.managerId) {
+      const error = validateField('managerId', formData.managerId);
+      if (error) newErrors.managerId = error;
+    }
     return newErrors;
   };
 
@@ -862,9 +865,10 @@ const Register = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
+    // Mark required fields as touched
     const allTouched = {};
-    const requiredFields = ['employeeCode', 'firstName', 'lastName', 'email', 'password', 'role', 'department', 'baseSalary'];
+    const requiredFields = ['employeeCode', 'firstName', 'lastName', 'email', 'password', 'role', 'department'];
     requiredFields.forEach(key => { allTouched[key] = true; });
     setTouched(allTouched);
 
@@ -877,19 +881,33 @@ const Register = () => {
     }
 
     setLoading(true);
-    
+
     try {
+      // Build payload exactly as backend expects
       const submitData = {
-        ...formData,
-        baseSalary: parseFloat(formData.baseSalary),
-        managerId: formData.managerId || undefined
+        employeeCode: formData.employeeCode,
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        email: formData.email,
+        password: formData.password,
+        role: formData.role,
+        department: formData.department
       };
 
-      // ✅ Use the register function from AuthContext
+      // Add baseSalary only if provided (parse as float)
+      if (formData.baseSalary) {
+        submitData.baseSalary = parseFloat(formData.baseSalary);
+      }
+
+      // Add managerId only if role is Employee and value provided
+      if (formData.role === 'Employee' && formData.managerId) {
+        submitData.managerId = parseInt(formData.managerId, 10);
+      }
+
       const result = await register(submitData);
-      
+
       if (result.success) {
-        // Success toast is already shown in the register function
+        // Success toast already shown in register function
         setTimeout(() => navigate('/dashboard'), 1000);
       }
     } catch (error) {
@@ -901,7 +919,7 @@ const Register = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 dark:from-slate-950 dark:via-slate-950 dark:to-slate-950 relative overflow-hidden">
-      
+
       {/* Animated Background Elements */}
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute -top-40 -right-40 w-80 h-80 bg-indigo-300 dark:bg-indigo-900/20 rounded-full mix-blend-multiply dark:mix-blend-soft-light filter blur-3xl opacity-30 animate-blob" />
@@ -935,7 +953,7 @@ const Register = () => {
           className="max-w-4xl mx-auto"
         >
           <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-3xl shadow-2xl border border-slate-200/50 dark:border-slate-800/50 overflow-hidden">
-            
+
             {/* Header */}
             <div className="px-8 pt-8 pb-6 border-b border-slate-200 dark:border-slate-800">
               <div className="flex items-center gap-3 mb-4">
@@ -961,7 +979,7 @@ const Register = () => {
                   <User className="w-4 h-4" />
                   Personal Information
                 </h2>
-                
+
                 <div className="grid md:grid-cols-2 gap-6">
                   <InputField
                     label="Employee Code"
@@ -1096,7 +1114,7 @@ const Register = () => {
                   </div>
 
                   <InputField
-                    label="Base Salary"
+                    label="Base Salary (Optional)"
                     type="number"
                     name="baseSalary"
                     value={formData.baseSalary}
@@ -1105,7 +1123,6 @@ const Register = () => {
                     icon={DollarSign}
                     error={errors.baseSalary}
                     touched={touched.baseSalary}
-                    required
                   />
 
                   {formData.role === 'Employee' && (
