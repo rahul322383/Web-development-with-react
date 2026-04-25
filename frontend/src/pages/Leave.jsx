@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { leaveApi, cancelLeaveRequest } from '../api/leaveApi';
+import { leaveApi} from '../api/leaveApi';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -158,10 +158,10 @@ const calculateDays = (start, end) => {
   try {
     const startDate = new Date(start);
     const endDate = new Date(end);
-    
+
     startDate.setHours(0, 0, 0, 0);
     endDate.setHours(0, 0, 0, 0);
-    
+
     const diffTime = Math.abs(endDate - startDate);
     return Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
   } catch (error) {
@@ -226,18 +226,18 @@ const calculatePercentage = (value, total) => {
 // ==================== Custom Hooks ====================
 const useDebounce = (value, delay = 300) => {
   const [debouncedValue, setDebouncedValue] = useState(value);
-  
+
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedValue(value), delay);
     return () => clearTimeout(timer);
   }, [value, delay]);
-  
+
   return debouncedValue;
 };
 
 const useAuth = () => {
   const navigate = useNavigate();
-  
+
   const user = useMemo(() => {
     try {
       const userData = localStorage.getItem('user');
@@ -246,26 +246,26 @@ const useAuth = () => {
       return null;
     }
   }, []);
-  
+
   const hasRole = useCallback((allowedRoles) => {
     if (!user?.role) return false;
     const userRole = user.role.toLowerCase();
     return allowedRoles.map(r => r.toLowerCase()).includes(userRole);
   }, [user]);
-  
+
   const isManager = useMemo(() => {
     return hasRole(['manager', 'admin', 'hr']);
   }, [hasRole]);
-  
+
   useEffect(() => {
     const handleUnauthorized = () => {
       navigate('/login');
     };
-    
+
     window.addEventListener('unauthorized', handleUnauthorized);
     return () => window.removeEventListener('unauthorized', handleUnauthorized);
   }, [navigate]);
-  
+
   return { user, hasRole, isManager };
 };
 
@@ -274,9 +274,9 @@ const useLeaveBalance = () => {
     queryKey: [QUERY_KEYS.LEAVE_BALANCE],
     queryFn: async () => {
       const response = await leaveApi.getLeaveBalance({ requestId: 'leaveBalance' });
-      
+
       const responseData = response?.data?.data || response?.data || response;
-      
+
       return {
         id: responseData.id,
         employeeId: responseData.employeeId,
@@ -301,19 +301,19 @@ const useLeaveBalance = () => {
 
 const useMyLeaves = (filters = {}) => {
   const { status, page = PAGINATION.DEFAULT_PAGE, limit = PAGINATION.DEFAULT_LIMIT } = filters;
-  
+
   return useQuery({
     queryKey: [QUERY_KEYS.MY_LEAVES, { status, page, limit }],
     queryFn: async () => {
-      const response = await leaveApi.getMyLeaves({ 
+      const response = await leaveApi.getMyLeaves({
         requestId: 'myLeaves',
         status: status !== 'all' ? status : undefined,
         page,
         limit
       });
-      
+
       const responseData = response?.data?.data || response?.data || response;
-      
+
       return {
         leaves: responseData.leaves?.all || responseData.leaves || responseData || [],
         pagination: responseData.pagination || {
@@ -347,7 +347,7 @@ const usePendingLeaves = (enabled = false) => {
 
 const useApplyLeave = () => {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: async (leaveData) => {
       const response = await leaveApi.applyLeave({
@@ -356,11 +356,11 @@ const useApplyLeave = () => {
         reason: sanitizeInput(leaveData.reason),
         leaveType: leaveData.leaveType || 'annual'
       });
-      
+
       if (!response?.success && response?.success !== undefined) {
         throw new Error(response?.message || 'Failed to apply leave');
       }
-      
+
       return response?.data?.data || response?.data || response;
     },
     onSuccess: () => {
@@ -368,7 +368,7 @@ const useApplyLeave = () => {
         description: 'Your manager will review your request shortly.',
         icon: <CheckCircle className="h-4 w-4 text-emerald-500" />
       });
-      
+
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.MY_LEAVES] });
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.LEAVE_BALANCE] });
     },
@@ -382,18 +382,18 @@ const useApplyLeave = () => {
 
 const useReviewLeave = () => {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: async ({ leaveId, reviewData }) => {
       const response = await leaveApi.reviewLeave(leaveId, {
         status: reviewData.status,
         decisionNote: sanitizeInput(reviewData.decisionNote)
       });
-      
+
       if (!response?.success && response?.success !== undefined) {
         throw new Error(response?.message || 'Failed to review leave');
       }
-      
+
       return response;
     },
     onSuccess: (_, { reviewData }) => {
@@ -401,9 +401,9 @@ const useReviewLeave = () => {
         [LEAVE_STATUS.APPROVED]: 'Leave request approved successfully',
         [LEAVE_STATUS.REJECTED]: 'Leave request rejected'
       };
-      
+
       toast.success(statusMessages[reviewData.status] || 'Review submitted successfully');
-      
+
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.MY_LEAVES] });
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.PENDING_LEAVES] });
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.LEAVE_BALANCE] });
@@ -418,20 +418,20 @@ const useReviewLeave = () => {
 
 const useCancelLeave = () => {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: async (leaveId) => {
       const response = await leaveApi.cancelLeave(leaveId);
-      
+
       if (!response?.success && response?.success !== undefined) {
         throw new Error(response?.message || 'Failed to cancel leave');
       }
-      
+
       return response;
     },
     onSuccess: () => {
       toast.success('Leave request cancelled successfully');
-      
+
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.MY_LEAVES] });
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.PENDING_LEAVES] });
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.LEAVE_BALANCE] });
@@ -465,7 +465,7 @@ const Badge = ({ children, variant = 'default', className = '', icon: Icon }) =>
 
 const ProgressBar = ({ value, max = 100, color = 'indigo', showPercentage = true, height = 'h-2' }) => {
   const percentage = Math.min((value / max) * 100, 100);
-  
+
   const colors = {
     indigo: 'bg-indigo-600 dark:bg-indigo-500',
     emerald: 'bg-emerald-600 dark:bg-emerald-500',
@@ -474,11 +474,11 @@ const ProgressBar = ({ value, max = 100, color = 'indigo', showPercentage = true
     blue: 'bg-blue-600 dark:bg-blue-500',
     purple: 'bg-purple-600 dark:bg-purple-500'
   };
-  
+
   return (
     <div className="space-y-1.5">
       <div className={`w-full bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden ${height}`}>
-        <div 
+        <div
           className={`${colors[color]} ${height} rounded-full transition-all duration-500 ease-out`}
           style={{ width: `${percentage}%` }}
         />
@@ -504,29 +504,28 @@ const StatCard = ({ title, value, icon: Icon, trend, color = 'indigo', subtitle,
   };
 
   return (
-    <Card 
+    <Card
       className={`relative overflow-hidden group cursor-pointer transition-all duration-300 hover:shadow-xl hover:scale-[1.02] ${onClick ? 'cursor-pointer' : ''}`}
       onClick={onClick}
     >
       <div className={`absolute inset-0 bg-gradient-to-br ${colors[color]} opacity-0 group-hover:opacity-5 transition-opacity duration-300`} />
-      
+
       <div className="relative p-6">
         <div className="flex items-start justify-between mb-4">
           <div className={`p-3 rounded-xl bg-gradient-to-br ${colors[color]} shadow-lg`}>
             <Icon className="h-6 w-6 text-white" />
           </div>
           {trend && (
-            <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
-              trend > 0 
-                ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300' 
+            <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${trend > 0
+                ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
                 : 'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300'
-            }`}>
+              }`}>
               {trend > 0 ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
               {Math.abs(trend)}%
             </div>
           )}
         </div>
-        
+
         <div>
           <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">{title}</p>
           <p className="text-3xl font-bold text-gray-900 dark:text-white">{value}</p>
@@ -541,7 +540,7 @@ const StatCard = ({ title, value, icon: Icon, trend, color = 'indigo', subtitle,
 
 const Modal = ({ open, onClose, title, children, size = 'md', showClose = true }) => {
   if (!open) return null;
-  
+
   const sizes = {
     sm: 'max-w-md',
     md: 'max-w-lg',
@@ -549,12 +548,12 @@ const Modal = ({ open, onClose, title, children, size = 'md', showClose = true }
     xl: 'max-w-4xl',
     full: 'max-w-6xl'
   };
-  
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div 
-        className="fixed inset-0 bg-black/50 dark:bg-black/70 backdrop-blur-sm transition-opacity animate-in fade-in duration-200" 
-        onClick={onClose} 
+      <div
+        className="fixed inset-0 bg-black/50 dark:bg-black/70 backdrop-blur-sm transition-opacity animate-in fade-in duration-200"
+        onClick={onClose}
       />
       <div className={`relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full ${sizes[size]} max-h-[90vh] overflow-hidden transform transition-all animate-in zoom-in-95 duration-200`}>
         {title && (
@@ -562,8 +561,8 @@ const Modal = ({ open, onClose, title, children, size = 'md', showClose = true }
             <div className="flex justify-between items-center">
               <h2 className="text-xl font-semibold text-gray-900 dark:text-white">{title}</h2>
               {showClose && (
-                <button 
-                  onClick={onClose} 
+                <button
+                  onClick={onClose}
                   className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
                   aria-label="Close modal"
                 >
@@ -583,10 +582,10 @@ const Modal = ({ open, onClose, title, children, size = 'md', showClose = true }
 
 const Pagination = ({ currentPage, totalPages, onPageChange, totalItems, itemsPerPage }) => {
   if (totalPages <= 1) return null;
-  
+
   const startItem = (currentPage - 1) * itemsPerPage + 1;
   const endItem = Math.min(currentPage * itemsPerPage, totalItems);
-  
+
   return (
     <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
       <div className="flex-1 text-sm text-gray-700 dark:text-gray-300">
@@ -594,18 +593,18 @@ const Pagination = ({ currentPage, totalPages, onPageChange, totalItems, itemsPe
         <span className="font-medium">{endItem}</span> of{' '}
         <span className="font-medium">{totalItems}</span> results
       </div>
-      
+
       <div className="flex items-center gap-2">
-        <Button 
-          variant="outline" 
-          size="sm" 
-          onClick={() => onPageChange(currentPage - 1)} 
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onPageChange(currentPage - 1)}
           disabled={currentPage === 1}
           className="dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
         >
           <ChevronLeft className="h-4 w-4" />
         </Button>
-        
+
         <div className="flex items-center gap-1">
           {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
             let pageNum;
@@ -618,29 +617,28 @@ const Pagination = ({ currentPage, totalPages, onPageChange, totalItems, itemsPe
             } else {
               pageNum = currentPage - 2 + i;
             }
-            
+
             return (
               <Button
                 key={pageNum}
                 variant={currentPage === pageNum ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => onPageChange(pageNum)}
-                className={`w-8 h-8 ${
-                  currentPage === pageNum 
-                    ? 'bg-indigo-600 dark:bg-indigo-500 text-white' 
+                className={`w-8 h-8 ${currentPage === pageNum
+                    ? 'bg-indigo-600 dark:bg-indigo-500 text-white'
                     : 'dark:border-gray-600 dark:text-gray-300'
-                }`}
+                  }`}
               >
                 {pageNum}
               </Button>
             );
           })}
         </div>
-        
-        <Button 
-          variant="outline" 
-          size="sm" 
-          onClick={() => onPageChange(currentPage + 1)} 
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onPageChange(currentPage + 1)}
           disabled={currentPage === totalPages}
           className="dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
         >
@@ -706,7 +704,7 @@ const RoleGuard = ({ children, allowedRoles, user }) => {
   if (!user?.role) return null;
   const userRole = user.role.toLowerCase();
   const hasAccess = allowedRoles.map(r => r.toLowerCase()).includes(userRole);
-  
+
   if (!hasAccess) return null;
   return children;
 };
@@ -727,12 +725,12 @@ const LeaveBalanceOverview = ({ balance, isLoading }) => {
       </div>
     );
   }
-  
+
   if (!balance) return null;
-  
+
   const usedPercentage = calculatePercentage(balance.used, balance.totalAnnual);
   const remainingPercentage = calculatePercentage(balance.remaining, balance.totalAnnual);
-  
+
   const stats = [
     {
       title: 'Total Annual Leave',
@@ -767,7 +765,7 @@ const LeaveBalanceOverview = ({ balance, isLoading }) => {
       trend: null
     }
   ];
-  
+
   return (
     <>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -775,7 +773,7 @@ const LeaveBalanceOverview = ({ balance, isLoading }) => {
           <StatCard key={idx} {...stat} />
         ))}
       </div>
-      
+
       <Card className="p-6 mb-8 bg-gradient-to-br from-indigo-50 via-white to-purple-50 dark:from-indigo-950/20 dark:via-gray-800 dark:to-purple-950/20">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex-1">
@@ -787,17 +785,17 @@ const LeaveBalanceOverview = ({ balance, isLoading }) => {
                   <span className="text-gray-600 dark:text-gray-400">Remaining ({balance.remaining} days)</span>
                 </div>
                 <div className="flex h-4 rounded-full overflow-hidden bg-gray-200 dark:bg-gray-700">
-                  <div 
+                  <div
                     className="bg-gradient-to-r from-amber-500 to-amber-600 transition-all duration-500"
                     style={{ width: `${usedPercentage}%` }}
                   />
-                  <div 
+                  <div
                     className="bg-gradient-to-r from-emerald-500 to-emerald-600 transition-all duration-500"
                     style={{ width: `${remainingPercentage}%` }}
                   />
                 </div>
               </div>
-              
+
               <div className="grid grid-cols-3 gap-4 pt-4">
                 <div className="text-center">
                   <div className="inline-flex p-2 rounded-lg bg-amber-100 dark:bg-amber-900/30 mb-2">
@@ -823,12 +821,12 @@ const LeaveBalanceOverview = ({ balance, isLoading }) => {
               </div>
             </div>
           </div>
-          
+
           <div className="w-full sm:w-48 h-48 relative">
             <svg viewBox="0 0 100 100" className="w-full h-full">
               <circle cx="50" cy="50" r="40" fill="none" stroke="currentColor" strokeWidth="8" className="text-gray-200 dark:text-gray-700" />
-              <circle 
-                cx="50" cy="50" r="40" fill="none" stroke="url(#gradient)" strokeWidth="8" 
+              <circle
+                cx="50" cy="50" r="40" fill="none" stroke="url(#gradient)" strokeWidth="8"
                 strokeDasharray={`${usedPercentage * 2.51} 251`}
                 strokeDashoffset="0"
                 strokeLinecap="round"
@@ -857,7 +855,7 @@ const LeaveTableRow = ({ leave, onReview, onCancel, isManager }) => {
   const StatusIcon = STATUS_ICONS[leave.status] || Info;
   const statusColors = STATUS_COLORS[leave.status] || STATUS_COLORS[LEAVE_STATUS.PENDING];
   const isPending = leave.status === LEAVE_STATUS.PENDING;
-  
+
   return (
     <TableRow className={`group border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all duration-200 ${leave.isOptimistic ? 'opacity-70 animate-pulse' : ''}`}>
       <TableCell>
@@ -876,7 +874,7 @@ const LeaveTableRow = ({ leave, onReview, onCancel, isManager }) => {
           </span>
         </div>
       </TableCell>
-      
+
       <TableCell>
         <div className="flex items-center gap-2">
           <div className={`p-1.5 rounded-lg ${statusColors.bg}`}>
@@ -885,7 +883,7 @@ const LeaveTableRow = ({ leave, onReview, onCancel, isManager }) => {
           <span className="font-medium text-gray-900 dark:text-white">{leave.daysRequested} days</span>
         </div>
       </TableCell>
-      
+
       <TableCell className="max-w-xs">
         <div>
           <p className="text-gray-900 dark:text-white line-clamp-2" title={leave.reason}>
@@ -898,7 +896,7 @@ const LeaveTableRow = ({ leave, onReview, onCancel, isManager }) => {
           )}
         </div>
       </TableCell>
-      
+
       <TableCell>
         <Badge variant={STATUS_BADGE_VARIANTS[leave.status]} icon={StatusIcon}>
           {leave.status}
@@ -909,13 +907,13 @@ const LeaveTableRow = ({ leave, onReview, onCancel, isManager }) => {
           </p>
         )}
       </TableCell>
-      
+
       <TableCell>
         <div className="text-sm text-gray-600 dark:text-gray-400">
           {formatDate(leave.createdAt)}
         </div>
       </TableCell>
-      
+
       <TableCell>
         <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
           {isPending && (
@@ -929,7 +927,7 @@ const LeaveTableRow = ({ leave, onReview, onCancel, isManager }) => {
               Cancel
             </Button>
           )}
-          
+
           {isManager && isPending && (
             <Button
               size="sm"
@@ -940,7 +938,7 @@ const LeaveTableRow = ({ leave, onReview, onCancel, isManager }) => {
               Review
             </Button>
           )}
-          
+
           <Button
             size="sm"
             variant="ghost"
@@ -956,7 +954,7 @@ const LeaveTableRow = ({ leave, onReview, onCancel, isManager }) => {
 
 const LeaveTable = ({ leaves, onReview, onCancel, isManager }) => {
   if (!leaves || leaves.length === 0) return null;
-  
+
   return (
     <div className="overflow-x-auto">
       <Table>
@@ -972,12 +970,12 @@ const LeaveTable = ({ leaves, onReview, onCancel, isManager }) => {
         </TableHeader>
         <TableBody>
           {leaves.map(leave => (
-            <LeaveTableRow 
-              key={leave.id} 
-              leave={leave} 
-              onReview={onReview} 
-              onCancel={onCancel} 
-              isManager={isManager} 
+            <LeaveTableRow
+              key={leave.id}
+              leave={leave}
+              onReview={onReview}
+              onCancel={onCancel}
+              isManager={isManager}
             />
           ))}
         </TableBody>
@@ -989,7 +987,7 @@ const LeaveTable = ({ leaves, onReview, onCancel, isManager }) => {
 // ==================== Pending Approvals Components ====================
 const PendingApprovalRow = ({ leave, onReview }) => {
   const employee = leave.Employee || {};
-  
+
   return (
     <TableRow className="group border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all duration-200">
       <TableCell>
@@ -1005,7 +1003,7 @@ const PendingApprovalRow = ({ leave, onReview }) => {
           </div>
         </div>
       </TableCell>
-      
+
       <TableCell>
         <div className="flex flex-col">
           <span className="font-medium text-gray-900 dark:text-white">
@@ -1016,25 +1014,25 @@ const PendingApprovalRow = ({ leave, onReview }) => {
           </span>
         </div>
       </TableCell>
-      
+
       <TableCell>
         <Badge variant="warning" icon={Clock}>
           {leave.daysRequested} days
         </Badge>
       </TableCell>
-      
+
       <TableCell className="max-w-xs">
         <p className="text-gray-900 dark:text-white line-clamp-2" title={leave.reason}>
           {leave.reason}
         </p>
       </TableCell>
-      
+
       <TableCell>
         <div className="text-sm text-gray-600 dark:text-gray-400">
           {formatDate(leave.createdAt)}
         </div>
       </TableCell>
-      
+
       <TableCell>
         <div className="flex items-center justify-end gap-2">
           <Button
@@ -1070,7 +1068,7 @@ const PendingApprovalRow = ({ leave, onReview }) => {
 
 const PendingApprovalsTable = ({ pendingLeaves, onReview }) => {
   if (!pendingLeaves || pendingLeaves.length === 0) return null;
-  
+
   return (
     <div className="overflow-x-auto">
       <Table>
@@ -1102,17 +1100,17 @@ const ApplyLeaveForm = ({ balance, onSubmit, onCancel, isSubmitting }) => {
     reason: '',
     leaveType: 'annual'
   });
-  
-  const calculatedDays = useMemo(() => 
+
+  const calculatedDays = useMemo(() =>
     calculateDays(formData.startDate, formData.endDate),
     [formData.startDate, formData.endDate]
   );
-  
+
   const handleChange = useCallback((e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
   }, []);
-  
+
   const validateForm = useCallback(() => {
     if (!formData.startDate) {
       toast.error('Please select a start date');
@@ -1122,52 +1120,52 @@ const ApplyLeaveForm = ({ balance, onSubmit, onCancel, isSubmitting }) => {
       toast.error('Please select an end date');
       return false;
     }
-    
+
     const startDateObj = new Date(formData.startDate);
     const endDateObj = new Date(formData.endDate);
     const today = new Date();
-    
+
     startDateObj.setHours(0, 0, 0, 0);
     endDateObj.setHours(0, 0, 0, 0);
     today.setHours(0, 0, 0, 0);
-    
+
     if (startDateObj < today) {
       toast.error('Start date cannot be in the past');
       return false;
     }
-    
+
     if (startDateObj > endDateObj) {
       toast.error('End date must be after or equal to start date');
       return false;
     }
-    
+
     if (!formData.reason?.trim()) {
       toast.error('Please provide a reason for leave');
       return false;
     }
-    
+
     if (formData.reason.trim().length < 10) {
       toast.error('Please provide a detailed reason (at least 10 characters)');
       return false;
     }
-    
+
     if (balance && calculatedDays > balance.remaining) {
       toast.error(`You only have ${balance.remaining} days remaining. You requested ${calculatedDays} days.`);
       return false;
     }
-    
+
     return true;
   }, [formData, balance, calculatedDays]);
-  
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (validateForm()) {
       onSubmit(formData);
     }
   };
-  
+
   const hasExceededBalance = balance && calculatedDays > balance.remaining;
-  
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1192,7 +1190,7 @@ const ApplyLeaveForm = ({ balance, onSubmit, onCancel, isSubmitting }) => {
             />
           </div>
         </div>
-        
+
         <div>
           <Label htmlFor="endDate" className="text-gray-700 dark:text-gray-300 font-medium">
             End Date <span className="text-rose-500">*</span>
@@ -1215,7 +1213,7 @@ const ApplyLeaveForm = ({ balance, onSubmit, onCancel, isSubmitting }) => {
           </div>
         </div>
       </div>
-      
+
       <div>
         <Label htmlFor="leaveType" className="text-gray-700 dark:text-gray-300 font-medium">
           Leave Type
@@ -1233,30 +1231,28 @@ const ApplyLeaveForm = ({ balance, onSubmit, onCancel, isSubmitting }) => {
           ))}
         </select>
       </div>
-      
+
       {formData.startDate && formData.endDate && (
-        <div className={`p-4 rounded-xl border-2 transition-all duration-200 ${
-          hasExceededBalance 
-            ? 'bg-rose-50 dark:bg-rose-900/20 border-rose-200 dark:border-rose-800' 
+        <div className={`p-4 rounded-xl border-2 transition-all duration-200 ${hasExceededBalance
+            ? 'bg-rose-50 dark:bg-rose-900/20 border-rose-200 dark:border-rose-800'
             : 'bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/20 dark:to-purple-950/20 border-indigo-200 dark:border-indigo-800'
-        }`}>
+          }`}>
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Leave Duration</span>
-            <span className={`text-2xl font-bold ${
-              hasExceededBalance 
-                ? 'text-rose-600 dark:text-rose-400' 
+            <span className={`text-2xl font-bold ${hasExceededBalance
+                ? 'text-rose-600 dark:text-rose-400'
                 : 'text-indigo-600 dark:text-indigo-400'
-            }`}>
+              }`}>
               {calculatedDays} {calculatedDays === 1 ? 'day' : 'days'}
             </span>
           </div>
-          
-          <ProgressBar 
-            value={calculatedDays} 
-            max={balance?.totalAnnual || 30} 
-            color={hasExceededBalance ? 'rose' : 'indigo'} 
+
+          <ProgressBar
+            value={calculatedDays}
+            max={balance?.totalAnnual || 30}
+            color={hasExceededBalance ? 'rose' : 'indigo'}
           />
-          
+
           {balance && (
             <div className="mt-3 flex items-center justify-between text-sm">
               <span className="text-gray-600 dark:text-gray-400">
@@ -1277,7 +1273,7 @@ const ApplyLeaveForm = ({ balance, onSubmit, onCancel, isSubmitting }) => {
           )}
         </div>
       )}
-      
+
       <div>
         <Label htmlFor="reason" className="text-gray-700 dark:text-gray-300 font-medium">
           Reason for Leave <span className="text-rose-500">*</span>
@@ -1298,20 +1294,20 @@ const ApplyLeaveForm = ({ balance, onSubmit, onCancel, isSubmitting }) => {
           Minimum 10 characters ({formData.reason?.length || 0}/10)
         </p>
       </div>
-      
+
       <div className="flex gap-3 justify-end pt-4 border-t border-gray-200 dark:border-gray-700">
-        <Button 
-          type="button" 
-          variant="outline" 
-          onClick={onCancel} 
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onCancel}
           disabled={isSubmitting}
           className="dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
         >
           Cancel
         </Button>
-        <Button 
-          type="submit" 
-          disabled={isSubmitting || hasExceededBalance} 
+        <Button
+          type="submit"
+          disabled={isSubmitting || hasExceededBalance}
           className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white shadow-lg shadow-indigo-500/25"
         >
           {isSubmitting ? (
@@ -1337,23 +1333,23 @@ const ReviewLeaveForm = ({ leave, onSubmit, onCancel, isSubmitting }) => {
     status: leave.decision || '',
     decisionNote: ''
   });
-  
+
   const handleSubmit = () => {
     if (!reviewData.status) {
       toast.error('Please select a decision');
       return;
     }
-    
+
     if (reviewData.status === LEAVE_STATUS.REJECTED && !reviewData.decisionNote?.trim()) {
       toast.error('Please provide a reason for rejection');
       return;
     }
-    
+
     onSubmit(reviewData);
   };
-  
+
   const employee = leave.Employee || {};
-  
+
   return (
     <div className="space-y-6">
       <div className="bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900 p-5 rounded-xl space-y-4">
@@ -1368,7 +1364,7 @@ const ReviewLeaveForm = ({ leave, onSubmit, onCancel, isSubmitting }) => {
             <p className="text-sm text-gray-500 dark:text-gray-400">{employee.email || 'No email provided'}</p>
           </div>
         </div>
-        
+
         <div className="grid grid-cols-2 gap-4">
           <div>
             <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Employee ID</p>
@@ -1379,7 +1375,7 @@ const ReviewLeaveForm = ({ leave, onSubmit, onCancel, isSubmitting }) => {
             <p className="text-gray-900 dark:text-white font-medium mt-1">{employee.department || 'N/A'}</p>
           </div>
         </div>
-        
+
         <div className="bg-white dark:bg-gray-800 rounded-lg p-4 space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-sm text-gray-600 dark:text-gray-400">Leave Period</span>
@@ -1398,7 +1394,7 @@ const ReviewLeaveForm = ({ leave, onSubmit, onCancel, isSubmitting }) => {
             <span className="text-sm text-gray-900 dark:text-white">{formatDateTime(leave.createdAt)}</span>
           </div>
         </div>
-        
+
         <div>
           <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Reason</p>
           <div className="bg-white dark:bg-gray-800 rounded-lg p-4">
@@ -1406,7 +1402,7 @@ const ReviewLeaveForm = ({ leave, onSubmit, onCancel, isSubmitting }) => {
           </div>
         </div>
       </div>
-      
+
       <div>
         <Label className="text-base font-semibold text-gray-900 dark:text-white mb-3 block">
           Decision <span className="text-rose-500">*</span>
@@ -1415,11 +1411,10 @@ const ReviewLeaveForm = ({ leave, onSubmit, onCancel, isSubmitting }) => {
           <button
             type="button"
             onClick={() => setReviewData({ status: LEAVE_STATUS.APPROVED, decisionNote: '' })}
-            className={`p-4 rounded-xl border-2 transition-all duration-200 text-left ${
-              reviewData.status === LEAVE_STATUS.APPROVED 
-                ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' 
+            className={`p-4 rounded-xl border-2 transition-all duration-200 text-left ${reviewData.status === LEAVE_STATUS.APPROVED
+                ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20'
                 : 'border-gray-200 dark:border-gray-700 hover:border-emerald-300 dark:hover:border-emerald-700'
-            }`}
+              }`}
           >
             <div className="flex items-center gap-3">
               <div className={`p-2 rounded-lg ${reviewData.status === LEAVE_STATUS.APPROVED ? 'bg-emerald-500' : 'bg-emerald-100 dark:bg-emerald-900/30'}`}>
@@ -1431,15 +1426,14 @@ const ReviewLeaveForm = ({ leave, onSubmit, onCancel, isSubmitting }) => {
               </div>
             </div>
           </button>
-          
+
           <button
             type="button"
             onClick={() => setReviewData(prev => ({ ...prev, status: LEAVE_STATUS.REJECTED }))}
-            className={`p-4 rounded-xl border-2 transition-all duration-200 text-left ${
-              reviewData.status === LEAVE_STATUS.REJECTED 
-                ? 'border-rose-500 bg-rose-50 dark:bg-rose-900/20' 
+            className={`p-4 rounded-xl border-2 transition-all duration-200 text-left ${reviewData.status === LEAVE_STATUS.REJECTED
+                ? 'border-rose-500 bg-rose-50 dark:bg-rose-900/20'
                 : 'border-gray-200 dark:border-gray-700 hover:border-rose-300 dark:hover:border-rose-700'
-            }`}
+              }`}
           >
             <div className="flex items-center gap-3">
               <div className={`p-2 rounded-lg ${reviewData.status === LEAVE_STATUS.REJECTED ? 'bg-rose-500' : 'bg-rose-100 dark:bg-rose-900/30'}`}>
@@ -1453,7 +1447,7 @@ const ReviewLeaveForm = ({ leave, onSubmit, onCancel, isSubmitting }) => {
           </button>
         </div>
       </div>
-      
+
       {reviewData.status === LEAVE_STATUS.REJECTED && (
         <div>
           <Label htmlFor="decisionNote" className="text-gray-700 dark:text-gray-300 font-medium">
@@ -1476,7 +1470,7 @@ const ReviewLeaveForm = ({ leave, onSubmit, onCancel, isSubmitting }) => {
           </p>
         </div>
       )}
-      
+
       {reviewData.status === LEAVE_STATUS.APPROVED && (
         <div>
           <Label htmlFor="decisionNote" className="text-gray-700 dark:text-gray-300 font-medium">
@@ -1494,26 +1488,25 @@ const ReviewLeaveForm = ({ leave, onSubmit, onCancel, isSubmitting }) => {
           />
         </div>
       )}
-      
+
       <div className="flex gap-3 justify-end pt-4 border-t border-gray-200 dark:border-gray-700">
-        <Button 
-          variant="outline" 
-          onClick={onCancel} 
+        <Button
+          variant="outline"
+          onClick={onCancel}
           disabled={isSubmitting}
           className="dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
         >
           Cancel
         </Button>
-        <Button 
-          onClick={handleSubmit} 
-          disabled={isSubmitting || !reviewData.status} 
-          className={`${
-            reviewData.status === LEAVE_STATUS.APPROVED 
-              ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700' 
-              : reviewData.status === LEAVE_STATUS.REJECTED 
-                ? 'bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700' 
+        <Button
+          onClick={handleSubmit}
+          disabled={isSubmitting || !reviewData.status}
+          className={`${reviewData.status === LEAVE_STATUS.APPROVED
+              ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700'
+              : reviewData.status === LEAVE_STATUS.REJECTED
+                ? 'bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700'
                 : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700'
-          } text-white shadow-lg`}
+            } text-white shadow-lg`}
         >
           {isSubmitting ? (
             <>
@@ -1537,7 +1530,7 @@ const ReviewLeaveForm = ({ leave, onSubmit, onCancel, isSubmitting }) => {
 export const Leave = () => {
   const { user, isManager } = useAuth();
   const queryClient = useQueryClient();
-  
+
   // Local UI State
   const [activeTab, setActiveTab] = useState('my-leaves');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -1548,57 +1541,57 @@ export const Leave = () => {
   const [selectedLeave, setSelectedLeave] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  
+
   const debouncedFilter = useDebounce(statusFilter, 300);
-  
-  const { 
-    data: balanceData, 
+
+  const {
+    data: balanceData,
     isLoading: balanceLoading,
     error: balanceError,
-    refetch: refetchBalance 
+    refetch: refetchBalance
   } = useLeaveBalance();
-  
-  const { 
-    data: leavesData, 
+
+  const {
+    data: leavesData,
     isLoading: leavesLoading,
     error: leavesError,
-    refetch: refetchLeaves 
-  } = useMyLeaves({ 
-    status: debouncedFilter, 
+    refetch: refetchLeaves
+  } = useMyLeaves({
+    status: debouncedFilter,
     page: currentPage,
-    limit: PAGINATION.DEFAULT_LIMIT 
+    limit: PAGINATION.DEFAULT_LIMIT
   });
-  
-  const { 
-    data: pendingLeaves = [], 
+
+  const {
+    data: pendingLeaves = [],
     isLoading: pendingLoading,
-    refetch: refetchPending 
+    refetch: refetchPending
   } = usePendingLeaves(isManager && activeTab === 'pending-approvals');
-  
+
   const applyLeaveMutation = useApplyLeave();
   const reviewLeaveMutation = useReviewLeave();
   const cancelLeaveMutation = useCancelLeave();
-  
+
   const leaves = leavesData?.leaves || [];
-  const pagination = leavesData?.pagination || { 
-    total: 0, 
-    page: PAGINATION.DEFAULT_PAGE, 
-    totalPages: 0 
+  const pagination = leavesData?.pagination || {
+    total: 0,
+    page: PAGINATION.DEFAULT_PAGE,
+    totalPages: 0
   };
   const balance = balanceData;
-  
+
   const filteredLeaves = useMemo(() => {
     if (!searchQuery) return leaves;
-    return leaves.filter(leave => 
+    return leaves.filter(leave =>
       leave.reason?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       leave.status?.toLowerCase().includes(searchQuery.toLowerCase())
     );
   }, [leaves, searchQuery]);
-  
+
   useEffect(() => {
     setCurrentPage(PAGINATION.DEFAULT_PAGE);
   }, [statusFilter]);
-  
+
   const handleRefresh = useCallback(async () => {
     await Promise.all([
       refetchLeaves(),
@@ -1607,7 +1600,7 @@ export const Leave = () => {
     ].filter(Boolean));
     toast.success('Data refreshed successfully');
   }, [refetchLeaves, refetchBalance, refetchPending, isManager]);
-  
+
   const handleApplyLeave = useCallback((formData) => {
     applyLeaveMutation.mutate(formData, {
       onSuccess: () => {
@@ -1615,12 +1608,12 @@ export const Leave = () => {
       }
     });
   }, [applyLeaveMutation]);
-  
+
   const handleReviewLeave = useCallback((reviewData) => {
     if (selectedLeave) {
-      reviewLeaveMutation.mutate({ 
-        leaveId: selectedLeave.id, 
-        reviewData 
+      reviewLeaveMutation.mutate({
+        leaveId: selectedLeave.id,
+        reviewData
       }, {
         onSuccess: () => {
           setIsReviewModalOpen(false);
@@ -1629,7 +1622,7 @@ export const Leave = () => {
       });
     }
   }, [selectedLeave, reviewLeaveMutation]);
-  
+
   const handleCancelLeave = useCallback(() => {
     if (selectedLeave) {
       cancelLeaveMutation.mutate(selectedLeave.id, {
@@ -1640,34 +1633,34 @@ export const Leave = () => {
       });
     }
   }, [selectedLeave, cancelLeaveMutation]);
-  
+
   const handleOpenReview = useCallback((leave) => {
     setSelectedLeave(leave);
     setIsReviewModalOpen(true);
   }, []);
-  
+
   const handleOpenCancel = useCallback((leave) => {
     setSelectedLeave(leave);
     setIsCancelModalOpen(true);
   }, []);
-  
+
   const handleQuickApprove = useCallback((leave) => {
-    reviewLeaveMutation.mutate({ 
-      leaveId: leave.id, 
+    reviewLeaveMutation.mutate({
+      leaveId: leave.id,
       reviewData: { status: LEAVE_STATUS.APPROVED, decisionNote: '' }
     });
   }, [reviewLeaveMutation]);
-  
+
   const handleQuickReject = useCallback((leave) => {
-    reviewLeaveMutation.mutate({ 
-      leaveId: leave.id, 
+    reviewLeaveMutation.mutate({
+      leaveId: leave.id,
       reviewData: { status: LEAVE_STATUS.REJECTED, decisionNote: 'Rejected by manager' }
     });
   }, [reviewLeaveMutation]);
-  
+
   const isLoading = leavesLoading || balanceLoading;
   const error = leavesError || balanceError;
-  
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 transition-colors duration-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -1687,7 +1680,7 @@ export const Leave = () => {
                 Manage your leave requests and track your balance effortlessly
               </p>
             </div>
-            
+
             <div className="flex items-center gap-3">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -1699,7 +1692,7 @@ export const Leave = () => {
                   className="pl-10 pr-4 py-2 w-64 dark:bg-gray-800 dark:border-gray-700"
                 />
               </div>
-              
+
               <Button
                 variant="outline"
                 size="icon"
@@ -1709,7 +1702,7 @@ export const Leave = () => {
               >
                 <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
               </Button>
-              
+
               <Button
                 onClick={() => setIsApplyModalOpen(true)}
                 className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white shadow-lg shadow-indigo-500/25"
@@ -1729,11 +1722,10 @@ export const Leave = () => {
           <div className="flex space-x-8">
             <button
               onClick={() => { setActiveTab('my-leaves'); setCurrentPage(PAGINATION.DEFAULT_PAGE); }}
-              className={`relative py-3 px-1 font-medium transition-all duration-200 ${
-                activeTab === 'my-leaves'
+              className={`relative py-3 px-1 font-medium transition-all duration-200 ${activeTab === 'my-leaves'
                   ? 'text-indigo-600 dark:text-indigo-400'
                   : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-              }`}
+                }`}
             >
               <div className="flex items-center gap-2">
                 <FileText className="h-4 w-4" />
@@ -1746,15 +1738,14 @@ export const Leave = () => {
                 <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-indigo-500 to-purple-500" />
               )}
             </button>
-            
+
             <RoleGuard allowedRoles={['manager', 'admin', 'hr']} user={user}>
               <button
                 onClick={() => { setActiveTab('pending-approvals'); setCurrentPage(PAGINATION.DEFAULT_PAGE); }}
-                className={`relative py-3 px-1 font-medium transition-all duration-200 ${
-                  activeTab === 'pending-approvals'
+                className={`relative py-3 px-1 font-medium transition-all duration-200 ${activeTab === 'pending-approvals'
                     ? 'text-indigo-600 dark:text-indigo-400'
                     : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-                }`}
+                  }`}
               >
                 <div className="flex items-center gap-2">
                   <Clock className="h-4 w-4" />
@@ -1770,14 +1761,13 @@ export const Leave = () => {
                 )}
               </button>
             </RoleGuard>
-            
+
             <button
               onClick={() => setActiveTab('calendar')}
-              className={`relative py-3 px-1 font-medium transition-all duration-200 ${
-                activeTab === 'calendar'
+              className={`relative py-3 px-1 font-medium transition-all duration-200 ${activeTab === 'calendar'
                   ? 'text-indigo-600 dark:text-indigo-400'
                   : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-              }`}
+                }`}
             >
               <div className="flex items-center gap-2">
                 <Calendar className="h-4 w-4" />
@@ -1800,11 +1790,10 @@ export const Leave = () => {
                 variant={statusFilter === status ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setStatusFilter(status)}
-                className={`capitalize transition-all duration-200 ${
-                  statusFilter === status 
-                    ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md' 
+                className={`capitalize transition-all duration-200 ${statusFilter === status
+                    ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md'
                     : 'dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700'
-                }`}
+                  }`}
               >
                 {status === 'all' ? 'All Requests' : status}
               </Button>
@@ -1823,13 +1812,13 @@ export const Leave = () => {
             {isLoading ? (
               <SkeletonLoader rows={5} />
             ) : filteredLeaves.length === 0 ? (
-              <EmptyState 
+              <EmptyState
                 message={searchQuery ? "No matching leave requests found" : "No leave requests yet"}
                 description={searchQuery ? "Try adjusting your search" : "Your leave requests will appear here"}
                 icon={Calendar}
                 action={
-                  <Button 
-                    onClick={() => setIsApplyModalOpen(true)} 
+                  <Button
+                    onClick={() => setIsApplyModalOpen(true)}
                     className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white"
                   >
                     <Plus className="mr-2 h-4 w-4" />
@@ -1839,15 +1828,15 @@ export const Leave = () => {
               />
             ) : (
               <>
-                <LeaveTable 
-                  leaves={filteredLeaves} 
-                  onReview={handleOpenReview} 
+                <LeaveTable
+                  leaves={filteredLeaves}
+                  onReview={handleOpenReview}
                   onCancel={handleOpenCancel}
-                  isManager={isManager} 
+                  isManager={isManager}
                 />
-                <Pagination 
-                  currentPage={currentPage} 
-                  totalPages={pagination.totalPages} 
+                <Pagination
+                  currentPage={currentPage}
+                  totalPages={pagination.totalPages}
                   onPageChange={setCurrentPage}
                   totalItems={pagination.total}
                   itemsPerPage={PAGINATION.DEFAULT_LIMIT}
@@ -1864,14 +1853,14 @@ export const Leave = () => {
               {pendingLoading ? (
                 <SkeletonLoader rows={3} />
               ) : pendingLeaves.length === 0 ? (
-                <EmptyState 
-                  message="No pending approvals" 
+                <EmptyState
+                  message="No pending approvals"
                   description="All leave requests have been reviewed"
-                  icon={CheckCircle} 
+                  icon={CheckCircle}
                 />
               ) : (
-                <PendingApprovalsTable 
-                  pendingLeaves={pendingLeaves} 
+                <PendingApprovalsTable
+                  pendingLeaves={pendingLeaves}
                   onReview={handleOpenReview}
                 />
               )}
@@ -1882,8 +1871,8 @@ export const Leave = () => {
         {/* Calendar View Section */}
         {activeTab === 'calendar' && (
           <Card className="p-6 dark:bg-gray-800 dark:border-gray-700 shadow-xl">
-            <EmptyState 
-              message="Calendar View Coming Soon" 
+            <EmptyState
+              message="Calendar View Coming Soon"
               description="We're working on a beautiful calendar view for your leaves"
               icon={CalendarDays}
             />
@@ -1891,13 +1880,13 @@ export const Leave = () => {
         )}
 
         {/* Apply Leave Modal */}
-        <Modal 
-          open={isApplyModalOpen} 
-          onClose={() => setIsApplyModalOpen(false)} 
+        <Modal
+          open={isApplyModalOpen}
+          onClose={() => setIsApplyModalOpen(false)}
           title="Apply for Leave"
           size="lg"
         >
-          <ApplyLeaveForm 
+          <ApplyLeaveForm
             balance={balance}
             onSubmit={handleApplyLeave}
             onCancel={() => setIsApplyModalOpen(false)}
@@ -1906,14 +1895,14 @@ export const Leave = () => {
         </Modal>
 
         {/* Review Leave Modal */}
-        <Modal 
-          open={isReviewModalOpen} 
-          onClose={() => { setIsReviewModalOpen(false); setSelectedLeave(null); }} 
+        <Modal
+          open={isReviewModalOpen}
+          onClose={() => { setIsReviewModalOpen(false); setSelectedLeave(null); }}
           title="Review Leave Request"
           size="xl"
         >
           {selectedLeave && (
-            <ReviewLeaveForm 
+            <ReviewLeaveForm
               leave={selectedLeave}
               onSubmit={handleReviewLeave}
               onCancel={() => { setIsReviewModalOpen(false); setSelectedLeave(null); }}
@@ -1923,9 +1912,9 @@ export const Leave = () => {
         </Modal>
 
         {/* Cancel Leave Confirmation Modal */}
-        <Modal 
-          open={isCancelModalOpen} 
-          onClose={() => { setIsCancelModalOpen(false); setSelectedLeave(null); }} 
+        <Modal
+          open={isCancelModalOpen}
+          onClose={() => { setIsCancelModalOpen(false); setSelectedLeave(null); }}
           title="Cancel Leave Request"
         >
           {selectedLeave && (
@@ -1958,19 +1947,19 @@ export const Leave = () => {
                   </div>
                 </div>
               </div>
-              
+
               <div className="flex gap-3 justify-end">
-                <Button 
-                  variant="outline" 
-                  onClick={() => { setIsCancelModalOpen(false); setSelectedLeave(null); }} 
+                <Button
+                  variant="outline"
+                  onClick={() => { setIsCancelModalOpen(false); setSelectedLeave(null); }}
                   disabled={cancelLeaveMutation.isPending}
                   className="dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
                 >
                   Keep Request
                 </Button>
-                <Button 
-                  onClick={handleCancelLeave} 
-                  disabled={cancelLeaveMutation.isPending} 
+                <Button
+                  onClick={handleCancelLeave}
+                  disabled={cancelLeaveMutation.isPending}
                   className="bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white shadow-lg shadow-rose-500/25"
                 >
                   {cancelLeaveMutation.isPending ? (
