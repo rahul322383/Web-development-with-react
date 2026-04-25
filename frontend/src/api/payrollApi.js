@@ -1,53 +1,53 @@
 import axiosInstance from './axios';
+import { handleRequest } from '../utils/apiHandler';
 
 export const payrollApi = {
-  // 🔹 Get all payrolls
-  getAllPayrolls: async () => {
+  getMyPayrollHistory: (params) =>
+    handleRequest(() =>
+      axiosInstance.get('/payroll/my/history', { params })
+    ),
+
+  getYTDSummary: () =>
+    handleRequest(() =>
+      axiosInstance.get('/payroll/ytd')
+    ),
+
+  getSalaryBreakdown: (id) =>
+    handleRequest(() =>
+      axiosInstance.get(`/payroll/${id}/breakdown`)
+    ),
+
+  downloadPayslip: async (id) => {
     try {
-      const res = await axiosInstance.get('/payrolls');
-      return res.data.data || res.data;
+      const res = await axiosInstance.get(
+        `/payroll/${id}/payslip`,
+        { responseType: 'blob' }
+      );
+
+      let filename = 'payslip.pdf';
+      const disposition = res.headers['content-disposition'];
+
+      if (disposition) {
+        const match = disposition.match(/filename="?(.+)"?/);
+        if (match) filename = match[1];
+      }
+
+      return { blob: res.data, filename };
     } catch (error) {
-      throw error.response?.data || error.message;
+      throw new Error(
+        error.response?.data?.message || 'Download failed'
+      );
     }
   },
 
-  // 🔹 Get payroll by employee
-  getPayrollByEmployee: async (employeeId) => {
-    try {
-      const res = await axiosInstance.get(`/payrolls/employee/${employeeId}`);
-      return res.data.data || res.data;
-    } catch (error) {
-      throw error.response?.data || error.message;
-    }
-  },
+  // Admin
+  processPayroll: (payload) =>
+    handleRequest(() =>
+      axiosInstance.post('/payroll/process', payload)
+    ),
 
-  // 🔹 Create payroll
-  createPayroll: async (payload) => {
-    try {
-      const res = await axiosInstance.post('/payrolls', payload);
-      return res.data;
-    } catch (error) {
-      throw error.response?.data || error.message;
-    }
-  },
-
-  // 🔹 Update payroll
-  updatePayroll: async (id, payload) => {
-    try {
-      const res = await axiosInstance.put(`/payrolls/${id}`, payload);
-      return res.data;
-    } catch (error) {
-      throw error.response?.data || error.message;
-    }
-  },
-
-  // 🔹 Delete payroll
-  deletePayroll: async (id) => {
-    try {
-      const res = await axiosInstance.delete(`/payrolls/${id}`);
-      return res.data;
-    } catch (error) {
-      throw error.response?.data || error.message;
-    }
-  }
+  lockPayroll: (payload) =>
+    handleRequest(() =>
+      axiosInstance.patch('/payroll/lock', payload)
+    ),
 };
