@@ -291,6 +291,313 @@ const getUserListData = async (page = 1, limit = 10) => {
     }
 };
 
+
+
+
+
+// 'use strict';
+
+// const { Op, fn, col, literal } = require('sequelize');
+// const sequelize = require('../../database/sequelize');
+
+// // ─── lazy-load to avoid circular imports (same pattern as authRepository) ───
+// const getModels = () => require('../../database/initModels');
+
+// // ────────────────────────────────────────────────────────────────────────────
+// //  ATTRITION
+// // ────────────────────────────────────────────────────────────────────────────
+
+// /**
+//  * Returns active + inactive counts for the given date window.
+//  * "Left" = isActive:false AND updatedAt falls inside the window.
+//  */
+// const getAttritionData = async ({ startDate, endDate, department } = {}) => {
+//     const { User } = getModels();
+
+//     const baseWhere = {};
+//     if (department) baseWhere.department = department;
+
+//     const [totalActive, leftInPeriod, totalAtPeriodStart] = await Promise.all([
+//         // currently active
+//         User.count({ where: { ...baseWhere, isActive: true } }),
+
+//         // left (became inactive) within the window
+//         User.count({
+//             where: {
+//                 ...baseWhere,
+//                 isActive: false,
+//                 updatedAt: { [Op.between]: [startDate, endDate] },
+//             },
+//         }),
+
+//         // everyone who existed at period start (active + left)
+//         User.count({
+//             where: {
+//                 ...baseWhere,
+//                 createdAt: { [Op.lte]: endDate },
+//             },
+//         }),
+//     ]);
+
+//     const avgEmployees = totalAtPeriodStart - leftInPeriod / 2;
+//     const attritionRate =
+//         avgEmployees > 0
+//             ? parseFloat(((leftInPeriod / avgEmployees) * 100).toFixed(2))
+//             : 0;
+
+//     return { totalActive, leftInPeriod, totalAtPeriodStart, attritionRate };
+// };
+
+// /**
+//  * Attrition broken down by department.
+//  */
+// const getAttritionByDepartment = async ({ startDate, endDate } = {}) => {
+//     const { User } = getModels();
+
+//     const rows = await User.findAll({
+//         attributes: [
+//             'department',
+//             [fn('COUNT', col('id')), 'total'],
+//             [
+//                 fn(
+//                     'SUM',
+//                     literal(
+//                         `CASE WHEN is_active = 0 AND updated_at BETWEEN '${startDate.toISOString()}' AND '${endDate.toISOString()}' THEN 1 ELSE 0 END`
+//                     )
+//                 ),
+//                 'left_count',
+//             ],
+//         ],
+//         where: {
+//             department: { [Op.ne]: null },
+//             createdAt: { [Op.lte]: endDate },
+//         },
+//         group: ['department'],
+//         raw: true,
+//     });
+
+//     return rows.map((r) => ({
+//         department: r.department,
+//         total: Number(r.total),
+//         leftCount: Number(r.left_count),
+//         attritionRate:
+//             r.total > 0
+//                 ? parseFloat(((r.left_count / r.total) * 100).toFixed(2))
+//                 : 0,
+//     }));
+// };
+
+// // ────────────────────────────────────────────────────────────────────────────
+// //  DEPARTMENT PERFORMANCE  (avg baseSalary used as proxy if no rating table)
+// // ────────────────────────────────────────────────────────────────────────────
+
+// /**
+//  * Head-count + avg base salary per department.
+//  * Swap the AVG column to a real rating field once you add it.
+//  */
+// const getDepartmentPerformance = async ({ department } = {}) => {
+//     const { User } = getModels();
+
+//     const where = { isActive: true, department: { [Op.ne]: null } };
+//     if (department) where.department = department;
+
+//     const rows = await User.findAll({
+//         attributes: [
+//             'department',
+//             [fn('COUNT', col('id')), 'headCount'],
+//             [fn('AVG', col('base_salary')), 'avgSalary'],
+//         ],
+//         where,
+//         group: ['department'],
+//         raw: true,
+//     });
+
+//     return rows.map((r) => ({
+//         department: r.department,
+//         headCount: Number(r.headCount),
+//         avgSalary: parseFloat(Number(r.avgSalary).toFixed(2)),
+//     }));
+// };
+
+// // ────────────────────────────────────────────────────────────────────────────
+// //  LEAVE TRENDS
+// // ────────────────────────────────────────────────────────────────────────────
+
+// /**
+//  * Monthly leave counts (approved only) within the date window.
+//  */
+// const getLeaveTrends = async ({ startDate, endDate, department } = {}) => {
+//     const { LeaveRequest, User } = getModels();
+
+//     const include = department
+//         ? [{ model: User, as: 'employee', attributes: [], where: { department }, required: true }]
+//         : [];
+
+//     const rows = await LeaveRequest.findAll({
+//         attributes: [
+//             [fn('YEAR', col('LeaveRequest.start_date')), 'year'],
+//             [fn('MONTH', col('LeaveRequest.start_date')), 'month'],
+//             [fn('COUNT', col('LeaveRequest.id')), 'leaveCount'],
+//             [fn('SUM', col('LeaveRequest.days_requested')), 'totalDays'],
+//         ],
+//         where: {
+//             status: 'Approved',
+//             startDate: { [Op.between]: [startDate, endDate] },
+//         },
+//         include,
+//         group: [
+//             fn('YEAR', col('LeaveRequest.start_date')),
+//             fn('MONTH', col('LeaveRequest.start_date')),
+//         ],
+//         order: [
+//             [fn('YEAR', col('LeaveRequest.start_date')), 'ASC'],
+//             [fn('MONTH', col('LeaveRequest.start_date')), 'ASC'],
+//         ],
+//         raw: true,
+//     });
+
+//     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+//     return rows.map((r) => ({
+//         year: Number(r.year),
+//         month: Number(r.month),
+//         monthLabel: monthNames[Number(r.month) - 1],
+//         leaveCount: Number(r.leaveCount),
+//         totalDays: Number(r.totalDays),
+//     }));
+// };
+
+// /**
+//  * Leave status breakdown (Pending / Approved / Rejected).
+//  */
+// const getLeaveStatusBreakdown = async ({ startDate, endDate } = {}) => {
+//     const { LeaveRequest } = getModels();
+
+//     const rows = await LeaveRequest.findAll({
+//         attributes: [
+//             'status',
+//             [fn('COUNT', col('id')), 'count'],
+//         ],
+//         where: { startDate: { [Op.between]: [startDate, endDate] } },
+//         group: ['status'],
+//         raw: true,
+//     });
+
+//     return rows.map((r) => ({ status: r.status, count: Number(r.count) }));
+// };
+
+// // ────────────────────────────────────────────────────────────────────────────
+// //  COST PER EMPLOYEE
+// // ────────────────────────────────────────────────────────────────────────────
+
+// /**
+//  * Average net salary per employee from payrolls in the given month/year window.
+//  */
+// const getCostPerEmployee = async ({ startDate, endDate, department } = {}) => {
+//     const { Payroll, User } = getModels();
+
+//     const startYear = startDate.getFullYear();
+//     const startMonth = startDate.getMonth() + 1;
+//     const endYear = endDate.getFullYear();
+//     const endMonth = endDate.getMonth() + 1;
+
+//     const payrollWhere = {
+//         status: 'Processed',
+//         [Op.or]: [
+//             {
+//                 year: startYear,
+//                 month: { [Op.gte]: startMonth },
+//             },
+//             {
+//                 year: { [Op.gt]: startYear, [Op.lt]: endYear },
+//             },
+//             {
+//                 year: endYear,
+//                 month: { [Op.lte]: endMonth },
+//             },
+//         ],
+//     };
+
+//     const include = department
+//         ? [{ model: User, as: 'employee', attributes: [], where: { department }, required: true }]
+//         : [];
+
+//     const rows = await Payroll.findAll({
+//         attributes: [
+//             [fn('COUNT', literal('DISTINCT employee_id')), 'employeeCount'],
+//             [fn('SUM', col('net_salary')), 'totalSalary'],
+//             [fn('AVG', col('net_salary')), 'avgSalary'],
+//         ],
+//         where: payrollWhere,
+//         include,
+//         raw: true,
+//     });
+
+//     const r = rows[0] || {};
+//     return {
+//         employeeCount: Number(r.employeeCount || 0),
+//         totalSalary: parseFloat(Number(r.totalSalary || 0).toFixed(2)),
+//         avgSalary: parseFloat(Number(r.avgSalary || 0).toFixed(2)),
+//     };
+// };
+
+// /**
+//  * Cost per employee broken down by department.
+//  */
+// const getCostByDepartment = async ({ startDate, endDate } = {}) => {
+//     const { Payroll, User } = getModels();
+
+//     const startYear = startDate.getFullYear();
+//     const endYear = endDate.getFullYear();
+//     const startMonth = startDate.getMonth() + 1;
+//     const endMonth = endDate.getMonth() + 1;
+
+//     const rows = await Payroll.findAll({
+//         attributes: [
+//             [col('employee.department'), 'department'],
+//             [fn('COUNT', literal('DISTINCT payrolls.employee_id')), 'employeeCount'],
+//             [fn('AVG', col('payrolls.net_salary')), 'avgSalary'],
+//             [fn('SUM', col('payrolls.net_salary')), 'totalSalary'],
+//         ],
+//         where: {
+//             status: 'Processed',
+//             [Op.or]: [
+//                 { year: startYear, month: { [Op.gte]: startMonth } },
+//                 { year: { [Op.gt]: startYear, [Op.lt]: endYear } },
+//                 { year: endYear, month: { [Op.lte]: endMonth } },
+//             ],
+//         },
+//         include: [
+//             {
+//                 model: User,
+//                 as: 'employee',
+//                 attributes: [],
+//                 where: { department: { [Op.ne]: null } },
+//                 required: true,
+//             },
+//         ],
+//         group: ['employee.department'],
+//         raw: true,
+//     });
+
+//     return rows.map((r) => ({
+//         department: r.department,
+//         employeeCount: Number(r.employeeCount),
+//         avgSalary: parseFloat(Number(r.avgSalary).toFixed(2)),
+//         totalSalary: parseFloat(Number(r.totalSalary).toFixed(2)),
+//     }));
+// };
+
+// module.exports = {
+//     getAttritionData,
+//     getAttritionByDepartment,
+//     getDepartmentPerformance,
+//     getLeaveTrends,
+//     getLeaveStatusBreakdown,
+//     getCostPerEmployee,
+//     getCostByDepartment,
+// };
+
 // -----------------------------
 module.exports = {
     getSummaryStats,
