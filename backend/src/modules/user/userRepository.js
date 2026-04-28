@@ -340,6 +340,229 @@ const getUsersByDepartment = (department) => {
   });
 };
 
+
+// 'use strict';
+
+// const logger = require('../../config/logger');
+// const analyticsRepository = require('./analyticsRepository');
+
+// // ─── helpers ────────────────────────────────────────────────────────────────
+
+// /**
+//  * Parse and validate the ?startDate / ?endDate query params.
+//  * Defaults: last 12 months → today.
+//  */
+// const parseDateRange = ({ startDate, endDate } = {}) => {
+//   const end = endDate ? new Date(endDate) : new Date();
+//   const start = startDate ? new Date(startDate) : new Date(new Date().setFullYear(end.getFullYear() - 1));
+
+//   if (isNaN(start) || isNaN(end)) {
+//     throw Object.assign(new Error('Invalid date range supplied'), { statusCode: 400 });
+//   }
+
+//   if (start >= end) {
+//     throw Object.assign(new Error('startDate must be before endDate'), { statusCode: 400 });
+//   }
+
+//   // normalize: start = 00:00:00, end = 23:59:59
+//   start.setHours(0, 0, 0, 0);
+//   end.setHours(23, 59, 59, 999);
+
+//   return { startDate: start, endDate: end };
+// };
+
+// // ────────────────────────────────────────────────────────────────────────────
+// //  ATTRITION
+// // ────────────────────────────────────────────────────────────────────────────
+
+// const getAttritionSummary = async (query = {}) => {
+//   try {
+//     const { startDate, endDate } = parseDateRange(query);
+//     const department = query.department || null;
+
+//     const [overall, byDepartment] = await Promise.all([
+//       analyticsRepository.getAttritionData({ startDate, endDate, department }),
+//       analyticsRepository.getAttritionByDepartment({ startDate, endDate }),
+//     ]);
+
+//     return {
+//       success: true,
+//       data: {
+//         period: {
+//           startDate: startDate.toISOString().split('T')[0],
+//           endDate: endDate.toISOString().split('T')[0],
+//         },
+//         overall,
+//         byDepartment,
+//       },
+//     };
+//   } catch (error) {
+//     logger.error({ event: 'ANALYTICS_ATTRITION_FAILED', error: error.message, stack: error.stack });
+//     return {
+//       success: false,
+//       message: error.message || 'Failed to fetch attrition data',
+//       statusCode: error.statusCode || 500,
+//     };
+//   }
+// };
+
+// // ────────────────────────────────────────────────────────────────────────────
+// //  DEPARTMENT PERFORMANCE
+// // ────────────────────────────────────────────────────────────────────────────
+
+// const getDepartmentPerformance = async (query = {}) => {
+//   try {
+//     const department = query.department || null;
+//     const rows = await analyticsRepository.getDepartmentPerformance({ department });
+
+//     return { success: true, data: rows };
+//   } catch (error) {
+//     logger.error({ event: 'ANALYTICS_DEPT_PERF_FAILED', error: error.message, stack: error.stack });
+//     return {
+//       success: false,
+//       message: error.message || 'Failed to fetch department performance',
+//       statusCode: error.statusCode || 500,
+//     };
+//   }
+// };
+
+// // ────────────────────────────────────────────────────────────────────────────
+// //  LEAVE TRENDS
+// // ────────────────────────────────────────────────────────────────────────────
+
+// const getLeaveTrends = async (query = {}) => {
+//   try {
+//     const { startDate, endDate } = parseDateRange(query);
+//     const department = query.department || null;
+
+//     const [monthly, statusBreakdown] = await Promise.all([
+//       analyticsRepository.getLeaveTrends({ startDate, endDate, department }),
+//       analyticsRepository.getLeaveStatusBreakdown({ startDate, endDate }),
+//     ]);
+
+//     return {
+//       success: true,
+//       data: {
+//         period: {
+//           startDate: startDate.toISOString().split('T')[0],
+//           endDate: endDate.toISOString().split('T')[0],
+//         },
+//         monthly,
+//         statusBreakdown,
+//       },
+//     };
+//   } catch (error) {
+//     logger.error({ event: 'ANALYTICS_LEAVES_FAILED', error: error.message, stack: error.stack });
+//     return {
+//       success: false,
+//       message: error.message || 'Failed to fetch leave trends',
+//       statusCode: error.statusCode || 500,
+//     };
+//   }
+// };
+
+// // ────────────────────────────────────────────────────────────────────────────
+// //  COST PER EMPLOYEE
+// // ────────────────────────────────────────────────────────────────────────────
+
+// const getCostPerEmployee = async (query = {}) => {
+//   try {
+//     const { startDate, endDate } = parseDateRange(query);
+//     const department = query.department || null;
+
+//     const [overall, byDepartment] = await Promise.all([
+//       analyticsRepository.getCostPerEmployee({ startDate, endDate, department }),
+//       analyticsRepository.getCostByDepartment({ startDate, endDate }),
+//     ]);
+
+//     return {
+//       success: true,
+//       data: {
+//         period: {
+//           startDate: startDate.toISOString().split('T')[0],
+//           endDate: endDate.toISOString().split('T')[0],
+//         },
+//         overall,
+//         byDepartment,
+//       },
+//     };
+//   } catch (error) {
+//     logger.error({ event: 'ANALYTICS_COST_FAILED', error: error.message, stack: error.stack });
+//     return {
+//       success: false,
+//       message: error.message || 'Failed to fetch cost data',
+//       statusCode: error.statusCode || 500,
+//     };
+//   }
+// };
+
+// // ────────────────────────────────────────────────────────────────────────────
+// //  COMBINED DASHBOARD  (single API call → all metrics)
+// // ────────────────────────────────────────────────────────────────────────────
+
+// const getDashboard = async (query = {}) => {
+//   try {
+//     const { startDate, endDate } = parseDateRange(query);
+//     const department = query.department || null;
+
+//     const [
+//       attritionOverall,
+//       attritionByDept,
+//       deptPerformance,
+//       leaveMonthly,
+//       leaveStatus,
+//       costOverall,
+//       costByDept,
+//     ] = await Promise.all([
+//       analyticsRepository.getAttritionData({ startDate, endDate, department }),
+//       analyticsRepository.getAttritionByDepartment({ startDate, endDate }),
+//       analyticsRepository.getDepartmentPerformance({ department }),
+//       analyticsRepository.getLeaveTrends({ startDate, endDate, department }),
+//       analyticsRepository.getLeaveStatusBreakdown({ startDate, endDate }),
+//       analyticsRepository.getCostPerEmployee({ startDate, endDate, department }),
+//       analyticsRepository.getCostByDepartment({ startDate, endDate }),
+//     ]);
+
+//     return {
+//       success: true,
+//       data: {
+//         period: {
+//           startDate: startDate.toISOString().split('T')[0],
+//           endDate: endDate.toISOString().split('T')[0],
+//         },
+//         attrition: {
+//           overall: attritionOverall,
+//           byDepartment: attritionByDept,
+//         },
+//         departmentPerformance: deptPerformance,
+//         leaveTrends: {
+//           monthly: leaveMonthly,
+//           statusBreakdown: leaveStatus,
+//         },
+//         costPerEmployee: {
+//           overall: costOverall,
+//           byDepartment: costByDept,
+//         },
+//       },
+//     };
+//   } catch (error) {
+//     logger.error({ event: 'ANALYTICS_DASHBOARD_FAILED', error: error.message, stack: error.stack });
+//     return {
+//       success: false,
+//       message: error.message || 'Failed to fetch dashboard data',
+//       statusCode: error.statusCode || 500,
+//     };
+//   }
+// };
+
+// module.exports = {
+//   getAttritionSummary,
+//   getDepartmentPerformance,
+//   getLeaveTrends,
+//   getCostPerEmployee,
+//   getDashboard,
+// };
+
 module.exports = {
   getUsersByDepartment,
   findUsers,
