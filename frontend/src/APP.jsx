@@ -256,6 +256,10 @@ import { PasswordResetPages } from "./pages/PasswordResetPages";
 import AttendancePage from "./pages/AttendancePage";
 import EmployeePayroll from "./pyaroll/EmployeePayroll";
 import AdminPayroll from "./pyaroll/AdminPayroll";
+import AnalyticsDashboard from "./analytics/AnalyticsDashboard";
+import CompanyPage from './pages/CompanyPage'
+
+
 
 // Public Pages
 import HomePage from "./pages/home";
@@ -320,6 +324,15 @@ function AppRoutes() {
             <ProtectedRoute><Dashboard /></ProtectedRoute>
           } />
 
+          <Route
+            path="/company"
+            element={
+              <ProtectedRoute roles={['Admin', 'HR']}>
+                <CompanyPage />
+              </ProtectedRoute>
+            }
+          />
+
           <Route path="/department-dashboard" element={
             <ProtectedRoute><DepartmentDashboard /></ProtectedRoute>
           } />
@@ -376,6 +389,13 @@ function AppRoutes() {
           <Route path="/reports" element={
             <ProtectedRoute><ReportsPage /></ProtectedRoute>
           } />
+         
+
+            <Route path="/analytics" element={
+              <ProtectedRoute roles={["admin", "hr", "finance"]}>
+                <AnalyticsDashboard />
+              </ProtectedRoute>
+            } />
 
           <Route path="/settings" element={
             <ProtectedRoute><SettingsPage /></ProtectedRoute>
