@@ -1,5 +1,5 @@
-import axiosInstance from "./axios";
 
+import axiosInstance from "./axios";
 export const getAuditLogs = async (params) => {
   const response = await axiosInstance.get("/audit-logs", { params });
   return response.data;
