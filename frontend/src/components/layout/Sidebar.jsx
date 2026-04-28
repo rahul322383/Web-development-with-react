@@ -1758,7 +1758,20 @@ const BASE_NAVIGATION = [
     icon: BarChart3,
     roles: ['Admin', 'HR', 'Finance', 'Manager']
   },
+ 
+  {
+    name: 'Analytics',
+    href: '/analytics',
+    icon: Receipt,
+    roles: ['Admin', 'HR', 'Manager', 'Finance']
+  },
 
+  {
+    name: 'Company',
+    href: '/company',
+    icon: Building2,
+    roles: ['Admin', 'HR']
+  },
   { name: 'Expenses', href: '/expenses', icon: Receipt, roles: ['Admin', 'Manager', 'Employee', 'HR', 'Finance'] },
   { name: 'Audit Logs', href: '/audit-logs', icon: FileText, roles: ['Admin', 'HR', 'Manager', 'Finance'] },
   { name: 'Users Management', href: '/users', icon: Users, roles: ['Admin', 'Manager', 'HR', 'Finance'] },
