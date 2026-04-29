@@ -5,7 +5,7 @@ const env = require('./src/config/env');
 const logger = require('./src/config/logger');
 const sequelize = require('./src/database/sequelize');
 require('./src/database/initModels');
-
+require('./src/modules/notification/notificationListener');
 const http = require('http');
 const { initSocket } = require('./src/config/socket');
 
