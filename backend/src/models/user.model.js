@@ -21,6 +21,10 @@ module.exports = (sequelize, DataTypes) => {
         field: 'role_id',
         references: { model: 'roles', key: 'id' }
       },
+      companyId: {
+        type: DataTypes.BIGINT.UNSIGNED,
+        field: 'company_id', 
+      },
       firstName: {
         type: DataTypes.STRING(80),
         allowNull: false,
