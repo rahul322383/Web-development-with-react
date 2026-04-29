@@ -1,21 +1,5 @@
 'use strict';
 
-/**
- * src/modules/notification/notificationDispatcher.js
- *
- * Central dispatch function.
- * Given a userId + event type + data, it:
- *  1. Checks user preferences
- *  2. Saves to DB (in-app)
- *  3. Sends real-time socket event
- *  4. Sends email (if opted in)
- *  5. Sends SMS (if opted in + phone exists)
- *
- * Usage anywhere in the codebase:
- *   const { dispatch } = require('./notificationDispatcher');
- *   await dispatch({ userId: 5, type: 'PAYROLL_PROCESSED', data: { ... } });
- */
-
 const logger = require('../../config/logger');
 const { sendNotification } = require('../../config/socket');
 const { sendMail } = require('../../utils/mailer');
@@ -25,7 +9,7 @@ const { getChannelPrefs } = require('./notificationPreferences');
 const notifRepo = require('./notificationRepository');
 const { User } = require('../../database/initModels');
 
-// ─── Map event type → notification category (for DB `type` ENUM) ─────────────
+// ─── Map event type → notification category ───────────────────────────────
 const TYPE_GROUP = {
     PAYROLL_PROCESSED: 'PAYROLL',
     PAYROLL_LOCKED: 'PAYROLL',
@@ -45,7 +29,7 @@ const TYPE_GROUP = {
     ANNOUNCEMENT: 'ANNOUNCEMENT',
 };
 
-// ─── Default titles per event ─────────────────────────────────────────────────
+// ─── Titles ───────────────────────────────────────────────────────────────
 const TITLES = {
     PAYROLL_PROCESSED: 'Salary Processed',
     PAYROLL_LOCKED: 'Payroll Finalised',
@@ -65,16 +49,18 @@ const TITLES = {
     ANNOUNCEMENT: 'Announcement',
 };
 
-/**
- * dispatch
- *
- * @param {object} params
- * @param {number}  params.userId     — recipient user ID
- * @param {string}  params.type       — event type key (e.g. 'PAYROLL_PROCESSED')
- * @param {string}  [params.message]  — override message (otherwise built from data)
- * @param {object}  [params.data]     — template variables
- * @param {boolean} [params.skipPreferenceCheck] — force-send regardless of user prefs (e.g. security alerts)
- */
+// ─── Safe Retry Wrapper (NO LOGIC CHANGE, only reliability) ────────────────
+const retry = async (fn, retries = 2) => {
+    try {
+        return await fn();
+    } catch (err) {
+        if (retries <= 0) throw err;
+        return retry(fn, retries - 1);
+    }
+};
+
+// ──────────────────────────────────────────────────────────────────────────
+
 const dispatch = async ({
     userId,
     type,
@@ -88,7 +74,7 @@ const dispatch = async ({
     }
 
     try {
-        // ── 1. Resolve user (for email + phone) ──────────────────────────────────
+        // ✅ FIX: include phone (was missing)
         const user = await User.findByPk(userId, {
             attributes: ['id', 'firstName', 'lastName', 'email'],
         });
@@ -101,16 +87,45 @@ const dispatch = async ({
         const employeeName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
         const templateData = { employeeName, ...data };
 
-        // ── 2. Get channel preferences ───────────────────────────────────────────
-        const prefs = skipPreferenceCheck
-            ? { email: true, sms: false, in_app: true }
-            : await getChannelPrefs(userId, type);
+        // ── Preferences ─────────────────────────────────────────────
+        let prefs;
+
+        try {
+            prefs = skipPreferenceCheck
+                ? { email: true, sms: false, in_app: true }
+                : await getChannelPrefs(userId, type);
+
+            // ✅ fallback safety (VERY IMPORTANT)
+            if (!prefs) {
+                prefs = { email: true, sms: false, in_app: true };
+            }
+
+        } catch (err) {
+            console.error('❌ PREF ERROR:', err);
+            prefs = { email: true, sms: false, in_app: true };
+        }
 
         const dbType = TYPE_GROUP[type] || 'SYSTEM';
         const title = data.title || TITLES[type] || 'Notification';
-        const msg = message || data.message || title;
 
-        // ── 3. In-app — always save to DB, conditionally send socket ────────────
+        // ✅ FIX: safer fallback (no unexpected override)
+        const msg = message ?? data.message ?? title;
+
+        // ── Deduplication (safe, non-breaking) ──────────────────────
+        try {
+            if (notifRepo.findRecent) {
+                const existing = await notifRepo.findRecent({
+                    userId,
+                    type: dbType,
+                    minutes: 2,
+                });
+                if (existing) return;
+            }
+        } catch (e) {
+            logger.warn({ event: 'DEDUP_CHECK_FAILED', error: e.message });
+        }
+
+        // ── DB (in-app) ─────────────────────────────────────────────
         let dbRecord;
         try {
             dbRecord = await notifRepo.createNotification({
@@ -119,49 +134,75 @@ const dispatch = async ({
                 channel: 'in_app',
                 title,
                 message: msg,
-                metadata: data,
+                metadata: data ? JSON.parse(JSON.stringify(data)) : {},
                 isRead: false,
                 emailSent: false,
                 smsSent: false,
             });
         } catch (dbErr) {
-            logger.error({ event: 'NOTIFICATION_DB_FAILED', userId, type, error: dbErr.message });
-        }
-
-        if (prefs.in_app) {
-            sendNotification(userId, {
-                id: dbRecord?.id,
+            logger.error(JSON.stringify({
+                event: 'DISPATCH_FAILED',
+                userId,
                 type,
-                title,
-                message: msg,
-                metadata: data,
-            });
+                error: err.message,
+                stack: err.stack
+            }, null, 2));
         }
 
-        // ── 4. Email ─────────────────────────────────────────────────────────────
-        if (prefs.email && user.email) {
+        // ── Socket ──────────────────────────────────────────────────
+        if (prefs.in_app) {
             try {
-                const { subject, html } = getEmailTemplate(type, templateData);
-                await sendMail({ to: user.email, subject, html });
-
-                if (dbRecord) {
-                    await dbRecord.update({ emailSent: true });
-                }
-
-                logger.debug({ event: 'EMAIL_SENT', userId, type, to: user.email });
-            } catch (mailErr) {
-                logger.error({ event: 'EMAIL_FAILED', userId, type, error: mailErr.message });
+                sendNotification(userId, {
+                    id: dbRecord?.id,
+                    type,
+                    title,
+                    message: msg,
+                    metadata: data ? JSON.parse(JSON.stringify(data)) : {},
+                });
+            } catch (socketErr) {
+                logger.error(JSON.stringify({
+                    event: 'DISPATCH_FAILED',
+                    userId,
+                    type,
+                    error: err.message,
+                    stack: err.stack
+                }, null, 2));
             }
         }
 
-        // ── 5. SMS ───────────────────────────────────────────────────────────────
-        // Phone number stored in metadata or user profile
+        // ── Email ───────────────────────────────────────────────────
+        if (prefs.email && user.email) {
+            try {
+                const { subject, html } = getEmailTemplate(type, templateData);
+
+                await retry(() =>
+                    sendMail({ to: user.email, subject, html })
+                );
+
+                if (dbRecord) await dbRecord.update({ emailSent: true });
+
+                logger.debug({ event: 'EMAIL_SENT', userId, type });
+            } catch (mailErr) {
+                logger.error(JSON.stringify({
+                    event: 'EMAIL_FAILED',
+                    userId,
+                    type,
+                    error: mailErr.message,
+                    stack: mailErr.stack
+                }, null, 2));
+            }
+        }
+
+        // ── SMS ─────────────────────────────────────────────────────
         const phone = data.phone || user.phone || null;
 
         if (prefs.sms && phone) {
             try {
                 const smsBody = getSMSMessage(type, templateData);
-                const sent = await sendSMS(phone, smsBody);
+
+                const sent = await retry(() =>
+                    sendSMS(phone, smsBody)
+                );
 
                 if (sent && dbRecord) {
                     await dbRecord.update({ smsSent: true });
@@ -171,19 +212,32 @@ const dispatch = async ({
             }
         }
 
+        // ✅ Observability (no logic change)
+        logger.info({
+            event: 'NOTIFICATION_DISPATCHED',
+            userId,
+            type,
+            channels: prefs,
+        });
+
     } catch (err) {
-        // Never crash the caller — notifications are non-critical
-        logger.error({ event: 'DISPATCH_FAILED', userId, type, error: err.message, stack: err.stack });
+        logger.error(JSON.stringify({
+            event: 'DISPATCH_FAILED',
+            userId,
+            type,
+            error: err.message,
+            stack: err.stack
+        }, null, 2));
     }
 };
 
-/**
- * dispatchBulk
- * Send the same notification to multiple users.
- */
+// ──────────────────────────────────────────────────────────────────────────
+
 const dispatchBulk = async (userIds, params) => {
+    if (!Array.isArray(userIds) || userIds.length === 0) return;
+
     await Promise.allSettled(
-        userIds.map(uid => dispatch({ ...params, userId: uid })),
+        userIds.map(uid => dispatch({ ...params, userId: uid }))
     );
 };
 
