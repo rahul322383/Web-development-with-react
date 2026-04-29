@@ -4,16 +4,15 @@ import { toast } from 'sonner';
 import {
     fetchCompany,
     fetchCompanyStats,
-    createCompany,
     updateCompany,
+    updateCompanySettings,
     uploadCompanyLogo,
     deleteCompanyLogo,
-    updateCompanySettings,
     deactivateCompany,
     listCompanies,
 } from '../api/companyApi';
 
-// ── query key factory ────────────────────────────────────────
+// ─── query key factory ───────────────────────────────────────
 export const companyKeys = {
     all: () => ['company'],
     detail: (id) => ['company', id],
@@ -21,7 +20,18 @@ export const companyKeys = {
     list: (params) => ['company', 'list', params],
 };
 
-// ── GET company profile ──────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+//  QUERIES
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Fetch full company profile.
+ * data → { id, name, slug, email, phone, website, industry, size,
+ *   addressLine1, addressLine2, city, state, country, postalCode,
+ *   logoUrl, logoPublicId, workingHoursPerDay, workingDaysPerWeek,
+ *   annualLeaveQuota, timezone, currency, fiscalYearStart,
+ *   isActive, isVerified, subscriptionPlan, subscriptionExpiresAt }
+ */
 export const useCompany = (id) =>
     useQuery({
         queryKey: companyKeys.detail(id),
@@ -30,16 +40,23 @@ export const useCompany = (id) =>
         staleTime: 5 * 60 * 1000,
     });
 
-// ── GET company stats (KPIs) ─────────────────────────────────
+/**
+ * Fetch company KPI stats.
+ * data → { company: { id, name, logoUrl, subscriptionPlan, isVerified },
+ *           stats:   { totalEmployees, activeEmployees, totalPayroll } }
+ */
 export const useCompanyStats = (id) =>
     useQuery({
         queryKey: companyKeys.stats(id),
         queryFn: () => fetchCompanyStats(id),
         enabled: !!id,
-        staleTime: 2 * 60 * 1000,
+        staleTime: 5 * 60 * 1000,
     });
 
-// ── GET list (admin) ─────────────────────────────────────────
+/**
+ * List all companies (admin only).
+ * data → { total, page, limit, companies: [...] }
+ */
 export const useCompanyList = (params = {}) =>
     useQuery({
         queryKey: companyKeys.list(params),
@@ -47,20 +64,11 @@ export const useCompanyList = (params = {}) =>
         staleTime: 2 * 60 * 1000,
     });
 
-// ── CREATE ───────────────────────────────────────────────────
-export const useCreateCompany = () => {
-    const qc = useQueryClient();
-    return useMutation({
-        mutationFn: createCompany,
-        onSuccess: () => {
-            qc.invalidateQueries({ queryKey: companyKeys.all() });
-            toast.success('Company created successfully');
-        },
-        onError: (err) => toast.error(err?.response?.data?.message || 'Failed to create company'),
-    });
-};
+// ─────────────────────────────────────────────────────────────
+//  MUTATIONS
+// ─────────────────────────────────────────────────────────────
 
-// ── UPDATE PROFILE ───────────────────────────────────────────
+/** Update company profile fields */
 export const useUpdateCompany = (id) => {
     const qc = useQueryClient();
     return useMutation({
@@ -69,50 +77,56 @@ export const useUpdateCompany = (id) => {
             qc.invalidateQueries({ queryKey: companyKeys.detail(id) });
             toast.success('Company profile updated');
         },
-        onError: (err) => toast.error(err?.response?.data?.message || 'Update failed'),
+        onError: (err) => toast.error(err.response?.data?.message || 'Update failed'),
     });
 };
 
-// ── UPLOAD LOGO ──────────────────────────────────────────────
-export const useUploadLogo = (id) => {
+/** Update HR / payroll settings */
+export const useUpdateCompanySettings = (id) => {
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: (payload) => updateCompanySettings(id, payload),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: companyKeys.detail(id) });
+            toast.success('Settings saved');
+        },
+        onError: (err) => toast.error(err.response?.data?.message || 'Settings update failed'),
+    });
+};
+
+/**
+ * Upload / replace company logo.
+ * Pass a File object — hook handles FormData internally via companyApi.
+ * On success, invalidates detail + stats so logo refreshes everywhere.
+ */
+export const useUploadCompanyLogo = (id) => {
     const qc = useQueryClient();
     return useMutation({
         mutationFn: (file) => uploadCompanyLogo(id, file),
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: companyKeys.detail(id) });
+            qc.invalidateQueries({ queryKey: companyKeys.stats(id) });
             toast.success('Logo uploaded successfully');
         },
-        onError: (err) => toast.error(err?.response?.data?.message || 'Logo upload failed'),
+        onError: (err) => toast.error(err.response?.data?.message || 'Logo upload failed'),
     });
 };
 
-// ── DELETE LOGO ──────────────────────────────────────────────
-export const useDeleteLogo = (id) => {
+/** Delete company logo */
+export const useDeleteCompanyLogo = (id) => {
     const qc = useQueryClient();
     return useMutation({
         mutationFn: () => deleteCompanyLogo(id),
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: companyKeys.detail(id) });
+            qc.invalidateQueries({ queryKey: companyKeys.stats(id) });
             toast.success('Logo removed');
         },
-        onError: (err) => toast.error(err?.response?.data?.message || 'Failed to remove logo'),
+        onError: (err) => toast.error(err.response?.data?.message || 'Failed to remove logo'),
     });
 };
 
-// ── UPDATE SETTINGS ──────────────────────────────────────────
-export const useUpdateCompanySettings = (id) => {
-    const qc = useQueryClient();
-    return useMutation({
-        mutationFn: (settings) => updateCompanySettings(id, settings),
-        onSuccess: () => {
-            qc.invalidateQueries({ queryKey: companyKeys.detail(id) });
-            toast.success('Settings saved');
-        },
-        onError: (err) => toast.error(err?.response?.data?.message || 'Failed to save settings'),
-    });
-};
-
-// ── DEACTIVATE ───────────────────────────────────────────────
+/** Soft-delete company + lock all users */
 export const useDeactivateCompany = (id) => {
     const qc = useQueryClient();
     return useMutation({
@@ -121,6 +135,6 @@ export const useDeactivateCompany = (id) => {
             qc.invalidateQueries({ queryKey: companyKeys.all() });
             toast.success('Company deactivated');
         },
-        onError: (err) => toast.error(err?.response?.data?.message || 'Deactivation failed'),
+        onError: (err) => toast.error(err.response?.data?.message || 'Deactivation failed'),
     });
 };
