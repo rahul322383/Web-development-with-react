@@ -172,7 +172,7 @@ const findCompanyByName = async (name) => {
   return Company.findOne({
     where: {
       name: {
-        [Op.iLike]: `%${name}%`, // case-insensitive
+        [Op.like]: `%${name}%`,
       },
       isActive: true,
     },
