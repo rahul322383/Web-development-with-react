@@ -257,7 +257,7 @@ import AttendancePage from "./pages/AttendancePage";
 import EmployeePayroll from "./pyaroll/EmployeePayroll";
 import AdminPayroll from "./pyaroll/AdminPayroll";
 import AnalyticsDashboard from "./analytics/AnalyticsDashboard";
-import CompanyPage from './pages/CompanyPage'
+import CompanyPage from './company/CompanyPage'
 
 
 
