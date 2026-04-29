@@ -3,6 +3,7 @@ const AppError = require('../utils/AppError');
 const authorize = (...allowedRoles) => (req, res, next) => {
   try {
     if (!req.user || !allowedRoles.includes(req.user.role)) {
+      console.log(req.user)
       return res.status(403).json({
         success: false,
         message: 'Forbidden: You do not have permission to access this resource',
