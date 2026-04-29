@@ -4,6 +4,11 @@ const asyncHandler = require('../../utils/asyncHandler');
 const leaveService = require('./leaveService');
 const { sendNotification } = require('../../config/socket');
 
+// ─────────────────────────────────────────────────────────────
+// APPLY FOR LEAVE
+// Notifies: employee ✅ + manager ✅ + HR team ✅
+// ─────────────────────────────────────────────────────────────
+
 const applyLeave = asyncHandler(async (req, res) => {
   const result = await leaveService.applyForLeave({
     employeeId: req.user.id,
@@ -11,75 +16,63 @@ const applyLeave = asyncHandler(async (req, res) => {
     endDate: req.body.endDate,
     reason: req.body.reason,
     ipAddress: req.ip,
-    actor: req.user                          // FIX: pass actor
+    actor: req.user,
   });
 
   if (result.success) {
+    const { id, daysRequested, managerId } = result.data;
+    const employeeName = `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() || 'Employee';
+
+    // ✅ 1. Notify employee — confirmation
     sendNotification(req.user.id, {
       type: 'LEAVE_APPLIED',
       title: 'Leave Application Submitted',
-      message: `Your leave request from ${req.body.startDate} to ${req.body.endDate} has been submitted.`,
-      leaveId: result.data.id,
+      message: `Your leave request from ${req.body.startDate} to ${req.body.endDate} has been submitted and is pending approval.`,
+      leaveId: id,
       startDate: req.body.startDate,
       endDate: req.body.endDate,
-      status: 'PENDING',
-      days: result.data.daysRequested
+      status: 'Pending',
+      days: daysRequested,
     });
 
-    if (result.data.managerId) {
-      sendNotification(result.data.managerId, {
+    // ✅ 2. Notify manager — action required
+    if (managerId) {
+      sendNotification(managerId, {
         type: 'LEAVE_PENDING_REVIEW',
-        title: 'New Leave Request',
-        message: `${req.user.name || 'Employee'} requested leave from ${req.body.startDate} to ${req.body.endDate}.`,
-        leaveId: result.data.id,
+        title: 'New Leave Request Awaiting Approval',
+        message: `${employeeName} has requested leave from ${req.body.startDate} to ${req.body.endDate} (${daysRequested} day${daysRequested > 1 ? 's' : ''}).`,
+        leaveId: id,
         employeeId: req.user.id,
-        days: result.data.daysRequested,
-        reason: req.body.reason
+        days: daysRequested,
+        reason: req.body.reason,
       });
     }
 
-    // HR notifications are handled via eventBus in the service
+    // ✅ 3. Notify all HR users — visibility
+    const hrIds = await leaveService.getHRTeamIds();
+    for (const hrId of hrIds) {
+      if (hrId !== managerId && hrId !== req.user.id) {
+        sendNotification(hrId, {
+          type: 'LEAVE_APPLIED_HR',
+          title: 'New Leave Application',
+          message: `${employeeName} applied for ${daysRequested} day(s) of leave from ${req.body.startDate} to ${req.body.endDate}.`,
+          leaveId: id,
+          employeeId: req.user.id,
+        });
+      }
+    }
   }
 
   return res.status(result.success ? 201 : (result.statusCode || 400)).json(result);
 });
 
-// const reviewLeave = asyncHandler(async (req, res) => {
-//   const result = await leaveService.managerDecision({
-//     managerId: req.user.id,
-//     role: req.user.role,
-//     requestId: Number(req.params.id),
-//     status: req.body.status,
-//     decisionNote: req.body.decisionNote,
-//     ipAddress: req.ip,
-//     actor: req.user                          // FIX: pass actor
-//   });
-
-//   if (result.success) {
-//     const leaveRequest = result.data;
-
-//     sendNotification(leaveRequest.employeeId, {
-//       type: `LEAVE_${leaveRequest.status.toUpperCase()}`,
-//       title: `Leave ${leaveRequest.status}`,
-//       message: `Your leave from ${leaveRequest.startDate} to ${leaveRequest.endDate} has been ${leaveRequest.status.toLowerCase()}.`,
-//       leaveId: leaveRequest.id,
-//       status: leaveRequest.status,
-//       decisionNote: req.body.decisionNote,
-//       days: leaveRequest.daysRequested
-//     });
-
-//     // Balance updates, HR notifications, team notifications
-//     // are handled via eventBus listeners in the service
-//   }
-
-//   return res.status(result.success ? 200 : (result.statusCode || 400)).json(result);
-// });
-
-
+// ─────────────────────────────────────────────────────────────
+// REVIEW LEAVE (approve / reject)
+// Notifies: employee ✅ + team members ✅ + HR team ✅
+// ─────────────────────────────────────────────────────────────
 
 const reviewLeave = asyncHandler(async (req, res) => {
   const allowedRoles = ['Manager', 'Admin'];
-
   if (!allowedRoles.includes(req.user.role)) {
     return res.status(403).json({
       success: false,
@@ -94,158 +87,186 @@ const reviewLeave = asyncHandler(async (req, res) => {
     status: req.body.status,
     decisionNote: req.body.decisionNote,
     ipAddress: req.ip,
-    actor: req.user
+    actor: req.user,
   });
 
   if (result.success) {
     const leaveRequest = result.data;
+    const { employeeId, startDate, endDate, daysRequested, managerId, status } = leaveRequest;
 
-    sendNotification(leaveRequest.employeeId, {
-      type: `LEAVE_${leaveRequest.status.toUpperCase()}`,
-      title: `Leave ${leaveRequest.status}`,
-      message: `Your leave from ${leaveRequest.startDate} to ${leaveRequest.endDate} has been ${leaveRequest.status.toLowerCase()}.`,
+    const decisionNote = req.body.decisionNote || null;
+    const statusLabel = status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
+    const managerName = `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() || 'Your manager';
+
+    // ✅ 1. Notify employee — decision result
+    sendNotification(employeeId, {
+      type: `LEAVE_${status.toUpperCase()}`,
+      title: `Leave ${statusLabel}`,
+      message: `Your leave from ${startDate} to ${endDate} has been ${status.toLowerCase()} by ${managerName}.${decisionNote ? ` Note: ${decisionNote}` : ''}`,
       leaveId: leaveRequest.id,
-      status: leaveRequest.status,
-      decisionNote: req.body.decisionNote,
-      days: leaveRequest.daysRequested
-    });
-  }
-
-  return res.status(result.success ? 200 : (result.statusCode || 400)).json(result);
-});
-
-const cancelLeave = asyncHandler(async (req, res) => {
-  const result = await leaveService.cancelLeave({
-    requestId: Number(req.params.id),
-    employeeId: req.user.id,
-    actor: req.user                          // FIX: pass actor
-  });
-
-  if (result.success) {
-    const leaveRequest = result.data;
-
-    sendNotification(req.user.id, {
-      type: 'LEAVE_CANCELLED',
-      title: 'Leave Cancelled',
-      message: `Leave from ${leaveRequest.startDate} to ${leaveRequest.endDate} cancelled.`,
-      leaveId: leaveRequest.id,
-      days: leaveRequest.daysRequested
+      status,
+      decisionNote,
+      days: daysRequested,
     });
 
-    if (leaveRequest.managerId) {
-      sendNotification(leaveRequest.managerId, {
-        type: 'LEAVE_CANCELLED_MANAGER',
-        title: 'Leave Cancelled',
-        message: `${req.user.name || 'Employee'} cancelled a leave request.`,
-        leaveId: leaveRequest.id,
-        employeeId: req.user.id
-      });
+    // ✅ 2. If approved — notify team members so they know colleague is on leave
+    if (status.toLowerCase() === 'approved') {
+      const teamMemberIds = await leaveService.getTeamMembers(managerId);
+
+      for (const memberId of teamMemberIds) {
+        if (memberId !== employeeId) {
+          sendNotification(memberId, {
+            type: 'TEAM_MEMBER_ON_LEAVE',
+            title: 'Team Leave Update',
+            message: `A team member will be on leave from ${startDate} to ${endDate} (${daysRequested} day${daysRequested > 1 ? 's' : ''}).`,
+            leaveId: leaveRequest.id,
+            employeeId,
+          });
+        }
+      }
+    }
+
+    // ✅ 3. Notify HR — audit trail visibility
+    const hrIds = await leaveService.getHRTeamIds();
+    for (const hrId of hrIds) {
+      if (hrId !== req.user.id) {
+        sendNotification(hrId, {
+          type: `LEAVE_${status.toUpperCase()}_HR`,
+          title: `Leave ${statusLabel} — HR Notice`,
+          message: `${managerName} has ${status.toLowerCase()} a leave request (${daysRequested} day${daysRequested > 1 ? 's' : ''}, ${startDate} → ${endDate}).${decisionNote ? ` Reason: ${decisionNote}` : ''}`,
+          leaveId: leaveRequest.id,
+          employeeId,
+        });
+      }
     }
   }
 
   return res.status(result.success ? 200 : (result.statusCode || 400)).json(result);
 });
 
+// ─────────────────────────────────────────────────────────────
+// CANCEL LEAVE
+// Notifies: employee ✅ + manager ✅ + HR team ✅
+// ─────────────────────────────────────────────────────────────
+
+const cancelLeave = asyncHandler(async (req, res) => {
+  const result = await leaveService.cancelLeave({
+    requestId: Number(req.params.id),
+    employeeId: req.user.id,
+    actor: req.user,
+  });
+
+  if (result.success) {
+    const leaveRequest = result.data;
+    const { startDate, endDate, daysRequested, managerId } = leaveRequest;
+    const employeeName = `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() || 'Employee';
+
+    // ✅ 1. Notify employee — confirmation
+    sendNotification(req.user.id, {
+      type: 'LEAVE_CANCELLED',
+      title: 'Leave Cancelled',
+      message: `Your leave from ${startDate} to ${endDate} has been successfully cancelled.`,
+      leaveId: leaveRequest.id,
+      days: daysRequested,
+    });
+
+    // ✅ 2. Notify manager — so they know their queue changed
+    if (managerId) {
+      sendNotification(managerId, {
+        type: 'LEAVE_CANCELLED_MANAGER',
+        title: 'Leave Request Cancelled',
+        message: `${employeeName} has cancelled their leave request from ${startDate} to ${endDate}.`,
+        leaveId: leaveRequest.id,
+        employeeId: req.user.id,
+      });
+    }
+
+    // ✅ 3. Notify HR — visibility
+    const hrIds = await leaveService.getHRTeamIds();
+    for (const hrId of hrIds) {
+      if (hrId !== managerId && hrId !== req.user.id) {
+        sendNotification(hrId, {
+          type: 'LEAVE_CANCELLED_HR',
+          title: 'Leave Cancelled — HR Notice',
+          message: `${employeeName} cancelled their leave from ${startDate} to ${endDate}.`,
+          leaveId: leaveRequest.id,
+          employeeId: req.user.id,
+        });
+      }
+    }
+  }
+
+  return res.status(result.success ? 200 : (result.statusCode || 400)).json(result);
+});
+
+// ─────────────────────────────────────────────────────────────
+// READ-ONLY HANDLERS — no notification needed
+// ─────────────────────────────────────────────────────────────
+
 const listMyLeaves = asyncHandler(async (req, res) => {
   const result = await leaveService.listMyLeaves({
     employeeId: req.user.id,
     cursor: req.query.cursor ? Number(req.query.cursor) : null,
     limit: Math.min(Number(req.query.limit || 20), 100),
-    actor: req.user                          // FIX: pass actor
+    actor: req.user,
   });
   return res.status(result.success ? 200 : (result.statusCode || 400)).json(result);
 });
-
-// const listPendingForManager = asyncHandler(async (req, res) => {
-//   const { limit = 10, page = 1 } = req.query;
-
-//   const result = await leaveService.listPendingLeavesForManager(
-//     req.user.id,
-//     req.user,
-//     { limit: Number(limit), page: Number(page) }
-//   );
-
-//   return res.status(result.success ? 200 : (result.statusCode || 400)).json(result);
-// });
-
 
 const listPendingLeaves = asyncHandler(async (req, res) => {
   const { limit = 10, page = 1 } = req.query;
-  const actor = req.user;
-
   const result = await leaveService.listPendingLeaves({
-    actor,
+    actor: req.user,
     limit: Number(limit),
-    page: Number(page)
+    page: Number(page),
   });
-
   return res.status(result.success ? 200 : (result.statusCode || 400)).json(result);
 });
 
-
 const getLeaveBalance = asyncHandler(async (req, res) => {
-  const result = await leaveService.getMyLeaveBalance(
-    req.user.id,
-    req.user                                 // FIX: pass actor
-  );
+  const result = await leaveService.getMyLeaveBalance(req.user.id, req.user);
   return res.status(result.success ? 200 : (result.statusCode || 400)).json(result);
 });
 
 const getLeaveById = asyncHandler(async (req, res) => {
-  const result = await leaveService.findLeaveRequestById(
-    Number(req.params.id),
-    req.user                                 // FIX: pass actor
-  );
+  const result = await leaveService.findLeaveRequestById(Number(req.params.id), req.user);
   return res.status(result.success ? 200 : (result.statusCode || 400)).json(result);
 });
 
 const listTeamLeaves = asyncHandler(async (req, res) => {
   const managerId = req.user?.id;
-
-
   if (!managerId) {
-    return res.status(400).json({
-      success: false,
-      message: "Manager ID missing in request"
-    });
+    return res.status(400).json({ success: false, message: 'Manager ID missing in request' });
   }
-
   const result = await leaveService.listTeamLeaves({
     managerId,
     status: req.query.status,
     limit: req.query.limit,
-    page: req.query.page
+    page: req.query.page,
   });
-
-  return res
-    .status(result.success ? 200 : (result.statusCode || 400))
-    .json(result);
+  return res.status(result.success ? 200 : (result.statusCode || 400)).json(result);
 });
 
 const getDashboardSummary = asyncHandler(async (req, res) => {
   const result = await leaveService.getDashboardSummary({
     userId: req.user.id,
     year: req.query.year,
-    actor: req.user                          // FIX: pass actor
+    actor: req.user,
   });
   return res.status(result.success ? 200 : (result.statusCode || 400)).json(result);
 });
 
 const getLeaveStats = asyncHandler(async (req, res) => {
-  const result = await leaveService.getLeaveStats({
-    year: req.query.year,
-    actor: req.user                          // FIX: pass actor
-  });
+  const result = await leaveService.getLeaveStats({ year: req.query.year, actor: req.user });
   return res.status(result.success ? 200 : (result.statusCode || 400)).json(result);
 });
 
 const resetLeaveBalances = asyncHandler(async (req, res) => {
-  const result = await leaveService.yearlyLeaveReset(
-    req.body.year,
-    req.user                                 // FIX: pass actor
-  );
+  const result = await leaveService.yearlyLeaveReset(req.body.year, req.user);
   return res.status(result.success ? 200 : (result.statusCode || 400)).json(result);
 });
+
+// ─────────────────────────────────────────────────────────────
 
 module.exports = {
   applyLeave,
@@ -258,5 +279,5 @@ module.exports = {
   listTeamLeaves,
   getDashboardSummary,
   getLeaveStats,
-  resetLeaveBalances
+  resetLeaveBalances,
 };
