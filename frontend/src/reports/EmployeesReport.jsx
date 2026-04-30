@@ -1,12 +1,11 @@
 // src/components/reports/EmployeesReport.jsx
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
     Loader2,
     Users,
     UserPlus,
     UserMinus,
     TrendingUp,
-    TrendingDown,
     AlertCircle,
     Briefcase,
     Calendar,
@@ -17,8 +16,10 @@ import reportsAPI from '../api/reports.api';
 import ReportDateRange from './ReportDateRange';
 import ExportButtons from './ExportButtons';
 import { useAuth } from '../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 const EmployeesReport = () => {
+    const navigate = useNavigate();
     const { user, meta } = useAuth();
     const [dateRange, setDateRange] = useState(() => {
         const today = new Date();
@@ -32,35 +33,39 @@ const EmployeesReport = () => {
     const [apiData, setApiData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    const [viewMode, setViewMode] = useState('table'); // 'table' or 'cards'
+    const [viewMode, setViewMode] = useState('table');
 
-    const fetchReport = async () => {
+    const fetchReport = useCallback(async () => {
+        const abortController = new AbortController();
         try {
             setLoading(true);
             setError(null);
             const response = await reportsAPI.getEmployees({
                 from: dateRange.from,
                 to: dateRange.to,
-            });
-            // Handle both possible response structures
+            }, { signal: abortController.signal });
             const data = response.data || response;
             setApiData(data);
         } catch (err) {
-            setError(err.response?.data?.message || 'Failed to load employees report');
+            if (err.name !== 'AbortError') {
+                setError(err.response?.data?.message || 'Failed to load employees report');
+            }
         } finally {
             setLoading(false);
         }
-    };
-
-    useEffect(() => {
-        fetchReport();
+        return () => abortController.abort();
     }, [dateRange]);
 
-    // Transform API data into usable formats
-    const { employees, summary, roleMap } = useMemo(() => {
+    useEffect(() => {
+        const cleanup = fetchReport();
+        return () => {
+            if (cleanup && typeof cleanup === 'function') cleanup();
+        };
+    }, [fetchReport]);
+
+    const { employees, summary } = useMemo(() => {
         if (!apiData) return { employees: [], summary: null, roleMap: new Map() };
 
-        // Create a map of employee id -> role from byRole data
         const roleMap = new Map();
         if (apiData.byRole) {
             apiData.byRole.forEach((roleGroup) => {
@@ -70,10 +75,8 @@ const EmployeesReport = () => {
             });
         }
 
-        // Get the raw employee list
         const rawList = apiData.list || [];
 
-        // Enrich employees with fullName and role
         const enrichedEmployees = rawList.map((emp) => ({
             ...emp,
             fullName: `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Unknown',
@@ -81,12 +84,10 @@ const EmployeesReport = () => {
             joinDate: emp.created_at,
         }));
 
-        // Compute summary statistics
         const totalEmployees = enrichedEmployees.length;
         const activeEmployees = enrichedEmployees.filter((e) => e.is_active === 1).length;
         const inactiveEmployees = totalEmployees - activeEmployees;
 
-        // Count new hires from newHires array
         let newHiresCount = 0;
         if (apiData.newHires) {
             apiData.newHires.forEach((group) => {
@@ -106,7 +107,7 @@ const EmployeesReport = () => {
             turnoverRate: parseFloat(turnoverRate),
         };
 
-        return { employees: enrichedEmployees, summary: summaryStats, roleMap };
+        return { employees: enrichedEmployees, summary: summaryStats };
     }, [apiData]);
 
     const userRoles = user?.roles?.length
@@ -148,6 +149,7 @@ const EmployeesReport = () => {
                 title: 'Total Employees',
                 value: summary.total,
                 icon: Users,
+                href: '/users',
                 gradient: 'from-blue-500 to-cyan-500',
                 bgGradient: 'from-blue-50 to-cyan-50 dark:from-blue-950/30 dark:to-cyan-950/30',
                 iconBg: 'bg-blue-100 dark:bg-blue-900/40',
@@ -157,6 +159,7 @@ const EmployeesReport = () => {
                 title: 'New Hires',
                 value: summary.newHires,
                 icon: UserPlus,
+                href: '/users',
                 gradient: 'from-emerald-500 to-green-500',
                 bgGradient: 'from-emerald-50 to-green-50 dark:from-emerald-950/30 dark:to-green-950/30',
                 iconBg: 'bg-emerald-100 dark:bg-emerald-900/40',
@@ -166,6 +169,7 @@ const EmployeesReport = () => {
                 title: 'Departures',
                 value: summary.departures,
                 icon: UserMinus,
+                href: '/department-dashboard',
                 gradient: 'from-red-500 to-rose-500',
                 bgGradient: 'from-red-50 to-rose-50 dark:from-red-950/30 dark:to-rose-950/30',
                 iconBg: 'bg-red-100 dark:bg-red-900/40',
@@ -175,6 +179,7 @@ const EmployeesReport = () => {
                 title: 'Turnover Rate',
                 value: `${summary.turnoverRate}%`,
                 icon: TrendingUp,
+                href: '/payroll',
                 gradient: 'from-purple-500 to-pink-500',
                 bgGradient: 'from-purple-50 to-pink-50 dark:from-purple-950/30 dark:to-pink-950/30',
                 iconBg: 'bg-purple-100 dark:bg-purple-900/40',
@@ -216,7 +221,8 @@ const EmployeesReport = () => {
                     {summaryCards.map((card) => (
                         <div
                             key={card.title}
-                            className={`group relative overflow-hidden rounded-2xl border border-gray-200 dark:border-gray-700/60 shadow-sm hover:shadow-lg transition-all duration-300 hover:-translate-y-1 bg-gradient-to-br ${card.bgGradient} backdrop-blur-sm`}
+                            onClick={() => card.href && navigate(card.href)}
+                            className={`group relative overflow-hidden rounded-2xl border border-gray-200 dark:border-gray-700/60 shadow-sm hover:shadow-lg transition-all duration-300 hover:-translate-y-1 bg-gradient-to-br ${card.bgGradient} backdrop-blur-sm cursor-pointer`}
                         >
                             <div
                                 className={`absolute inset-0 bg-gradient-to-r ${card.gradient} opacity-0 group-hover:opacity-10 transition-opacity duration-500`}
