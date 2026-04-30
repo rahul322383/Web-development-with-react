@@ -224,6 +224,7 @@ const applyForLeave = async ({
 
     const request = await sequelize.transaction(async (transaction) => {
       const employee = await User.findByPk(empId, { transaction });
+      
       if (!employee) throw Object.assign(new Error('Employee not found'), { statusCode: 404 });
 
       if (!employee.managerId) {
@@ -231,6 +232,7 @@ const applyForLeave = async ({
       }
 
       const manager = await User.findByPk(employee.managerId, { transaction });
+      
       if (!manager) {
         throw Object.assign(new Error('Assigned manager not found'), { statusCode: 422 });
       }
@@ -302,8 +304,7 @@ const applyForLeave = async ({
       logger.error({ event: 'AUDIT_LOG_FAILED', error: auditErr.message });
     }
 
-    // ✅ FIXED EVENT PAYLOAD
-    console.log('🔥 EMITTING LEAVE_REQUESTED EVENT');
+  
 
     eventBus.emit('LEAVE_REQUESTED', {
       leaveRequest: request,
@@ -341,9 +342,9 @@ const applyForLeave = async ({
       stack: error.stack,
     });
 
-    logger.error(error.stack || error.message || JSON.stringify(error));
 
     return fail(error.message || 'Failed to apply for leave', error.statusCode || 500);
+    console.log(error.message)
   }
 };
 
@@ -572,7 +573,7 @@ const listPendingLeaves = async ({ actor, limit = 10, page = 1 }) => {
       count: result.count,
     };
   } catch (error) {
-    logger.error({ event: 'LIST_PENDING_LEAVES_FAILED', actor: actor.id, error: error.message });
+   
     return fail(error.message || 'Failed to fetch pending leaves', 500);
   }
 };
