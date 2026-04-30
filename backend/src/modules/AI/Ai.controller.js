@@ -1,70 +1,269 @@
+// 'use strict';
+
+// const aiService = require('./Ai.servics');
+// const logger = require('../../config/logger');
+
+// // ─────────────────────────────────────────────────────────────
+// // CONVERSATION STORE
+// // In-memory for now — replace with Redis for production:
+// //
+// //   await redis.setex(`chat:${userId}`, 3600, JSON.stringify(history));
+// //   const history = JSON.parse(await redis.get(`chat:${userId}`)) || [];
+// // ─────────────────────────────────────────────────────────────
+
+// const conversationStore = new Map();
+// const MAX_HISTORY = 10;
+
+// const getHistory = (userId) =>
+//     conversationStore.get(String(userId)) || [];
+
+// const appendHistory = (userId, role, content) => {
+//     const history = getHistory(userId);
+//     history.push({ role, content });
+
+//     // Keep only last MAX_HISTORY messages
+//     if (history.length > MAX_HISTORY) {
+//         history.splice(0, history.length - MAX_HISTORY);
+//     }
+
+//     conversationStore.set(String(userId), history);
+// };
+
+// const clearHistory = (userId) =>
+//     conversationStore.delete(String(userId));
+
+// // ─────────────────────────────────────────────────────────────
+// // POST /api/ai/chat
+// // ─────────────────────────────────────────────────────────────
+
+// const handleChat = async (req, res) => {
+//     try {
+//         const { message } = req.body;
+//         const user = req.user;
+
+//         // ── Guards ──────────────────────────────────────────────
+//         if (!user?.id) {
+//             return res.status(401).json({ success: false, message: 'Unauthorized' });
+//         }
+
+//         if (!message || typeof message !== 'string' || !message.trim()) {
+//             return res.status(400).json({ success: false, message: 'Message is required' });
+//         }
+
+//         if (message.trim().length > 500) {
+//             return res.status(400).json({ success: false, message: 'Message too long (max 500 chars)' });
+//         }
+
+//         // ── ✅ FIXED: load managerId once, attach to user object ─
+//         // Do NOT do DB calls inside the handler on every message.
+//         // auth.middleware should already attach this — this is a safe fallback only.
+//         if (user.managerId === undefined) {
+//             const { User } = require('../../database/initModels');
+//             const fullUser = await User.findByPk(user.id, {
+//                 attributes: ['managerId', 'department'],
+//             });
+//             user.managerId = fullUser?.managerId || null;
+//             user.department = fullUser?.department || null;
+//         }
+
+//         // ── Append user message to history BEFORE calling AI ────
+//         appendHistory(user.id, 'user', message.trim());
+//         const history = getHistory(user.id);
+
+//         // ── Call AI service ──────────────────────────────────────
+//         const result = await aiService.chat(user, message.trim(), history);
+
+//         // ── Only store valid AI replies ──────────────────────────
+//         if (result.success && result.reply) {
+//             appendHistory(user.id, 'assistant', result.reply);
+//         }
+
+//         logger.info({
+//             event: 'AI_CHAT_RESPONSE',
+//             userId: user.id,
+//             action: result.action,
+//             success: result.success,
+//         });
+
+//         return res.status(result.success ? 200 : 400).json({
+//             success: result.success,
+//             reply: result.reply,
+//             action: result.action,
+//             data: result.data || null,
+//         });
+
+//     } catch (error) {
+//         logger.error({
+//             event: 'AI_ERROR',
+//             message: error.message,
+//             stack: error.stack,
+//             full: error,
+//         });
+
+//         return res.status(500).json({
+//             success: false,
+//             // ✅ FIXED: never expose raw error.message in production
+//             message: process.env.NODE_ENV === 'development'
+//                 ? error.message
+//                 : 'Something went wrong. Please try again.',
+//         });
+//     }
+// };
+
+// // ─────────────────────────────────────────────────────────────
+// // GET /api/ai/chat/history — return current session history
+// // ─────────────────────────────────────────────────────────────
+
+// const getChatHistory = (req, res) => {
+//     const history = getHistory(req.user.id);
+//     return res.status(200).json({
+//         success: true,
+//         data: { history, count: history.length },
+//     });
+// };
+
+// // ─────────────────────────────────────────────────────────────
+// // DELETE /api/ai/chat/history — clear conversation
+// // ─────────────────────────────────────────────────────────────
+
+// const clearChatHistory = (req, res) => {
+//     clearHistory(req.user.id);
+//     return res.status(200).json({
+//         success: true,
+//         message: 'Conversation cleared',
+//     });
+// };
+
+// module.exports = { handleChat, getChatHistory, clearChatHistory };
+
 'use strict';
 
 const aiService = require('./Ai.servics');
 const logger = require('../../config/logger');
 
-// In-memory conversation history per user (keyed by userId)
-// For production, move this to Redis with TTL
+// ─────────────────────────────────────────────────────────────
+// CONVERSATION STORE (replace with Redis in production)
+// ─────────────────────────────────────────────────────────────
+
 const conversationStore = new Map();
+const MAX_HISTORY = 10;
 
-const MAX_HISTORY = 10; // max messages to keep per user
-
-const getHistory = (userId) => conversationStore.get(String(userId)) || [];
+const getHistory = (userId) =>
+    conversationStore.get(String(userId)) || [];
 
 const appendHistory = (userId, role, content) => {
     const history = getHistory(userId);
-    history.push({ role, content });
-    // Keep only last MAX_HISTORY messages
-    if (history.length > MAX_HISTORY) history.splice(0, history.length - MAX_HISTORY);
+
+    history.push({
+        role,
+        content,
+        timestamp: new Date().toISOString(),
+    });
+
+    if (history.length > MAX_HISTORY) {
+        history.splice(0, history.length - MAX_HISTORY);
+    }
+
     conversationStore.set(String(userId), history);
 };
 
-const clearHistory = (userId) => conversationStore.delete(String(userId));
+const clearHistory = (userId) =>
+    conversationStore.delete(String(userId));
 
-// POST /api/ai/chat
+// ─────────────────────────────────────────────────────────────
+// SAFE LOGGER HELPERS (FIXES [object Object] ISSUE)
+// ─────────────────────────────────────────────────────────────
+
+const logInfo = (event, data = {}) => {
+    logger.info({
+        event,
+        ...data,
+    });
+};
+
+const logError = (event, error, extra = {}) => {
+    logger.error({
+        event,
+        message: error?.message,
+        stack: error?.stack,
+        name: error?.name,
+        ...extra,
+    });
+};
+
+// ─────────────────────────────────────────────────────────────
+// CHAT CONTROLLER
+// ─────────────────────────────────────────────────────────────
+
 const handleChat = async (req, res) => {
     try {
         const { message } = req.body;
         const user = req.user;
-  
 
-        if (!user || !user.id) {
-            return res.status(401).json({ success: false, message: 'Unauthorized' });
+        // ── AUTH CHECK ───────────────────────────────
+        if (!user?.id) {
+            logError('AI_AUTH_ERROR', new Error('Unauthorized access attempt'), {
+                ip: req.ip,
+            });
+
+            return res.status(401).json({
+                success: false,
+                message: 'Unauthorized',
+            });
         }
 
+        // ── VALIDATION ───────────────────────────────
         if (!message || typeof message !== 'string' || !message.trim()) {
-            return res.status(400).json({ success: false, message: 'Message is required' });
+            return res.status(400).json({
+                success: false,
+                message: 'Message is required',
+            });
         }
 
         if (message.trim().length > 500) {
-            return res.status(400).json({ success: false, message: 'Message too long (max 500 chars)' });
+            return res.status(400).json({
+                success: false,
+                message: 'Message too long (max 500 chars)',
+            });
         }
 
-        // Ensure managerId exists
-        if (!user.managerId) {
+        // ── ENRICH USER DATA (SAFE FALLBACK) ─────────
+        if (user.managerId === undefined) {
             const { User } = require('../../database/initModels');
-            const fullUser = await User.findByPk(user.id, { attributes: ['managerId'] });
+
+            const fullUser = await User.findByPk(user.id, {
+                attributes: ['managerId', 'department'],
+            });
+
             user.managerId = fullUser?.managerId || null;
+            user.department = fullUser?.department || null;
         }
 
-        // ✅ FIXED ORDER
+        // ── HISTORY ───────────────────────────────────
         appendHistory(user.id, 'user', message.trim());
         const history = getHistory(user.id);
 
-        let result;
-        try {
-            result = await aiService.chat(user, message.trim(), history);
-        } catch (err) {
-            console.error("AI SERVICE ERROR:", err);
-            throw err;
-        }
+        // ── AI CALL ───────────────────────────────────
+        const result = await aiService.chat(
+            user,
+            message.trim(),
+            history
+        );
 
-        // ✅ Only store valid replies
-        if (result.success && result.reply) {
+        // ── SAVE AI RESPONSE ─────────────────────────
+        if (result?.success && result?.reply) {
             appendHistory(user.id, 'assistant', result.reply);
         }
 
-        return res.status(result.success ? 200 : 400).json({
+        // ── LOG SUCCESS (STRUCTURED) ─────────────────
+        logInfo('AI_CHAT_SUCCESS', {
+            userId: user.id,
+            action: result.action,
+            success: result.success,
+        });
+
+        // ── RESPONSE ──────────────────────────────────
+        return res.status(200).json({
             success: result.success,
             reply: result.reply,
             action: result.action,
@@ -72,19 +271,81 @@ const handleChat = async (req, res) => {
         });
 
     } catch (error) {
-        logger.error({ event: 'AI_CONTROLLER_ERROR', error: error.message, stack: error.stack });
+        // ── LOG FULL ERROR (FIXED) ───────────────────
+        logError('AI_CHAT_ERROR', error, {
+            userId: req?.user?.id,
+            path: req?.path,
+            method: req?.method,
+        });
 
         return res.status(500).json({
             success: false,
-            message: error.message, // 👈 show real error temporarily
+            message:
+                process.env.NODE_ENV === 'development'
+                    ? error.message
+                    : 'Something went wrong... Please try again.',
         });
     }
 };
 
-// DELETE /api/ai/chat/history  — clear conversation for the logged-in user
-const clearChatHistory = (req, res) => {
-    clearHistory(req.user.id);
-    return res.status(200).json({ success: true, message: 'Conversation cleared' });
+// ─────────────────────────────────────────────────────────────
+// CHAT HISTORY
+// ─────────────────────────────────────────────────────────────
+
+const getChatHistory = (req, res) => {
+    try {
+        const history = getHistory(req.user.id);
+
+        logInfo('AI_HISTORY_FETCHED', {
+            userId: req.user.id,
+            count: history.length,
+        });
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                history,
+                count: history.length,
+            },
+        });
+    } catch (error) {
+        logError('AI_HISTORY_ERROR', error);
+
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to fetch chat history',
+        });
+    }
 };
 
-module.exports = { handleChat, clearChatHistory };
+// ─────────────────────────────────────────────────────────────
+// CLEAR HISTORY
+// ─────────────────────────────────────────────────────────────
+
+const clearChatHistory = (req, res) => {
+    try {
+        clearHistory(req.user.id);
+
+        logInfo('AI_HISTORY_CLEARED', {
+            userId: req.user.id,
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: 'Conversation cleared',
+        });
+    } catch (error) {
+        logError('AI_CLEAR_HISTORY_ERROR', error);
+
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to clear history',
+        });
+    }
+};
+
+module.exports = {
+    handleChat,
+    getChatHistory,
+    clearChatHistory,
+};
