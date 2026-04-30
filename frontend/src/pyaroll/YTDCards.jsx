@@ -1,16 +1,8 @@
-// src/components/payroll/YTDCards.jsx
-// ================================================
-// PRODUCTION-READY YTD CARDS (9.5/10)
-// ================================================
+
 import React, { useMemo } from 'react';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
-// ================================================
-// UTILITIES
-// ================================================
-/**
- * Safe currency formatter using Intl.NumberFormat
- */
+
 const formatCurrency = (value, currency = 'INR') => {
     const num = typeof value === 'number' && !isNaN(value) ? value : 0;
     return new Intl.NumberFormat('en-IN', {
