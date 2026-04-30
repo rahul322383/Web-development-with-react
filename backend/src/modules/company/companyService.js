@@ -97,12 +97,12 @@ const createCompany = (payload, actor) =>
     const perm = assertPermission(actor, 'CREATE_COMPANY');
     if (!perm.allowed) return fail(perm.message, 403);
 
-    validateCompanyPayload(payload);
-
     const existing = await companyRepository.findCompanyByName(payload.name);
     if (existing) return fail('Company already exists', 409);
 
     const slug = await generateUniqueSlug(payload.name);
+    console.log(slug)
+
     const company = await withTransaction((t) =>
       companyRepository.createCompany({
         ...payload,
@@ -115,13 +115,14 @@ const createCompany = (payload, actor) =>
         annualLeaveQuota: payload.annualLeaveQuota ?? 21,
       }, t)
     );
+    console.log(company)
 
-    sendAuditLog(buildAudit('COMPANY_CREATED', actor?.id, { companyId: company.id }));
+    sendAuditLog(buildAudit('COMPANY_CREATED', actor?.id, {
+      companyId: company.id,
+    }));
+
     return ok({ company }, 'Company created successfully');
   }, 'COMPANY_CREATE_FAILED');
-
-// ─────────────────────────────────────────────────────────────
-
 const getCompany = (companyId, actor) =>
   safeExecute(async () => {
     if (actor.companyId && Number(actor.companyId) !== Number(companyId)) {
