@@ -1,34 +1,29 @@
 'use strict';
 
-const express  = require('express');
-const router   = express.Router();
-const multer   = require('multer');
+const express = require('express');
+const router = express.Router();
+const multer = require('multer');
 
 const authenticate = require('../../middleware/auth.middleware');
 const authorize = require('../../middleware/rbacMiddleware');
-
 const {
-  validateCreate,
-  validateUpdate,
-  validateSettings,
+  validateCreate, validateUpdate, validateSettings,
 } = require('./companyValidation');
 
 const {
-  createCompany,
-  getCompany,
-  updateCompany,
-  uploadLogo,
-  deleteLogo,
-  updateSettings,
-  getStats,
-  deactivateCompany,
-  listCompanies,
+  createCompany, getCompany, updateCompany,
+  deactivateCompany, reactivateCompany, listCompanies,
+  uploadLogo, deleteLogo,
+  getSettings, updateSettings,
+  getStats, getDashboard,
+  getCompanyUsers, addUser, removeUser, updateUserRole,
+  updateSubscription, getSubscriptionStatus,
+  sendNotification,
 } = require('./companyController');
 
-// ── multer: memory storage so buffer goes straight to Cloudinary ──
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits:  { fileSize: 5 * 1024 * 1024 }, // 5 MB max
+  limits: { fileSize: 2 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml'];
     if (allowed.includes(file.mimetype)) return cb(null, true);
@@ -36,53 +31,56 @@ const upload = multer({
   },
 });
 
-// All routes require JWT
 router.use(authenticate);
 
-/**
- * GET  /api/v1/company           → list all companies (super-admin)
- * POST /api/v1/company           → create a new company
- */
-router
-  .route('/')
-  .get(authorize('Employee', 'Manager', 'HR', 'Finance', 'Admin'), listCompanies)
-  .post(authorize('Employee', 'Manager', 'HR', 'Finance', 'Admin'), validateCreate, createCompany);
+// ── Collection ────────────────────────────────────────────────
+router.route('/')
+  .get(authorize('Admin'), listCompanies)
+  .post(authorize('Admin'), validateCreate, createCompany);
 
-/**
- * GET    /api/v1/company/:id     → get company profile
- * PATCH  /api/v1/company/:id     → update company profile
- * DELETE /api/v1/company/:id     → deactivate company (soft-delete)
- */
-router
-  .route('/:id')
+// ── Single company ────────────────────────────────────────────
+router.route('/:id')
   .get(getCompany)
-  .patch(authorize('Employee', 'Manager', 'HR', 'Finance', 'Admin'), validateUpdate, updateCompany)
-  .delete(authorize('Employee', 'Manager', 'HR', 'Finance', 'Admin'), deactivateCompany);
+  .patch(authorize('Admin'), validateUpdate, updateCompany)
+  .delete(authorize('Admin'), deactivateCompany);
 
-/**
- * POST   /api/v1/company/:id/logo   → upload / replace logo (multipart)
- * DELETE /api/v1/company/:id/logo   → remove logo from Cloudinary + DB
- */
-router
-  .route('/:id/logo')
-  .post(authorize('Employee', 'Manager', 'HR', 'Finance', 'Admin'), upload.single('logo'), uploadLogo)
-  .delete(authorize('Employee', 'Manager', 'HR', 'Finance', 'Admin'), deleteLogo);
+// ── Reactivate ────────────────────────────────────────────────
+router.patch('/:id/reactivate',
+  authorize('Admin'), reactivateCompany);
 
-/**
- * PATCH /api/v1/company/:id/settings
- * Update HR/payroll policy settings (working hours, leave quota, timezone…)
- */
-router.patch(
-  '/:id/settings',
-  authorize('Employee', 'Manager', 'HR', 'Finance', 'Admin'),
-  validateSettings,
-  updateSettings,
-);
+// ── Logo ──────────────────────────────────────────────────────
+router.route('/:id/logo')
+  .post(authorize('Admin', 'HR'), upload.single('logo'), uploadLogo)
+  .delete(authorize('Admin'), deleteLogo);
 
-/**
- * GET /api/v1/company/:id/stats
- * Returns headcount + payroll summary for dashboard KPIs
- */
-router.get('/:id/stats', getStats);
+// ── Settings ──────────────────────────────────────────────────
+router.route('/:id/settings')
+  .get(authorize('Admin', 'HR'), getSettings)
+  .patch(authorize('Admin'), validateSettings, updateSettings);
+
+// ── Stats + Dashboard ─────────────────────────────────────────
+router.get('/:id/stats',
+  authorize('Admin', 'HR'), getStats);
+
+router.get('/:id/dashboard',
+  authorize('Admin', 'HR'), getDashboard);
+
+// ── Users ─────────────────────────────────────────────────────
+router.route('/:id/users')
+  .get(authorize('Admin', 'HR'), getCompanyUsers)
+  .post(authorize('Admin', 'HR'), addUser);
+
+router.route('/:id/users/:userId')
+  .delete(authorize('Admin'), removeUser)
+  .patch(authorize('Admin'), updateUserRole);
+
+// ── Subscription ──────────────────────────────────────────────
+router.route('/:id/subscription')
+  .get(getSubscriptionStatus)
+  .patch(authorize('Admin'), updateSubscription);
+
+// ── Notifications ─────────────────────────────────────────────
+router.post('/:id/notify',
+  authorize('Admin', 'HR'), sendNotification);
 
 module.exports = router;
