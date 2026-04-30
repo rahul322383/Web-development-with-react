@@ -181,7 +181,7 @@ const dispatch = async ({
 
                 if (dbRecord) await dbRecord.update({ emailSent: true });
 
-                logger.debug({ event: 'EMAIL_SENT', userId, type });
+                
             } catch (mailErr) {
                 logger.error(JSON.stringify({
                     event: 'EMAIL_FAILED',
