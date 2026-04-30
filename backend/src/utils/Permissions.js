@@ -38,18 +38,45 @@ const PERMISSIONS = {
     APPLY_LEAVE: ['Employee', 'Manager', 'Admin','Finance'],
     APPROVE_LEAVE: ['Admin', 'HR', 'Finance', 'Manager'],
     REJECT_LEAVE: ['Admin', 'HR', 'Finance', 'Manager'],
+
+        CREATE_COMPANY: ['Admin', 'HR'],
+        LIST_COMPANIES: ['Admin', 'HR', 'Manager', 'Finance'],
+        VIEW_COMPANY: ['Admin', 'HR', 'Manager', 'Finance', 'Employee'],
+        UPDATE_COMPANY: ['Admin', 'HR'],
+        DELETE_COMPANY: ['Admin'],
+        REACTIVATE_COMPANY: ['Admin'],
+
+        UPLOAD_COMPANY_LOGO: ['Admin', 'HR'],
+        DELETE_COMPANY_LOGO: ['Admin', 'HR'],
+
+        VIEW_COMPANY_SETTINGS: ['Admin', 'HR', 'Manager'],
+        UPDATE_COMPANY_SETTINGS: ['Admin', 'HR'],
+
+        VIEW_COMPANY_STATS: ['Admin', 'HR', 'Manager', 'Finance'],
+        VIEW_COMPANY_DASHBOARD: ['Admin', 'HR', 'Manager', 'Finance'],
+
+        VIEW_COMPANY_USERS: ['Admin', 'HR', 'Manager'],
+        ADD_COMPANY_USER: ['Admin', 'HR'],
+        REMOVE_COMPANY_USER: ['Admin', 'HR'],
+        UPDATE_USER_ROLE: ['Admin', 'HR'],
+
+        VIEW_SUBSCRIPTION: ['Admin', 'HR'],
+        UPDATE_SUBSCRIPTION: ['Admin'],
+
+        SEND_COMPANY_NOTIFICATION: ['Admin', 'HR'],
+
+ 
 };
 
 const getRoles = (user) => {
-    // Return empty array instead of throwing — assertPermission handles the
-    // empty-roles case and returns a clean 403, avoiding unhandled exceptions
+
     if (!user) return [];
 
     const roles = [];
    
 
     if (Array.isArray(user.roles)) {
-        // Handle both { name: 'Admin' } objects and plain 'Admin' strings
+        
         roles.push(...user.roles.map(r => String(r?.name ?? r)));
     }
 
@@ -90,37 +117,14 @@ const assertPermission = (actor, permission) => {
     return { allowed: isAllowed };
 };
 
-// const assertPermission = (actor, permission) => {
-//     const roles = getRoles(actor);
-//     console.log("permission", roles)
-//     if (roles.length === 0) {
-//         return buildResponse(false, 'Unauthorized: no roles found', 403);
-//     }
-
-//     const allowed = PERMISSIONS[permission];
-
-//     if (!allowed) {
-//         return buildResponse(false, `Unknown permission: ${permission}`, 500);
-//     }
-
-//     const isAllowed = roles.some(role =>
-//         allowed.some(a => String(a).toLowerCase() === String(role).toLowerCase())
-//     );
-
-//     return isAllowed
-//         ? buildResponse(true, 'Permission granted', 200)
-//         : buildResponse(false, `Forbidden: roles [${roles}] cannot perform ${permission}`, 403);
-// };
 
 const requirePermission = (permission) => (req, res, next) => {
     const result = assertPermission(req.user, permission);
-    
 
-    if (!result.success) {
-        return res.status(result.statusCode).json({
+    if (!result.allowed) {
+        return res.status(403).json({
             success: false,
-            message: result.message,
-            data: null,
+            message: 'Forbidden',
         });
     }
 
