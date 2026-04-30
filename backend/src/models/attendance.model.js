@@ -26,6 +26,7 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       field: 'check_in',
     },
+    
 
     checkOut: {
       type: DataTypes.TIME,
