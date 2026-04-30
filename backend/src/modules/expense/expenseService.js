@@ -90,12 +90,10 @@ const fail = (message, statusCode = 400, data = null) => ({
   data,
 });
 
-// FIX: single consistent permission check helper — the shape assertPermission
-// returns (.success vs .allowed) only needs to be reconciled in one place.
-// If you update assertPermission's return shape, update only this function.
+
 const checkPermission = (actor, permission) => {
   const perm = assertPermission(actor, permission);
-  // Support both { success } and { allowed } return shapes during migration
+  
   const granted = perm.success ?? perm.allowed ?? false;
   if (!granted) {
     return fail(perm.message || 'Forbidden', perm.statusCode || 403);
@@ -113,10 +111,7 @@ const submitExpense = async ({ employeeId, payload, receiptBuffer, ipAddress, ac
 
   if (!employeeId) return fail('Employee ID is required');
 
-  const validation = validate(submitExpenseSchema, payload ?? {});
-  if (!validation.valid) return fail(validation.message);
-
-  const { category, amount, currency, description, idempotencyKey } = validation.value;
+  const { category, amount, currency, description, idempotencyKey } = payload ?? {};
 
   try {
     const user = await User.findByPk(employeeId);
@@ -134,7 +129,6 @@ const submitExpense = async ({ employeeId, payload, receiptBuffer, ipAddress, ac
       }
     }
 
-    // Upload BEFORE the transaction — Cloudinary failure never rolls back DB writes
     let uploadResult = null;
     if (receiptBuffer?.length) {
       uploadResult = await uploadBuffer(receiptBuffer, 'hrms/expenses');
@@ -172,8 +166,6 @@ const submitExpense = async ({ employeeId, payload, receiptBuffer, ipAddress, ac
       return created;
     });
 
-    // Notifications run OUTSIDE the transaction — a notification failure
-    // must never roll back a committed expense
     const recipients = new Set();
     if (user.managerId) recipients.add(Number(user.managerId));
 
@@ -199,14 +191,17 @@ const submitExpense = async ({ employeeId, payload, receiptBuffer, ipAddress, ac
 
     try {
       await logAuditEvent({
-        userId: employeeId, moduleName: 'Expense', actionType: 'CREATE',
-        oldData: null, newData: expense, ipAddress,
+        userId: employeeId,
+        moduleName: 'Expense',
+        actionType: 'CREATE',
+        oldData: null,
+        newData: expense,
+        ipAddress,
       });
     } catch (auditErr) {
       logger.error({ event: 'AUDIT_LOG_FAILED', error: auditErr.message });
     }
 
-    // Fire-and-forget — cache bust failure is logged but never surfaces to caller
     bustDashboardCache(employeeId).catch((err) =>
       logger.error({ event: 'CACHE_BUST_FAILED', error: err.message }),
     );
@@ -214,6 +209,7 @@ const submitExpense = async ({ employeeId, payload, receiptBuffer, ipAddress, ac
     eventBus.emit('EXPENSE_SUBMITTED', { expense, employeeId, fullName });
 
     const fullExpense = await expenseRepository.findExpenseById(expense.id);
+
     return {
       success: true,
       message: 'Expense submitted successfully',
@@ -222,7 +218,13 @@ const submitExpense = async ({ employeeId, payload, receiptBuffer, ipAddress, ac
     };
 
   } catch (err) {
-    logger.error({ event: 'SUBMIT_EXPENSE_FAILED', employeeId, error: err.message, stack: err.stack });
+    logger.error({
+      event: 'SUBMIT_EXPENSE_FAILED',
+      employeeId,
+      error: err.message,
+      stack: err.stack,
+    });
+
     return fail(err.message || 'Failed to submit expense', 500);
   }
 };
@@ -314,11 +316,15 @@ const submitExpense = async ({ employeeId, payload, receiptBuffer, ipAddress, ac
 // };
 
 
-const managerReviewExpense = async ({ managerId, expenseId, status, comment, actor }) => {
+const managerReviewExpense = async ({
+  managerId,
+  expenseId,
+  status,
+  comment,
+  actor,
+}) => {
   const denied = checkPermission(actor, 'REVIEW_EXPENSE');
   if (denied) return denied;
-
-  const finalStatus = status === 'APPROVED' ? STATUS.APPROVED : STATUS.REJECTED;
 
   try {
     const expense = await expenseRepository.findExpenseById(expenseId);
@@ -332,11 +338,15 @@ const managerReviewExpense = async ({ managerId, expenseId, status, comment, act
       return fail('Expense already reviewed', 409);
     }
 
+    if (![STATUS.APPROVED, STATUS.REJECTED].includes(status)) {
+      return fail('Invalid status', 400);
+    }
+
     const affectedRows = await sequelize.transaction(async (transaction) => {
       return expenseRepository.updateExpenseConditional(
         expenseId,
         {
-          managerApprovalStatus: finalStatus,
+          managerApprovalStatus: status,
           managerComment: comment || null,
           approvedByManagerId: managerId,
         },
@@ -353,41 +363,52 @@ const managerReviewExpense = async ({ managerId, expenseId, status, comment, act
 
     sendNotification(updatedExpense.employeeId, {
       type: `EXPENSE_${status}`,
-      title: `Expense ${finalStatus} by Manager`,
-      message: `Your expense #${updatedExpense.id} has been ${finalStatus.toLowerCase()}.`,
-
+      title: `Expense ${status} by Manager`,
+      message: `Your expense #${updatedExpense.id} has been ${status.toLowerCase()}.`,
       expenseId: updatedExpense.id,
-            status: finalStatus,
-            comment: value.comment || null,
+      status,
+      comment: comment || null,
     });
 
-        eventBus.emit('EXPENSE_MANAGER_REVIEWED', {
-          expense: updatedExpense,
-          managerId: value.managerId,
-          status: finalStatus,
-        });
+    eventBus.emit('EXPENSE_MANAGER_REVIEWED', {
+      expense: updatedExpense,
+      managerId,
+      status,
+    });
 
-        try {
-          await logAuditEvent({
-            userId: value.managerId, moduleName: 'Expense', actionType: 'MANAGER_REVIEW',
-            oldData: expense, newData: updatedExpense,
-          });
-        } catch (auditErr) {
-          logger.error({ event: 'AUDIT_LOG_FAILED', error: auditErr.message });
-        }
+    try {
+      await logAuditEvent({
+        userId: managerId,
+        moduleName: 'Expense',
+        actionType: 'MANAGER_REVIEW',
+        oldData: expense,
+        newData: updatedExpense,
+      });
+    } catch (auditErr) {
+      logger.error({
+        event: 'AUDIT_LOG_FAILED',
+        error: auditErr.message,
+      });
+    }
 
-        return {
-          success: true,
-          message: `Expense ${finalStatus.toLowerCase()} successfully`,
-          statusCode: 200,
-          data: updatedExpense,
-        };
-
-      } catch (err) {
-        logger.error({ event: 'MANAGER_REVIEW_FAILED', managerId, expenseId, error: err.message, stack: err.stack });
-        return fail(err.message || 'Failed to review expense', 500);
-      }
+    return {
+      success: true,
+      message: `Expense ${status.toLowerCase()} successfully`,
+      statusCode: 200,
+      data: updatedExpense,
     };
+  } catch (err) {
+    logger.error({
+      event: 'MANAGER_REVIEW_FAILED',
+      managerId,
+      expenseId,
+      error: err.message,
+      stack: err.stack,
+    });
+
+    return fail(err.message || 'Failed to review expense', 500);
+  }
+};
 
 
 // ---------------------------------------------------------------------------
@@ -401,7 +422,7 @@ const financeReviewExpense = async ({ financeUserId, expenseId, status, paymentS
   const finalStatus = status === 'APPROVED' ? STATUS.APPROVED : STATUS.REJECTED;
 
   try {
-    const expense = await expenseRepository.findExpenseById(expenseId); // ✅ FIX
+    const expense = await expenseRepository.findExpenseById(expenseId);
     if (!expense) return fail('Expense not found', 404);
 
     if (expense.managerApprovalStatus !== STATUS.APPROVED) {
