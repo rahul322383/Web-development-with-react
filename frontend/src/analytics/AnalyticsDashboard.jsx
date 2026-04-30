@@ -5,6 +5,7 @@ import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis,
   CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend,
 } from 'recharts';
+import { Link } from 'react-router-dom';
 
 // ─── colour palette ──────────────────────────────────────────
 const COLORS = {
@@ -110,129 +111,156 @@ export default function AnalyticsDashboard() {
     department: '',
   });
 
-  // strip empty strings before sending to API
   const apiParams = Object.fromEntries(
     Object.entries(filters).filter(([, v]) => v !== '')
   );
 
-  const { data, isLoading, isError, error } = useDashboard(apiParams);
+  const { data, isLoading, isError, errors } = useDashboard(apiParams);
 
-  // ── destructure exact backend payload shapes ───────────────
-  const attritionOverall = data?.attrition?.overall ?? {};
-  const attritionByDept = data?.attrition?.byDepartment ?? [];
-  const deptPerformance = data?.departmentPerformance ?? [];
-  const leaveMonthly = data?.leaveTrends?.monthly ?? [];
-  const leaveStatusBreakdown = data?.leaveTrends?.statusBreakdown ?? [];
-  const costOverall = data?.costPerEmployee?.overall ?? {};
-  const costByDept = data?.costPerEmployee?.byDepartment ?? [];
+  // ✅ safety utils
+  const safeArray = (val) => (Array.isArray(val) ? val : []);
+  const safeNumber = (val) => Number(val ?? 0);
 
-  // ── status breakdown → pie-friendly array ─────────────────
-  // [{ status: 'Approved', count: 42 }, ...]
-  const statusColors = { Approved: COLORS.success, Pending: COLORS.warning, Rejected: COLORS.danger };
+  // ✅ Normalize every piece from the merged data
+  const normalized = {
+    attritionOverall: data?.attrition?.overall ?? {},
+    attritionByDept: safeArray(data?.attrition?.byDepartment),
+    deptPerformance: safeArray(data?.departmentPerformance),   // now an array
+    leaveMonthly: safeArray(data?.leaveTrends?.monthly),
+    leaveStatusBreakdown: safeArray(data?.leaveTrends?.statusBreakdown),
+    costOverall: data?.cost?.overall ?? {},
+    costByDept: safeArray(data?.cost?.byDepartment),
+  };
+
+  const {
+    attritionOverall,
+    attritionByDept,
+    deptPerformance,
+    leaveMonthly,
+    leaveStatusBreakdown,
+    costOverall,
+    costByDept,
+  } = normalized;
+
+  const statusColors = {
+    Approved: COLORS.success,
+    Pending: COLORS.warning,
+    Rejected: COLORS.danger,
+  };
+
+  // Derived KPIs
+  const totalLeaveDays = leaveMonthly.reduce((s, r) => s + safeNumber(r?.totalDays), 0);
+  const totalLeaveRequests = leaveMonthly.reduce((s, r) => s + safeNumber(r?.leaveCount), 0);
+  const activeEmployees = attritionOverall.employeesAtEnd ?? deptPerformance.reduce((s, d) => s + safeNumber(d?.headCount), 0);
+  const periodText = data?.period
+    ? `${data.period.startDate} → ${data.period.endDate}`
+    : '';
 
   return (
     <div style={{ padding: '24px 32px', background: COLORS.bg, minHeight: '100vh' }}>
 
-      {/* header */}
+      {/* HEADER */}
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: 22, fontWeight: 600, color: '#111827' }}>
           Analytics Dashboard
         </h1>
         <p style={{ fontSize: 13, color: COLORS.muted, marginTop: 4 }}>
-          {data?.period
-            ? `${data.period.startDate} → ${data.period.endDate}`
-            : 'Loading period…'}
+          {periodText || 'Loading period…'}
         </p>
       </div>
 
-      {/* filters */}
       <FilterBar filters={filters} onChange={setFilters} />
 
       {isError && (
         <div style={{ color: COLORS.danger, marginBottom: 16, fontSize: 14 }}>
-          Failed to load analytics: {error?.message}
+          Failed to load analytics:
+          {errors?.map((e, i) => <div key={i}>• {e.message}</div>)}
         </div>
       )}
 
-      {/* ── KPI row ─────────────────────────────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 24 }}>
-        {isLoading ? (
-          [0, 1, 2, 3].map(i => <Skeleton key={i} h={100} />)
-        ) : (
-          <>
-            <KPICard
-              label="Attrition Rate"
-              value={`${fmt(attritionOverall.attritionRate)}%`}
-              sub={`${attritionOverall.leftInPeriod ?? 0} left / ${attritionOverall.totalAtPeriodStart ?? 0} total`}
-              color={Number(attritionOverall.attritionRate) > 15 ? COLORS.danger : COLORS.success}
-            />
-            <KPICard
-              label="Active Employees"
-              value={attritionOverall.totalActive ?? '—'}
-              sub="Currently active"
-              color={COLORS.primary}
-            />
-            <KPICard
-              label="Avg Cost / Employee"
-              value={fmtLakh(costOverall.avgSalary)}
-              sub={`${costOverall.employeeCount ?? 0} employees on payroll`}
-              color={COLORS.warning}
-            />
-            <KPICard
-              label="Leave Days (period)"
-              value={leaveMonthly.reduce((s, r) => s + r.totalDays, 0)}
-              sub={`${leaveMonthly.reduce((s, r) => s + r.leaveCount, 0)} requests approved`}
-              color={COLORS.muted}
-            />
-          </>
-        )}
+      {/* KPI Cards */}
+      <div style={{
+        display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
+        gap: 14, marginBottom: 24
+      }}>
+        {isLoading
+          ? [0, 1, 2, 3].map(i => <Skeleton key={i} h={100} />)
+          : (
+            <>
+              <KPICard
+                label="Attrition Rate"
+                value={`${fmt(attritionOverall.value)}%`}
+                sub={`${attritionOverall.leftInPeriod ?? 0} left / ${attritionOverall.employeesAtStart ?? 0} at start`}
+                color={Number(attritionOverall.value) > 15 ? COLORS.danger : COLORS.success}
+              />
+              <Link to="/users" style={{ textDecoration: 'none' }}>
+                <KPICard
+                  label="Active Employees"
+                  value={activeEmployees ?? '—'}
+                  sub="Currently active"
+                  color={COLORS.primary}
+                />
+              </Link>
+              <KPICard
+                label="Avg Cost / Employee"
+                value={fmtLakh(costOverall.avgSalary)}
+                sub={`${costOverall.employeeCount ?? activeEmployees} employees`}
+                color={COLORS.warning}
+              />
+              <Link to="/pending-leave" style={{ textDecoration: 'none' }}>
+                <div style={{ cursor: 'pointer' }}>
+                  <KPICard
+                    label="Leave Days (period)"
+                    value={totalLeaveDays}
+                    sub={`${totalLeaveRequests} requests`}
+                    color={COLORS.muted}
+                  />
+                </div>
+              </Link>
+            </>
+          )}
       </div>
 
-      {/* ── row 1: attrition trend + attrition by dept ──────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
-
-        {/* Leave trend line chart — monthLabel on X, totalDays on Y */}
+      {/* ROW 1 */}
+      <div style={{
+        display: 'grid', gridTemplateColumns: '1fr 1fr',
+        gap: 14, marginBottom: 14
+      }}>
         <Card title="Leave Trend — Monthly">
           {isLoading ? <Skeleton /> : (
             <ResponsiveContainer width="100%" height={220}>
               <LineChart data={leaveMonthly}>
                 <CartesianGrid strokeDasharray="3 3" stroke={COLORS.border} />
-                <XAxis dataKey="monthLabel" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip formatter={(v, n) => [v, n === 'totalDays' ? 'Total Days' : 'Requests']} />
-                <Legend formatter={v => v === 'totalDays' ? 'Total Days' : 'Requests'} />
-                <Line
-                  type="monotone" dataKey="totalDays"
-                  stroke={COLORS.primary} strokeWidth={2}
-                  dot={{ r: 3 }} activeDot={{ r: 5 }}
-                />
-                <Line
-                  type="monotone" dataKey="leaveCount"
-                  stroke={COLORS.success} strokeWidth={2}
-                  dot={{ r: 3 }} strokeDasharray="4 3"
-                />
+                <XAxis dataKey="monthLabel" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Line type="monotone" dataKey="totalDays" stroke={COLORS.primary} name="Total Days" />
+                <Line type="monotone" dataKey="leaveCount" stroke={COLORS.success} name="Leave Count" />
               </LineChart>
             </ResponsiveContainer>
           )}
         </Card>
 
-        {/* Attrition by department — horizontal bar */}
         <Card title="Attrition by Department">
           {isLoading ? <Skeleton /> : (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={attritionByDept} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" stroke={COLORS.border} />
-                <XAxis type="number" tick={{ fontSize: 11 }}
-                  tickFormatter={v => `${v}%`} domain={[0, 'dataMax + 5']} />
-                <YAxis dataKey="department" type="category" tick={{ fontSize: 11 }} width={80} />
-                <Tooltip formatter={(v) => [`${v}%`, 'Attrition Rate']} />
-                <Bar dataKey="attritionRate" radius={[0, 4, 4, 0]} barSize={18}>
+                <XAxis type="number" />
+                <YAxis dataKey="department" type="category" />
+                <Tooltip />
+                <Bar dataKey="attritionRate" name="Attrition %">
                   {attritionByDept.map((entry, i) => (
                     <Cell
-                      key={entry.department}
-                      fill={entry.attritionRate >= 18 ? COLORS.danger
-                        : entry.attritionRate >= 13 ? COLORS.warning
-                          : COLORS.success}
+                      key={entry?.department || i}
+                      fill={
+                        entry?.attritionRate >= 18
+                          ? COLORS.danger
+                          : entry?.attritionRate >= 13
+                            ? COLORS.warning
+                            : COLORS.success
+                      }
                     />
                   ))}
                 </Bar>
@@ -242,98 +270,83 @@ export default function AnalyticsDashboard() {
         </Card>
       </div>
 
-      {/* ── row 2: dept performance + leave status breakdown ─── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 14, marginBottom: 14 }}>
-
-        {/* Department performance — grouped bar: headCount + avgBaseSalary */}
+      {/* ROW 2 */}
+      <div style={{
+        display: 'grid', gridTemplateColumns: '2fr 1fr',
+        gap: 14, marginBottom: 14
+      }}>
         <Card title="Department Performance">
           {isLoading ? <Skeleton /> : (
             <ResponsiveContainer width="100%" height={240}>
               <BarChart data={deptPerformance}>
                 <CartesianGrid strokeDasharray="3 3" stroke={COLORS.border} />
-                <XAxis dataKey="department" tick={{ fontSize: 11 }} />
-                <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
-                <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }}
-                  tickFormatter={v => fmtLakh(v)} />
-                <Tooltip
-                  formatter={(v, name) => {
-                    if (name === 'avgBaseSalary') return [fmtLakh(v), 'Avg Base Salary'];
-                    if (name === 'headCount') return [v, 'Head Count'];
-                    if (name === 'totalLeaveDays') return [v, 'Leave Days'];
-                    if (name === 'avgWorkedMinutes') return [`${(v / 60).toFixed(1)}h`, 'Avg Hours/Day'];
-                    return [v, name];
-                  }}
-                />
+                <XAxis dataKey="department" />
+                <YAxis />
+                <Tooltip />
                 <Legend />
-                <Bar yAxisId="left" dataKey="headCount" fill={COLORS.primary} radius={[4, 4, 0, 0]} barSize={20} />
-                <Bar yAxisId="left" dataKey="totalLeaveDays" fill={COLORS.warning} radius={[4, 4, 0, 0]} barSize={20} />
-                <Bar yAxisId="right" dataKey="avgBaseSalary" fill={COLORS.success} radius={[4, 4, 0, 0]} barSize={20} />
+                <Bar dataKey="headCount" fill={COLORS.primary} name="Headcount" />
+                <Bar dataKey="totalLeaveDays" fill={COLORS.warning} name="Leave Days" />
+                <Bar dataKey="avgBaseSalary" fill={COLORS.success} name="Avg Salary" />
               </BarChart>
             </ResponsiveContainer>
           )}
         </Card>
 
-        {/* Leave status breakdown */}
         <Card title="Leave Status Breakdown">
           {isLoading ? <Skeleton h={240} /> : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingTop: 8 }}>
-              {leaveStatusBreakdown.map((item) => {
-                const total = leaveStatusBreakdown.reduce((s, r) => s + r.count, 0) || 1;
-                const pct = ((item.count / total) * 100).toFixed(1);
-                const color = statusColors[item.status] ?? COLORS.muted;
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {leaveStatusBreakdown.map((item, i) => {
+                const total = leaveStatusBreakdown.reduce(
+                  (s, r) => s + safeNumber(r?.count), 0
+                ) || 1;
+                const pct = ((safeNumber(item?.count) / total) * 100).toFixed(1);
+                const color = statusColors[item?.status] ?? COLORS.muted;
+
                 return (
-                  <div key={item.status}>
-                    <div style={{
-                      display: 'flex', justifyContent: 'space-between',
-                      fontSize: 13, marginBottom: 6
-                    }}>
-                      <span style={{ color: '#374151', fontWeight: 500 }}>{item.status}</span>
-                      <span style={{ color }}>{item.count} ({pct}%)</span>
+                  <div key={item?.status || i}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>{item?.status}</span>
+                      <span style={{ color }}>{item?.count} ({pct}%)</span>
                     </div>
-                    <div style={{
-                      height: 8, background: COLORS.bg,
-                      borderRadius: 4, overflow: 'hidden'
-                    }}>
+                    <div style={{ height: 8, background: COLORS.bg }}>
                       <div style={{
-                        width: `${pct}%`, height: '100%',
-                        background: color, borderRadius: 4,
-                        transition: 'width 0.5s ease'
+                        width: `${pct}%`, background: color,
+                        height: '100%', transition: 'width 0.3s'
                       }} />
                     </div>
                   </div>
                 );
               })}
+              {leaveStatusBreakdown.length === 0 && (
+                <p style={{ color: COLORS.muted }}>No leave data available.</p>
+              )}
             </div>
           )}
         </Card>
       </div>
 
-      {/* ── row 3: cost by department ────────────────────────── */}
+      {/* ROW 3 */}
       <Card title="Cost per Employee by Department">
         {isLoading ? <Skeleton h={220} /> : (
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={costByDept}>
               <CartesianGrid strokeDasharray="3 3" stroke={COLORS.border} />
-              <XAxis dataKey="department" tick={{ fontSize: 11 }} />
-              <YAxis tickFormatter={v => fmtLakh(v)} tick={{ fontSize: 11 }} />
-              <Tooltip
-                formatter={(v, name) => [
-                  fmtLakh(v),
-                  name === 'avgSalary' ? 'Avg Salary' : 'Total Salary',
-                ]}
-              />
-              <Legend formatter={v => v === 'avgSalary' ? 'Avg Salary' : 'Total Salary'} />
-              <Bar dataKey="avgSalary" radius={[4, 4, 0, 0]} barSize={28}>
+              <XAxis dataKey="department" />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              <Bar dataKey="avgSalary" name="Avg Salary">
                 {costByDept.map((entry, i) => (
-                  <Cell key={entry.department} fill={DEPT_COLORS[i % DEPT_COLORS.length]} />
+                  <Cell
+                    key={entry?.department || i}
+                    fill={DEPT_COLORS[i % DEPT_COLORS.length]}
+                  />
                 ))}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
         )}
       </Card>
-
-      
     </div>
   );
 }
