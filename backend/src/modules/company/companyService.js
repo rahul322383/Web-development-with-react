@@ -1,358 +1,22 @@
-// 'use strict';
-
-// const sequelize        = require('../../database/sequelize');
-// const logger           = require('../../config/logger');
-// const { cloudinary, uploadBuffer } = require('../../config/cloudinary');
-// const companyRepository = require('./companyRepository');
-// const { sendNotification, sendAuditLog } = require('../../config/socket');
-
-// // ─────────────────────────────────────────────────────────────
-// //  HELPERS
-// // ─────────────────────────────────────────────────────────────
-
-// /** Convert "Acme Corp Ltd." → "acme-corp-ltd" */
-// const toSlug = (name) =>
-//   name
-//     .toLowerCase()
-//     .trim()
-//     .replace(/[^a-z0-9]+/g, '-')
-//     .replace(/^-+|-+$/g, '');
-
-// /** Make slug unique by appending timestamp if taken */
-// const uniqueSlug = async (name) => {
-//   const base = toSlug(name);
-//   const existing = await companyRepository.findCompanyBySlug(base);
-//   return existing ? `${base}-${Date.now()}` : base;
-// };
-
-// const buildAudit = (event, userId, meta = {}) => ({
-//   event, userId, metadata: meta, timestamp: new Date().toISOString(),
-// });
-
-// // ─────────────────────────────────────────────────────────────
-// //  1. CREATE COMPANY  (onboarding flow)
-// //     Creates company + seeds default settings atomically
-// // ─────────────────────────────────────────────────────────────
-
-// const createCompany = async (payload, actorId = null) => {
-//   try {
-//     const existing = await companyRepository.findCompanyByName(payload.name);
-//     if (existing) {
-//       return { success: false, message: 'Company name already registered', statusCode: 409 };
-//     }
-
-//     const slug = await uniqueSlug(payload.name);
-
-//     const company = await sequelize.transaction(async (t) => {
-//       return companyRepository.createCompany({
-//         name:               payload.name,
-//         slug,
-//         email:              payload.email              ?? null,
-//         phone:              payload.phone              ?? null,
-//         website:            payload.website            ?? null,
-//         industry:           payload.industry           ?? null,
-//         size:               payload.size               ?? null,
-//         addressLine1:       payload.addressLine1       ?? null,
-//         addressLine2:       payload.addressLine2       ?? null,
-//         city:               payload.city               ?? null,
-//         state:              payload.state              ?? null,
-//         country:            payload.country            ?? 'India',
-//         postalCode:         payload.postalCode         ?? null,
-//         timezone:           payload.timezone           ?? 'Asia/Kolkata',
-//         currency:           payload.currency           ?? 'INR',
-//         workingHoursPerDay: payload.workingHoursPerDay ?? 8,
-//         workingDaysPerWeek: payload.workingDaysPerWeek ?? 5,
-//         annualLeaveQuota:   payload.annualLeaveQuota   ?? 21,
-//         fiscalYearStart:    payload.fiscalYearStart    ?? 4,
-//         subscriptionPlan:   payload.subscriptionPlan   ?? 'free',
-//       }, t);
-//     });
-
-//     sendAuditLog(buildAudit('COMPANY_CREATED', actorId, { companyId: company.id, name: company.name }));
-
-//     return { success: true, data: { company } };
-
-//   } catch (error) {
-//     logger.error({ event: 'COMPANY_CREATE_FAILED', error: error.message, stack: error.stack });
-//     return { success: false, message: error.message || 'Failed to create company', statusCode: 500 };
-//   }
-// };
-
-// // ─────────────────────────────────────────────────────────────
-// //  2. GET COMPANY
-// // ─────────────────────────────────────────────────────────────
-
-// const getCompany = async (companyId) => {
-//   try {
-//     const company = await companyRepository.findCompanyById(companyId);
-//     if (!company) return { success: false, message: 'Company not found', statusCode: 404 };
-//     return { success: true, data: { company } };
-//   } catch (error) {
-//     logger.error({ event: 'COMPANY_GET_FAILED', error: error.message });
-//     return { success: false, message: 'Failed to fetch company', statusCode: 500 };
-//   }
-// };
-
-// // ─────────────────────────────────────────────────────────────
-// //  3. UPDATE COMPANY PROFILE
-// // ─────────────────────────────────────────────────────────────
-
-// const updateCompany = async (companyId, payload, actorId = null) => {
-//   try {
-//     const company = await companyRepository.findCompanyById(companyId);
-//     if (!company) return { success: false, message: 'Company not found', statusCode: 404 };
-
-//     // prevent slug/logo being changed via this endpoint
-//     const { logoUrl, logoPublicId, slug, ...safePayload } = payload;
-
-//     await companyRepository.updateCompany(companyId, safePayload);
-
-//     const updated = await companyRepository.findCompanyById(companyId);
-
-//     sendAuditLog(buildAudit('COMPANY_UPDATED', actorId, { companyId, fields: Object.keys(safePayload) }));
-
-//     return { success: true, data: { company: updated } };
-
-//   } catch (error) {
-//     logger.error({ event: 'COMPANY_UPDATE_FAILED', error: error.message });
-//     return { success: false, message: 'Failed to update company', statusCode: 500 };
-//   }
-// };
-
-// // ─────────────────────────────────────────────────────────────
-// //  4. UPLOAD / REPLACE COMPANY LOGO  (Cloudinary)
-// //     - Deletes old logo from Cloudinary before uploading new
-// //     - Stores public_id for future deletion
-// // ─────────────────────────────────────────────────────────────
-
-// const uploadCompanyLogo = async (companyId, fileBuffer, actorId = null) => {
-//   try {
-//     const company = await companyRepository.findCompanyById(companyId);
-//     if (!company) return { success: false, message: 'Company not found', statusCode: 404 };
-
-//     // delete old logo from Cloudinary if it exists
-//     if (company.logoPublicId) {
-//       try {
-//         await cloudinary.uploader.destroy(company.logoPublicId);
-//       } catch (err) {
-//         // non-fatal — log and continue
-//         logger.warn({ event: 'CLOUDINARY_DELETE_WARN', publicId: company.logoPublicId, error: err.message });
-//       }
-//     }
-
-//     // upload new logo
-//     const result = await uploadBuffer(fileBuffer, `hrms/company-logos/${companyId}`);
-
-//     const updated = await companyRepository.updateLogo(companyId, {
-//       logoUrl:      result.secure_url,
-//       logoPublicId: result.public_id,
-//     });
-
-//     sendAuditLog(buildAudit('COMPANY_LOGO_UPDATED', actorId, {
-//       companyId,
-//       publicId: result.public_id,
-//       url:      result.secure_url,
-//     }));
-
-//     return {
-//       success: true,
-//       data: {
-//         logoUrl:      result.secure_url,
-//         logoPublicId: result.public_id,
-//         width:        result.width,
-//         height:       result.height,
-//         format:       result.format,
-//         bytes:        result.bytes,
-//       },
-//     };
-
-//   } catch (error) {
-//     logger.error({ event: 'COMPANY_LOGO_UPLOAD_FAILED', error: error.message, stack: error.stack });
-//     return { success: false, message: 'Logo upload failed', statusCode: 500 };
-//   }
-// };
-
-// // ─────────────────────────────────────────────────────────────
-// //  5. DELETE COMPANY LOGO
-// // ─────────────────────────────────────────────────────────────
-
-// const deleteCompanyLogo = async (companyId, actorId = null) => {
-//   try {
-//     const publicId = await companyRepository.getLogoPublicId(companyId);
-
-//     if (publicId) {
-//       await cloudinary.uploader.destroy(publicId);
-//     }
-
-//     await companyRepository.updateLogo(companyId, { logoUrl: null, logoPublicId: null });
-
-//     sendAuditLog(buildAudit('COMPANY_LOGO_DELETED', actorId, { companyId }));
-
-//     return { success: true, message: 'Logo removed successfully' };
-
-//   } catch (error) {
-//     logger.error({ event: 'COMPANY_LOGO_DELETE_FAILED', error: error.message });
-//     return { success: false, message: 'Failed to delete logo', statusCode: 500 };
-//   }
-// };
-
-// // ─────────────────────────────────────────────────────────────
-// //  6. COMPANY SETTINGS  (HR policy update)
-// // ─────────────────────────────────────────────────────────────
-
-// const updateCompanySettings = async (companyId, settings, actorId = null) => {
-//   try {
-//     const allowed = [
-//       'workingHoursPerDay',
-//       'workingDaysPerWeek',
-//       'annualLeaveQuota',
-//       'timezone',
-//       'currency',
-//       'fiscalYearStart',
-//       'subscriptionPlan',
-//       'subscriptionExpiresAt',
-//     ];
-
-//     const filtered = Object.fromEntries(
-//       Object.entries(settings).filter(([k]) => allowed.includes(k))
-//     );
-
-//     if (Object.keys(filtered).length === 0) {
-//       return { success: false, message: 'No valid settings fields provided', statusCode: 400 };
-//     }
-
-//     await companyRepository.updateCompany(companyId, filtered);
-//     const updated = await companyRepository.findCompanyById(companyId);
-
-//     sendAuditLog(buildAudit('COMPANY_SETTINGS_UPDATED', actorId, { companyId, fields: Object.keys(filtered) }));
-
-//     return { success: true, data: { settings: updated } };
-
-//   } catch (error) {
-//     logger.error({ event: 'COMPANY_SETTINGS_FAILED', error: error.message });
-//     return { success: false, message: 'Failed to update settings', statusCode: 500 };
-//   }
-// };
-
-// // ─────────────────────────────────────────────────────────────
-// //  7. DASHBOARD STATS SUMMARY
-// // ─────────────────────────────────────────────────────────────
-
-// const getCompanyStats = async (companyId) => {
-//   try {
-//     const [company, stats] = await Promise.all([
-//       companyRepository.findCompanyById(companyId),
-//       companyRepository.getCompanyStats(companyId),
-//     ]);
-
-//     if (!company) return { success: false, message: 'Company not found', statusCode: 404 };
-
-//     return {
-//       success: true,
-//       data: {
-//         company: {
-//           id:               company.id,
-//           name:             company.name,
-//           logoUrl:          company.logoUrl,
-//           subscriptionPlan: company.subscriptionPlan,
-//           isVerified:       company.isVerified,
-//         },
-//         stats,
-//       },
-//     };
-
-//   } catch (error) {
-//     logger.error({ event: 'COMPANY_STATS_FAILED', error: error.message });
-//     return { success: false, message: 'Failed to fetch company stats', statusCode: 500 };
-//   }
-// };
-
-// // ─────────────────────────────────────────────────────────────
-// //  8. DEACTIVATE COMPANY  (soft-delete + lock all users)
-// // ─────────────────────────────────────────────────────────────
-
-// const deactivateCompany = async (companyId, actorId = null) => {
-//   try {
-//     const company = await companyRepository.findCompanyById(companyId);
-//     if (!company) return { success: false, message: 'Company not found', statusCode: 404 };
-
-//     await sequelize.transaction(async (t) => {
-//       await companyRepository.deactivateCompany(companyId, t);
-//     });
-
-//     sendNotification(actorId, { event: 'COMPANY_DEACTIVATED', companyId });
-//     sendAuditLog(buildAudit('COMPANY_DEACTIVATED', actorId, { companyId, name: company.name }));
-
-//     return { success: true, message: 'Company deactivated successfully' };
-
-//   } catch (error) {
-//     logger.error({ event: 'COMPANY_DEACTIVATE_FAILED', error: error.message });
-//     return { success: false, message: 'Failed to deactivate company', statusCode: 500 };
-//   }
-// };
-
-// // ─────────────────────────────────────────────────────────────
-// //  9. LIST COMPANIES  (super-admin)
-// // ─────────────────────────────────────────────────────────────
-
-// const listCompanies = async (query = {}) => {
-//   try {
-//     const page     = parseInt(query.page,  10) || 1;
-//     const limit    = parseInt(query.limit, 10) || 20;
-//     const search   = query.search   || null;
-//     const isActive = query.isActive !== undefined ? query.isActive === 'true' : undefined;
-
-//     const result = await companyRepository.listCompanies({ page, limit, search, isActive });
-//     return { success: true, data: result };
-
-//   } catch (error) {
-//     logger.error({ event: 'COMPANY_LIST_FAILED', error: error.message });
-//     return { success: false, message: 'Failed to list companies', statusCode: 500 };
-//   }
-// };
-
-// module.exports = {
-//   createCompany,
-//   getCompany,
-//   updateCompany,
-//   uploadCompanyLogo,
-//   deleteCompanyLogo,
-//   updateCompanySettings,
-//   getCompanyStats,
-//   deactivateCompany,
-//   listCompanies,
-// };
-
 'use strict';
 
 const sequelize = require('../../database/sequelize');
 const logger = require('../../config/logger');
-const { cloudinary, uploadBuffer } = require('../../config/cloudinary');
+const { cloudinary,
+  uploadBuffer } = require('../../config/cloudinary');
 const companyRepository = require('./companyRepository');
-const { sendNotification, sendAuditLog } = require('../../config/socket');
+const { User, Role } = require('../../database/initModels');
+const { sendNotification,
+  sendAuditLog,
+  sendBulkNotifications } = require('../../config/socket');
+const { assertPermission } = require('../../utils/permissions');
 
 // ─────────────────────────────────────────────────────────────
-// CORE UTILITIES
+// HELPERS
 // ─────────────────────────────────────────────────────────────
 
-class ServiceError extends Error {
-  constructor(message, statusCode = 500) {
-    super(message);
-    this.statusCode = statusCode;
-  }
-}
-
-const ok = (data = {}, message = '') => ({
-  success: true,
-  message,
-  data,
-});
-
-const fail = (message, statusCode = 500) => ({
-  success: false,
-  message,
-  statusCode,
-});
+const ok = (data = {}, message = '') => ({ success: true, message, data });
+const fail = (message, statusCode = 500) => ({ success: false, message, statusCode });
 
 const safeExecute = async (fn, label) => {
   try {
@@ -363,195 +27,257 @@ const safeExecute = async (fn, label) => {
   }
 };
 
-const withTransaction = (fn) => {
-  return sequelize.transaction(async (t) => fn(t));
-};
-
-// ─────────────────────────────────────────────────────────────
-// SECURITY (RBAC HOOK)
-// ─────────────────────────────────────────────────────────────
-
-const assertPermission = (actor, action, resourceCompanyId) => {
-  // plug your RBAC here later
-  if (!actor) throw new ServiceError('Unauthorized', 401);
-  return true;
-};
-
-// ─────────────────────────────────────────────────────────────
-// HELPERS
-// ─────────────────────────────────────────────────────────────
+const withTransaction = (fn) => sequelize.transaction(fn);
 
 const toSlug = (name) =>
   name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 
 const generateUniqueSlug = async (name) => {
   const base = toSlug(name);
-  let slug = base;
-  let counter = 1;
-
+  let slug = base, counter = 1;
   while (await companyRepository.findCompanyBySlug(slug)) {
     slug = `${base}-${counter++}`;
   }
-
   return slug;
 };
 
 const buildAudit = (event, userId, meta = {}) => ({
-  event,
-  userId,
-  metadata: meta,
-  timestamp: new Date().toISOString(),
+  event, userId, metadata: meta, timestamp: new Date().toISOString(),
 });
 
-// ─────────────────────────────────────────────────────────────
-// VALIDATION
-// ─────────────────────────────────────────────────────────────
-
-const validateCompanyPayload = (payload) => {
-  if (!payload.name) throw new ServiceError('Company name is required', 400);
-
-  if (payload.workingHoursPerDay > 24) {
-    throw new ServiceError('Invalid working hours per day', 400);
-  }
-
-  if (payload.workingDaysPerWeek > 7) {
-    throw new ServiceError('Invalid working days per week', 400);
+// ✅ EXTRACTED — reusable company access guard
+const assertCompanyAccess = (actor, companyId) => {
+  if (actor.companyId && Number(actor.companyId) !== Number(companyId)) {
+    const err = new Error('Access denied to this company');
+    err.statusCode = 403;
+    throw err;
   }
 };
 
+const validateCompanyPayload = (payload) => {
+  if (!payload.name) {
+    const err = new Error('Company name is required');
+    err.statusCode = 400;
+    throw err;
+  }
+  if (payload.workingHoursPerDay > 24) {
+    const err = new Error('Invalid working hours per day');
+    err.statusCode = 400;
+    throw err;
+  }
+  if (payload.workingDaysPerWeek > 7) {
+    const err = new Error('Invalid working days per week');
+    err.statusCode = 400;
+    throw err;
+  }
+};
+
+// ✅ Subscription validator
+const checkSubscriptionStatus = (company) => {
+  if (!company.subscriptionExpiresAt) {
+    return { active: true, plan: company.subscriptionPlan, daysLeft: null };
+  }
+  const now = new Date();
+  const expires = new Date(company.subscriptionExpiresAt);
+  const daysLeft = Math.ceil((expires - now) / (1000 * 60 * 60 * 24));
+  return {
+    active: daysLeft > 0,
+    plan: company.subscriptionPlan,
+    daysLeft: Math.max(daysLeft, 0),
+    expiredAt: daysLeft <= 0 ? company.subscriptionExpiresAt : null,
+  };
+};
+
 // ─────────────────────────────────────────────────────────────
-// SERVICE METHODS
+// CORE
 // ─────────────────────────────────────────────────────────────
 
 const createCompany = (payload, actor) =>
   safeExecute(async () => {
-    assertPermission(actor, 'CREATE_COMPANY');
+    const perm = assertPermission(actor, 'CREATE_COMPANY');
+    if (!perm.allowed) return fail(perm.message, 403);
 
     validateCompanyPayload(payload);
 
     const existing = await companyRepository.findCompanyByName(payload.name);
-    if (existing) throw new ServiceError('Company already exists', 409);
+    if (existing) return fail('Company already exists', 409);
 
     const slug = await generateUniqueSlug(payload.name);
-
-    const company = await withTransaction(async (t) => {
-      return companyRepository.createCompany(
-        {
-          ...payload,
-          slug,
-          country: payload.country ?? 'India',
-          timezone: payload.timezone ?? 'Asia/Kolkata',
-          currency: payload.currency ?? 'INR',
-          workingHoursPerDay: payload.workingHoursPerDay ?? 8,
-          workingDaysPerWeek: payload.workingDaysPerWeek ?? 5,
-        },
-        t
-      );
-    });
+    const company = await withTransaction((t) =>
+      companyRepository.createCompany({
+        ...payload,
+        slug,
+        country: payload.country ?? 'India',
+        timezone: payload.timezone ?? 'Asia/Kolkata',
+        currency: payload.currency ?? 'INR',
+        workingHoursPerDay: payload.workingHoursPerDay ?? 8,
+        workingDaysPerWeek: payload.workingDaysPerWeek ?? 5,
+        annualLeaveQuota: payload.annualLeaveQuota ?? 21,
+      }, t)
+    );
 
     sendAuditLog(buildAudit('COMPANY_CREATED', actor?.id, { companyId: company.id }));
-
-    return ok({ company });
+    return ok({ company }, 'Company created successfully');
   }, 'COMPANY_CREATE_FAILED');
+
+// ─────────────────────────────────────────────────────────────
 
 const getCompany = (companyId, actor) =>
   safeExecute(async () => {
-    assertPermission(actor, 'READ_COMPANY', companyId);
-
+    if (actor.companyId && Number(actor.companyId) !== Number(companyId)) {
+      const perm = assertPermission(actor, 'VIEW_ANY_COMPANY');
+      if (!perm.allowed) return fail('Access denied', 403);
+    }
     const company = await companyRepository.findCompanyById(companyId);
-    if (!company || !company.isActive) throw new ServiceError('Company not found', 404);
-
+    if (!company) return fail('Company not found', 404);
     return ok({ company });
   }, 'COMPANY_GET_FAILED');
 
+// ─────────────────────────────────────────────────────────────
+
 const updateCompany = (companyId, payload, actor) =>
   safeExecute(async () => {
-    assertPermission(actor, 'UPDATE_COMPANY', companyId);
+    const perm = assertPermission(actor, 'UPDATE_COMPANY');
+    if (!perm.allowed) return fail(perm.message, 403);
+
+    assertCompanyAccess(actor, companyId);   // ✅ uses extracted helper
 
     const company = await companyRepository.findCompanyById(companyId);
-    if (!company) throw new ServiceError('Company not found', 404);
+    if (!company) return fail('Company not found', 404);
 
     const { slug, logoUrl, logoPublicId, ...safePayload } = payload;
 
-    await withTransaction(async (t) => {
-      await companyRepository.updateCompany(companyId, safePayload, t);
-    });
+    await withTransaction((t) =>
+      companyRepository.updateCompany(companyId, safePayload, t)
+    );
 
     const updated = await companyRepository.findCompanyById(companyId);
 
-    sendAuditLog(
-      buildAudit('COMPANY_UPDATED', actor?.id, {
-        companyId,
-        fields: Object.keys(safePayload),
-      })
+    sendAuditLog(buildAudit('COMPANY_UPDATED', actor?.id, {
+      companyId, fields: Object.keys(safePayload),
+    }));
+
+    return ok({ company: updated }, 'Company updated successfully');
+  }, 'COMPANY_UPDATE_FAILED');
+
+// ─────────────────────────────────────────────────────────────
+// REACTIVATE  ✅ NEW
+// ─────────────────────────────────────────────────────────────
+
+const reactivateCompany = (companyId, actor) =>
+  safeExecute(async () => {
+    const perm = assertPermission(actor, 'UPDATE_COMPANY');
+    if (!perm.allowed) return fail(perm.message, 403);
+
+    const company = await companyRepository.findCompanyById(companyId, { includeInactive: true });
+    if (!company) return fail('Company not found', 404);
+    if (company.isActive) return fail('Company is already active', 409);
+
+    await withTransaction((t) =>
+      companyRepository.reactivateCompany(companyId, t)
     );
 
-    return ok({ company: updated });
-  }, 'COMPANY_UPDATE_FAILED');
+    sendAuditLog(buildAudit('COMPANY_REACTIVATED', actor?.id, { companyId }));
+
+    return ok({}, 'Company reactivated successfully');
+  }, 'REACTIVATE_FAILED');
+
+// ─────────────────────────────────────────────────────────────
+// DEACTIVATE
+// ─────────────────────────────────────────────────────────────
+
+const deactivateCompany = (companyId, actor) =>
+  safeExecute(async () => {
+    const perm = assertPermission(actor, 'DELETE_COMPANY');
+    if (!perm.allowed) return fail(perm.message, 403);
+
+    const company = await companyRepository.findCompanyById(companyId);
+    if (!company) return fail('Company not found', 404);
+
+    await withTransaction((t) =>
+      companyRepository.deactivateCompany(companyId, t)
+    );
+
+    sendNotification(actor?.id, {
+      type: 'COMPANY_DEACTIVATED',
+      title: 'Company Deactivated',
+      message: `${company.name} has been deactivated.`,
+      companyId,
+    });
+
+    sendAuditLog(buildAudit('COMPANY_DEACTIVATED', actor?.id, { companyId }));
+    return ok({}, 'Company deactivated successfully');
+  }, 'DEACTIVATE_FAILED');
+
+// ─────────────────────────────────────────────────────────────
+// LOGO
+// ─────────────────────────────────────────────────────────────
 
 const uploadCompanyLogo = (companyId, fileBuffer, actor) =>
   safeExecute(async () => {
-    assertPermission(actor, 'UPDATE_COMPANY', companyId);
+    const perm = assertPermission(actor, 'UPDATE_COMPANY');
+    if (!perm.allowed) return fail(perm.message, 403);
+
+    assertCompanyAccess(actor, companyId);
 
     const company = await companyRepository.findCompanyById(companyId);
-    if (!company) throw new ServiceError('Company not found', 404);
+    if (!company) return fail('Company not found', 404);
 
-    // 1. upload new FIRST (safe)
     const result = await uploadBuffer(fileBuffer, `hrms/company/${companyId}`);
-
-    // 2. update DB
     await companyRepository.updateLogo(companyId, {
       logoUrl: result.secure_url,
       logoPublicId: result.public_id,
     });
 
-    // 3. delete old AFTER success
     if (company.logoPublicId) {
       cloudinary.uploader.destroy(company.logoPublicId).catch(() => { });
     }
 
-    sendAuditLog(
-      buildAudit('COMPANY_LOGO_UPDATED', actor?.id, {
-        companyId,
-      })
-    );
-
-    return ok({
-      logoUrl: result.secure_url,
-      width: result.width,
-      height: result.height,
-    });
+    sendAuditLog(buildAudit('COMPANY_LOGO_UPDATED', actor?.id, { companyId }));
+    return ok({ logoUrl: result.secure_url, width: result.width, height: result.height });
   }, 'LOGO_UPLOAD_FAILED');
+
+// ─────────────────────────────────────────────────────────────
 
 const deleteCompanyLogo = (companyId, actor) =>
   safeExecute(async () => {
-    assertPermission(actor, 'UPDATE_COMPANY', companyId);
+    const perm = assertPermission(actor, 'UPDATE_COMPANY');
+    if (!perm.allowed) return fail(perm.message, 403);
 
     const publicId = await companyRepository.getLogoPublicId(companyId);
+    if (publicId) await cloudinary.uploader.destroy(publicId);
 
-    if (publicId) {
-      await cloudinary.uploader.destroy(publicId);
-    }
-
-    await companyRepository.updateLogo(companyId, {
-      logoUrl: null,
-      logoPublicId: null,
-    });
-
-    return ok({}, 'Logo deleted');
+    await companyRepository.updateLogo(companyId, { logoUrl: null, logoPublicId: null });
+    return ok({}, 'Logo deleted successfully');
   }, 'LOGO_DELETE_FAILED');
+
+// ─────────────────────────────────────────────────────────────
+// SETTINGS  ✅ getCompanySettings NEW
+// ─────────────────────────────────────────────────────────────
+
+const getCompanySettings = (companyId, actor) =>
+  safeExecute(async () => {
+    assertCompanyAccess(actor, companyId);
+
+    const settings = await companyRepository.findCompanySettings(companyId);
+    if (!settings) return fail('Company not found', 404);
+
+    return ok({ settings });
+  }, 'GET_SETTINGS_FAILED');
+
+// ─────────────────────────────────────────────────────────────
 
 const updateCompanySettings = (companyId, settings, actor) =>
   safeExecute(async () => {
-    assertPermission(actor, 'UPDATE_SETTINGS', companyId);
+    const perm = assertPermission(actor, 'UPDATE_COMPANY');
+    if (!perm.allowed) return fail(perm.message, 403);
+
+    assertCompanyAccess(actor, companyId);
 
     const allowed = [
-      'workingHoursPerDay',
-      'workingDaysPerWeek',
-      'annualLeaveQuota',
-      'timezone',
-      'currency',
-      'subscriptionPlan',
+      'workingHoursPerDay', 'workingDaysPerWeek', 'annualLeaveQuota',
+      'timezone', 'currency', 'fiscalYearStart',
+      'subscriptionPlan', 'subscriptionExpiresAt',
     ];
 
     const filtered = Object.fromEntries(
@@ -559,59 +285,281 @@ const updateCompanySettings = (companyId, settings, actor) =>
     );
 
     if (!Object.keys(filtered).length) {
-      throw new ServiceError('No valid fields', 400);
+      return fail('No valid settings fields provided', 400);
     }
 
     await companyRepository.updateCompany(companyId, filtered);
 
-    return ok({ settings: filtered });
+    sendAuditLog(buildAudit('COMPANY_SETTINGS_UPDATED', actor?.id, {
+      companyId, fields: Object.keys(filtered),
+    }));
+
+    return ok({ settings: filtered }, 'Settings updated successfully');
   }, 'SETTINGS_UPDATE_FAILED');
+
+// ─────────────────────────────────────────────────────────────
+// USERS  ✅ ALL NEW
+// ─────────────────────────────────────────────────────────────
+
+const getCompanyUsers = (companyId, query, actor) =>
+  safeExecute(async () => {
+    const perm = assertPermission(actor, 'LIST_USERS');
+    if (!perm.allowed) return fail(perm.message, 403);
+
+    assertCompanyAccess(actor, companyId);
+
+    const result = await companyRepository.findCompanyUsers(companyId, {
+      page: Number(query.page) || 1,
+      limit: Number(query.limit) || 20,
+      search: query.search || null,
+      role: query.role || null,
+    });
+
+    return ok(result);
+  }, 'GET_COMPANY_USERS_FAILED');
+
+// ─────────────────────────────────────────────────────────────
+
+const addUserToCompany = (companyId, userId, actor) =>
+  safeExecute(async () => {
+    const perm = assertPermission(actor, 'CREATE_USER');
+    if (!perm.allowed) return fail(perm.message, 403);
+
+    assertCompanyAccess(actor, companyId);
+
+    const company = await companyRepository.findCompanyById(companyId);
+    if (!company) return fail('Company not found', 404);
+
+    const user = await User.findByPk(userId);
+    if (!user) return fail('User not found', 404);
+
+    if (user.companyId && Number(user.companyId) === Number(companyId)) {
+      return fail('User already belongs to this company', 409);
+    }
+
+    await withTransaction((t) =>
+      companyRepository.assignUserToCompany(userId, companyId, t)
+    );
+
+    // Notify the user they were added
+    sendNotification(userId, {
+      type: 'ADDED_TO_COMPANY',
+      title: 'Welcome to the team',
+      message: `You have been added to ${company.name}.`,
+      companyId,
+    });
+
+    sendAuditLog(buildAudit('USER_ADDED_TO_COMPANY', actor?.id, { companyId, userId }));
+
+    const updated = await User.findByPk(userId, {
+      attributes: { exclude: ['passwordHash'] },
+    });
+
+    return ok({ user: updated }, 'User added to company successfully');
+  }, 'ADD_USER_TO_COMPANY_FAILED');
+
+// ─────────────────────────────────────────────────────────────
+
+const removeUserFromCompany = (companyId, userId, actor) =>
+  safeExecute(async () => {
+    const perm = assertPermission(actor, 'DELETE_USER');
+    if (!perm.allowed) return fail(perm.message, 403);
+
+    assertCompanyAccess(actor, companyId);
+
+    const user = await User.findOne({ where: { id: userId, companyId } });
+    if (!user) return fail('User not found in this company', 404);
+
+    await withTransaction((t) =>
+      companyRepository.removeUserFromCompany(userId, companyId, t)
+    );
+
+    sendNotification(userId, {
+      type: 'REMOVED_FROM_COMPANY',
+      title: 'Account deactivated',
+      message: 'Your account has been removed from the company.',
+      companyId,
+    });
+
+    sendAuditLog(buildAudit('USER_REMOVED_FROM_COMPANY', actor?.id, { companyId, userId }));
+    return ok({}, 'User removed from company successfully');
+  }, 'REMOVE_USER_FROM_COMPANY_FAILED');
+
+// ─────────────────────────────────────────────────────────────
+
+const updateUserRoleInCompany = (companyId, userId, roleId, actor) =>
+  safeExecute(async () => {
+    const perm = assertPermission(actor, 'UPDATE_USER');
+    if (!perm.allowed) return fail(perm.message, 403);
+
+    assertCompanyAccess(actor, companyId);
+
+    const user = await User.findOne({ where: { id: userId, companyId } });
+    if (!user) return fail('User not found in this company', 404);
+
+    const role = await Role.findByPk(roleId);
+    if (!role) return fail('Role not found', 404);
+
+    await withTransaction((t) =>
+      companyRepository.updateUserRole(userId, companyId, roleId, t)
+    );
+
+    sendAuditLog(buildAudit('USER_ROLE_UPDATED', actor?.id, {
+      companyId, userId, roleId, roleName: role.name,
+    }));
+
+    return ok({}, `User role updated to ${role.name}`);
+  }, 'UPDATE_USER_ROLE_FAILED');
+
+// ─────────────────────────────────────────────────────────────
+// STATS + DASHBOARD
+// ─────────────────────────────────────────────────────────────
 
 const getCompanyStats = (companyId, actor) =>
   safeExecute(async () => {
-    assertPermission(actor, 'READ_STATS', companyId);
+    const perm = assertPermission(actor, 'VIEW_DASHBOARD');
+    if (!perm.allowed) return fail(perm.message, 403);
 
     const [company, stats] = await Promise.all([
       companyRepository.findCompanyById(companyId),
       companyRepository.getCompanyStats(companyId),
     ]);
 
-    if (!company) throw new ServiceError('Company not found', 404);
+    if (!company) return fail('Company not found', 404);
 
     return ok({
-      company: {
-        id: company.id,
-        name: company.name,
-        plan: company.subscriptionPlan,
-      },
+      company: { id: company.id, name: company.name, plan: company.subscriptionPlan },
       stats,
     });
   }, 'STATS_FAILED');
 
-const deactivateCompany = (companyId, actor) =>
-  safeExecute(async () => {
-    assertPermission(actor, 'DEACTIVATE_COMPANY', companyId);
+// ─────────────────────────────────────────────────────────────
 
-    await withTransaction(async (t) => {
-      await companyRepository.deactivateCompany(companyId, t);
+// ✅ NEW
+const getCompanyDashboard = (companyId, query, actor) =>
+  safeExecute(async () => {
+    const perm = assertPermission(actor, 'VIEW_DASHBOARD');
+    if (!perm.allowed) return fail(perm.message, 403);
+
+    assertCompanyAccess(actor, companyId);
+
+    const company = await companyRepository.findCompanyById(companyId);
+    if (!company) return fail('Company not found', 404);
+
+    const year = Number(query?.year) || new Date().getFullYear();
+    const dashboard = await companyRepository.getCompanyDashboard(companyId, year);
+
+    return ok({
+      company: { id: company.id, name: company.name, plan: company.subscriptionPlan },
+      year,
+      dashboard,
+    });
+  }, 'DASHBOARD_FAILED');
+
+// ─────────────────────────────────────────────────────────────
+// SUBSCRIPTION  ✅ NEW
+// ─────────────────────────────────────────────────────────────
+
+const updateSubscription = (companyId, payload, actor) =>
+  safeExecute(async () => {
+    const perm = assertPermission(actor, 'UPDATE_COMPANY');
+    if (!perm.allowed) return fail(perm.message, 403);
+
+    const validPlans = ['free', 'starter', 'pro', 'enterprise'];
+    if (!validPlans.includes(payload.plan)) {
+      return fail(`Invalid plan. Must be one of: ${validPlans.join(', ')}`, 400);
+    }
+
+    const company = await companyRepository.findCompanyById(companyId);
+    if (!company) return fail('Company not found', 404);
+
+    const updated = await withTransaction((t) =>
+      companyRepository.updateSubscription(companyId, {
+        plan: payload.plan,
+        expiresAt: payload.expiresAt || null,
+      }, t)
+    );
+
+    sendAuditLog(buildAudit('SUBSCRIPTION_UPDATED', actor?.id, {
+      companyId, plan: payload.plan,
+    }));
+
+    return ok({
+      subscriptionPlan: updated.subscriptionPlan,
+      subscriptionExpiresAt: updated.subscriptionExpiresAt,
+      status: checkSubscriptionStatus(updated),
+    }, 'Subscription updated successfully');
+  }, 'SUBSCRIPTION_UPDATE_FAILED');
+
+// ─────────────────────────────────────────────────────────────
+
+// ✅ NEW
+const getSubscriptionStatus = (companyId, actor) =>
+  safeExecute(async () => {
+    assertCompanyAccess(actor, companyId);
+
+    const company = await companyRepository.findCompanyById(companyId, {
+      attributes: ['id', 'subscriptionPlan', 'subscriptionExpiresAt'],
     });
 
-    sendNotification(actor?.id, { event: 'COMPANY_DEACTIVATED', companyId });
+    if (!company) return fail('Company not found', 404);
 
-    return ok({}, 'Company deactivated');
-  }, 'DEACTIVATE_FAILED');
+    return ok({ status: checkSubscriptionStatus(company) });
+  }, 'SUBSCRIPTION_STATUS_FAILED');
+
+// ─────────────────────────────────────────────────────────────
+// COMPANY-WIDE NOTIFICATION  ✅ NEW
+// ─────────────────────────────────────────────────────────────
+
+const sendCompanyWideNotification = (companyId, payload, actor) =>
+  safeExecute(async () => {
+    const perm = assertPermission(actor, 'UPDATE_COMPANY');
+    if (!perm.allowed) return fail(perm.message, 403);
+
+    assertCompanyAccess(actor, companyId);
+
+    if (!payload.title || !payload.message) {
+      return fail('title and message are required', 400);
+    }
+
+    // Fetch all active user IDs in this company
+    const users = await User.findAll({
+      where: { companyId, isActive: true },
+      attributes: ['id'],
+    });
+    const userIds = users.map((u) => u.id);
+
+    if (!userIds.length) return fail('No active users in this company', 404);
+
+    sendBulkNotifications(userIds, {
+      type: payload.type || 'COMPANY_ANNOUNCEMENT',
+      title: payload.title,
+      message: payload.message,
+      companyId,
+      sentBy: actor.id,
+    });
+
+    sendAuditLog(buildAudit('COMPANY_NOTIFICATION_SENT', actor?.id, {
+      companyId, recipients: userIds.length,
+    }));
+
+    return ok({ recipientCount: userIds.length }, 'Notification sent to all company users');
+  }, 'COMPANY_NOTIFICATION_FAILED');
+
+// ─────────────────────────────────────────────────────────────
+// LIST
+// ─────────────────────────────────────────────────────────────
 
 const listCompanies = (query = {}, actor) =>
   safeExecute(async () => {
-    assertPermission(actor, 'LIST_COMPANIES');
-
-    const page = Number(query.page) || 1;
-    const limit = Number(query.limit) || 20;
+    const perm = assertPermission(actor, 'LIST_COMPANIES');
+    if (!perm.allowed) return fail(perm.message, 403);
 
     const result = await companyRepository.listCompanies({
-      page,
-      limit,
+      page: Number(query.page) || 1,
+      limit: Number(query.limit) || 20,
       search: query.search || null,
+      isActive: query.isActive || null,
     });
 
     return ok(result);
@@ -620,13 +568,30 @@ const listCompanies = (query = {}, actor) =>
 // ─────────────────────────────────────────────────────────────
 
 module.exports = {
+  // Core
   createCompany,
   getCompany,
   updateCompany,
+  deactivateCompany,
+  reactivateCompany,              // ✅ NEW
+  listCompanies,
+  // Settings
+  getCompanySettings,             // ✅ NEW
+  updateCompanySettings,
+  // Users
+  getCompanyUsers,                // ✅ NEW
+  addUserToCompany,               // ✅ NEW
+  removeUserFromCompany,          // ✅ NEW
+  updateUserRoleInCompany,        // ✅ NEW
+  // Logo
   uploadCompanyLogo,
   deleteCompanyLogo,
-  updateCompanySettings,
+  // Dashboard
   getCompanyStats,
-  deactivateCompany,
-  listCompanies,
+  getCompanyDashboard,            // ✅ NEW
+  // Subscription
+  updateSubscription,             // ✅ NEW
+  getSubscriptionStatus,          // ✅ NEW
+  // Notifications
+  sendCompanyWideNotification,    // ✅ NEW
 };
