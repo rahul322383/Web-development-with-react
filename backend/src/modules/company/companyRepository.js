@@ -1,138 +1,9 @@
-// 'use strict';
-
-// const { Op }   = require('sequelize');
-// const getModels = () => require('../../database/initModels');
-
-// // ─────────────────────────────────────────────────────────────
-// //  CORE CRUD
-// // ─────────────────────────────────────────────────────────────
-
-// const createCompany = async (data, transaction = null) => {
-//   const { Company } = getModels();
-//   return Company.create(data, { transaction });
-// };
-
-// const findCompanyById = async (id) => {
-//   const { Company } = getModels();
-//   return Company.findByPk(id);
-// };
-
-// const findCompanyBySlug = async (slug) => {
-//   const { Company } = getModels();
-//   return Company.findOne({ where: { slug } });
-// };
-
-// const findCompanyByName = async (name) => {
-//   const { Company } = getModels();
-//   return Company.findOne({
-//     where: { name: { [Op.like]: name } },
-//   });
-// };
-
-// const updateCompany = async (id, data, transaction = null) => {
-//   const { Company } = getModels();
-//   const [, rows] = await Company.update(data, {
-//     where: { id },
-//     returning: true,
-//     transaction,
-//   });
-//   return rows?.[0] ?? null;
-// };
-
-// // soft-delete via paranoid
-// const deactivateCompany = async (id, transaction = null) => {
-//   const { Company, User } = getModels();
-
-//   await Company.update({ isActive: false }, { where: { id }, transaction });
-//   await User.update({ isActive: false },    { where: { companyId: id }, transaction });
-//   await Company.destroy({ where: { id }, transaction }); // sets deleted_at
-// };
-
-// // ─────────────────────────────────────────────────────────────
-// //  LOGO
-// // ─────────────────────────────────────────────────────────────
-
-// const updateLogo = async (id, { logoUrl, logoPublicId }, transaction = null) => {
-//   const { Company } = getModels();
-//   await Company.update({ logoUrl, logoPublicId }, { where: { id }, transaction });
-//   return Company.findByPk(id);
-// };
-
-// const getLogoPublicId = async (id) => {
-//   const { Company } = getModels();
-//   const row = await Company.findByPk(id, { attributes: ['logoPublicId'] });
-//   return row?.logoPublicId ?? null;
-// };
-
-// // ─────────────────────────────────────────────────────────────
-// //  STATS  (used by dashboard summary)
-// // ─────────────────────────────────────────────────────────────
-
-// const getCompanyStats = async (companyId) => {
-//   const { User, Payroll } = getModels();
-
-//   const [total, active, payrollSum] = await Promise.all([
-//     User.count({ where: { companyId } }),
-//     User.count({ where: { companyId, isActive: true } }),
-//     Payroll.sum('netSalary', {
-//       where: { status: { [Op.in]: ['Processed', 'Locked'] } },
-//       include: [{ model: User, as: 'employee', attributes: [], where: { companyId }, required: true }],
-//     }),
-//   ]);
-
-//   return {
-//     totalEmployees:  total,
-//     activeEmployees: active,
-//     totalPayroll:    parseFloat(Number(payrollSum || 0).toFixed(2)),
-//   };
-// };
-
-// // ─────────────────────────────────────────────────────────────
-// //  LISTING  (admin/super-admin use)
-// // ─────────────────────────────────────────────────────────────
-
-// const listCompanies = async ({ page = 1, limit = 20, search, isActive } = {}) => {
-//   const { Company } = getModels();
-
-//   const where = {};
-//   if (typeof isActive === 'boolean') where.isActive = isActive;
-//   if (search) where.name = { [Op.like]: `%${search}%` };
-
-//   const offset = (page - 1) * limit;
-
-//   const { count, rows } = await Company.findAndCountAll({
-//     where,
-//     limit,
-//     offset,
-//     order: [['createdAt', 'DESC']],
-//   });
-
-//   return { total: count, page, limit, companies: rows };
-// };
-
-// module.exports = {
-//   createCompany,
-//   findCompanyById,
-//   findCompanyBySlug,
-//   findCompanyByName,
-//   updateCompany,
-//   deactivateCompany,
-//   updateLogo,
-//   getLogoPublicId,
-//   getCompanyStats,
-//   listCompanies,
-// };
-
 'use strict';
 
 const { Op } = require('sequelize');
 const models = require('../../database/initModels');
-
-const { Company, User, Payroll } = models;
-
-// ─────────────────────────────────────────────────────────────
-// CONSTANTS
-// ─────────────────────────────────────────────────────────────
+const { Company, User, Payroll,
+  LeaveRequest, Attendance } = models;
 
 const MAX_LIMIT = 100;
 
@@ -140,58 +11,35 @@ const MAX_LIMIT = 100;
 // CORE CRUD
 // ─────────────────────────────────────────────────────────────
 
-const createCompany = async (data, transaction = null) => {
-  return Company.create(data, { transaction });
-};
+const createCompany = async (data, transaction = null) =>
+  Company.create(data, { transaction });
 
 const findCompanyById = async (id, options = {}) => {
   const { includeInactive = false, attributes = null } = options;
-
   const where = { id };
-
-  if (!includeInactive) {
-    where.isActive = true;
-  }
-
-  return Company.findOne({
-    where,
-    attributes,
-  });
+  if (!includeInactive) where.isActive = true;
+  return Company.findOne({ where, attributes: attributes || undefined });
 };
 
-const findCompanyBySlug = async (slug) => {
-  return Company.findOne({
-    where: {
-      slug,
-      isActive: true,
-    },
-  });
-};
+const findCompanyBySlug = async (slug) =>
+  Company.findOne({ where: { slug, isActive: true } });
 
-const findCompanyByName = async (name) => {
-  return Company.findOne({
-    where: {
-      name: {
-        [Op.like]: `%${name}%`,
-      },
-      isActive: true,
-    },
+const findCompanyByName = async (name) =>
+  Company.findOne({
+    where: { name: { [Op.like]: `%${name}%` }, isActive: true },
   });
-};
 
 const updateCompany = async (id, data, transaction = null) => {
   const [affected] = await Company.update(data, {
-    where: { id, isActive: true },
+    where: { id },
     transaction,
   });
-
   if (!affected) return null;
-
-  return findCompanyById(id);
+  return findCompanyById(id, { includeInactive: true });
 };
 
 // ─────────────────────────────────────────────────────────────
-// DEACTIVATE (SAFE + CONSISTENT)
+// DEACTIVATE / REACTIVATE
 // ─────────────────────────────────────────────────────────────
 
 const deactivateCompany = async (id, transaction = null) => {
@@ -199,14 +47,22 @@ const deactivateCompany = async (id, transaction = null) => {
     { isActive: false },
     { where: { id, isActive: true }, transaction }
   );
-
   await User.update(
     { isActive: false },
     { where: { companyId: id }, transaction }
   );
+};
 
-  // optional: keep or remove paranoid delete
-  // await Company.destroy({ where: { id }, transaction });
+// ✅ NEW
+const reactivateCompany = async (id, transaction = null) => {
+  await Company.update(
+    { isActive: true },
+    { where: { id, isActive: false }, transaction }
+  );
+  await User.update(
+    { isActive: true },
+    { where: { companyId: id }, transaction }
+  );
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -216,97 +72,286 @@ const deactivateCompany = async (id, transaction = null) => {
 const updateLogo = async (id, { logoUrl, logoPublicId }, transaction = null) => {
   await Company.update(
     { logoUrl, logoPublicId },
-    { where: { id, isActive: true }, transaction }
+    { where: { id }, transaction }
   );
-
-  return findCompanyById(id, {
-    attributes: ['id', 'logoUrl', 'logoPublicId'],
-  });
+  return findCompanyById(id, { attributes: ['id', 'logoUrl', 'logoPublicId'] });
 };
 
 const getLogoPublicId = async (id) => {
   const row = await Company.findOne({
-    where: { id },
-    attributes: ['logoPublicId'],
+    where: { id }, attributes: ['logoPublicId'],
   });
-
   return row?.logoPublicId ?? null;
 };
 
 // ─────────────────────────────────────────────────────────────
-// STATS (OPTIMIZED)
+// SETTINGS
 // ─────────────────────────────────────────────────────────────
 
-const getCompanyStats = async (companyId) => {
-  const [total, active, payrollSum] = await Promise.all([
-    User.count({ where: { companyId } }),
-
-    User.count({
-      where: { companyId, isActive: true },
-    }),
-
-    Payroll.sum('netSalary', {
-      where: {
-        status: { [Op.in]: ['Processed', 'Locked'] },
-      },
-      include: [
-        {
-          model: User,
-          as: 'employee',
-          attributes: [],
-          required: true,
-          where: { companyId },
-        },
-      ],
-    }),
-  ]);
-
-  return {
-    totalEmployees: total,
-    activeEmployees: active,
-    totalPayroll: Number(payrollSum || 0),
-  };
-};
+// ✅ NEW
+const findCompanySettings = async (id) =>
+  Company.findOne({
+    where: { id },
+    attributes: [
+      'id', 'workingHoursPerDay', 'workingDaysPerWeek',
+      'annualLeaveQuota', 'timezone', 'currency',
+      'fiscalYearStart', 'subscriptionPlan', 'subscriptionExpiresAt',
+    ],
+  });
 
 // ─────────────────────────────────────────────────────────────
-// LISTING (SAFE PAGINATION)
+// USERS (company-scoped)
 // ─────────────────────────────────────────────────────────────
 
-const listCompanies = async ({
+// ✅ NEW — paginated list of all users in a company
+const findCompanyUsers = async (companyId, {
   page = 1,
   limit = 20,
-  search,
-  isActive,
+  search = null,
+  role = null,
 } = {}) => {
   limit = Math.min(Number(limit) || 20, MAX_LIMIT);
   page = Math.max(Number(page) || 1, 1);
-
   const offset = (page - 1) * limit;
 
-  const where = {};
-
-  if (typeof isActive === 'boolean') {
-    where.isActive = isActive;
-  }
+  const where = { companyId };
 
   if (search) {
-    where.name = {
-      [Op.iLike]: `%${search}%`,
-    };
+    where[Op.or] = [
+      { firstName: { [Op.like]: `%${search}%` } },
+      { lastName: { [Op.like]: `%${search}%` } },
+      { email: { [Op.like]: `%${search}%` } },
+    ];
   }
 
-  const { count, rows } = await Company.findAndCountAll({
+  const include = [];
+  if (role) {
+    include.push({
+      association: 'role',
+      where: { name: role },
+      attributes: ['id', 'name'],
+    });
+  } else {
+    include.push({
+      association: 'role',
+      attributes: ['id', 'name'],
+    });
+  }
+
+  const { count, rows } = await User.findAndCountAll({
     where,
+    include,
+    attributes: { exclude: ['passwordHash'] },
     limit,
     offset,
     order: [['createdAt', 'DESC']],
-    attributes: ['id', 'name', 'slug', 'isActive', 'createdAt'],
   });
 
   return {
     total: count,
     page,
     limit,
+    totalPages: Math.ceil(count / limit),
+    users: rows,
+  };
+};
+
+// ✅ NEW — assign user to company (onboarding)
+const assignUserToCompany = async (userId, companyId, transaction = null) => {
+  const [affected] = await User.update(
+    { companyId, isActive: true },
+    { where: { id: userId }, transaction }
+  );
+  return affected > 0;
+};
+
+// ✅ NEW — remove user from company (offboarding)
+const removeUserFromCompany = async (userId, companyId, transaction = null) => {
+  const [affected] = await User.update(
+    { companyId: null, isActive: false },
+    { where: { id: userId, companyId }, transaction }
+  );
+  return affected > 0;
+};
+
+// ✅ NEW — update user's role within the company
+const updateUserRole = async (userId, companyId, roleId, transaction = null) => {
+  const [affected] = await User.update(
+    { roleId },
+    { where: { id: userId, companyId }, transaction }
+  );
+  return affected > 0;
+};
+
+// ─────────────────────────────────────────────────────────────
+// STATS
+// ─────────────────────────────────────────────────────────────
+
+const getCompanyStats = async (companyId) => {
+  const [total, active, payrollSum] = await Promise.all([
+    User.count({ where: { companyId } }),
+    User.count({ where: { companyId, isActive: true } }),
+    Payroll.sum('netSalary', {
+      where: { status: { [Op.in]: ['Processed', 'Locked'] } },
+      include: [{
+        model: User,
+        as: 'employee',
+        attributes: [],
+        required: true,
+        where: { companyId },
+      }],
+    }),
+  ]);
+
+  return {
+    totalEmployees: total,
+    activeEmployees: active,
+    inactiveEmployees: total - active,
+    totalPayroll: Number(payrollSum || 0),
+  };
+};
+
+// ✅ NEW — full dashboard aggregation
+const getCompanyDashboard = async (companyId, year) => {
+  const start = new Date(Date.UTC(year, 0, 1));
+  const end = new Date(Date.UTC(year, 11, 31, 23, 59, 59, 999));
+
+  const [
+    totalEmployees,
+    activeEmployees,
+    leaveStats,
+    payrollSum,
+    attendanceStats,
+  ] = await Promise.all([
+
+    User.count({ where: { companyId } }),
+
+    User.count({ where: { companyId, isActive: true } }),
+
+    LeaveRequest.findAll({
+      attributes: [
+        'status',
+        [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'count'],
+      ],
+      where: {
+        companyId,
+        startDate: { [Op.between]: [start, end] },
+      },
+      group: ['status'],
+      raw: true,
+    }),
+
+    Payroll.sum('netSalary', {
+      where: { status: { [Op.in]: ['Processed', 'Locked'] } },
+      include: [{
+        model: User,
+        as: 'employee',
+        attributes: [],
+        required: true,
+        where: { companyId },
+      }],
+    }),
+
+    Attendance.findAll({
+      attributes: [
+        'status',
+        [require('sequelize').fn('COUNT', require('sequelize').col('Attendance.id')), 'count'],
+      ],
+      where: { companyId, date: { [Op.between]: [start, end] } },
+      group: ['status'],
+      raw: true,
+    }),
+  ]);
+
+  // shape leave stats
+  const leaveMap = {};
+  leaveStats.forEach(({ status, count }) => { leaveMap[status] = Number(count); });
+
+  // shape attendance stats
+  const attMap = {};
+  attendanceStats.forEach(({ status, count }) => { attMap[status] = Number(count); });
+
+  const totalAttendance = Object.values(attMap).reduce((s, v) => s + v, 0);
+  const presentDays = (attMap.present || 0) + (attMap.late || 0);
+  const attendancePct = totalAttendance
+    ? parseFloat(((presentDays / totalAttendance) * 100).toFixed(1))
+    : 0;
+
+  return {
+    employees: {
+      total: totalEmployees,
+      active: activeEmployees,
+      inactive: totalEmployees - activeEmployees,
+    },
+    leaves: {
+      approved: leaveMap.Approved || 0,
+      pending: leaveMap.Pending || 0,
+      rejected: leaveMap.Rejected || 0,
+    },
+    attendance: {
+      present: attMap.present || 0,
+      absent: attMap.absent || 0,
+      late: attMap.late || 0,
+      onLeave: attMap.on_leave || 0,
+      attendancePct,
+    },
+    payroll: {
+      totalPaid: Number(payrollSum || 0),
+      avgPerEmployee: activeEmployees
+        ? parseFloat((Number(payrollSum || 0) / activeEmployees).toFixed(2))
+        : 0,
+    },
+  };
+};
+
+// ─────────────────────────────────────────────────────────────
+// SUBSCRIPTION
+// ─────────────────────────────────────────────────────────────
+
+// ✅ NEW
+const updateSubscription = async (id, { plan, expiresAt }, transaction = null) => {
+  await Company.update(
+    { subscriptionPlan: plan, subscriptionExpiresAt: expiresAt },
+    { where: { id }, transaction }
+  );
+  return findCompanyById(id, {
+    includeInactive: true,
+    attributes: ['id', 'subscriptionPlan', 'subscriptionExpiresAt'],
+  });
+};
+
+// ─────────────────────────────────────────────────────────────
+// LISTING
+// ─────────────────────────────────────────────────────────────
+
+const listCompanies = async ({
+  page = 1,
+  limit = 20,
+  search = null,
+  isActive = null,
+} = {}) => {
+  limit = Math.min(Number(limit) || 20, MAX_LIMIT);
+  page = Math.max(Number(page) || 1, 1);
+  const offset = (page - 1) * limit;
+  const where = {};
+
+  if (isActive === 'true') where.isActive = true;
+  if (isActive === 'false') where.isActive = false;
+  if (search) where.name = { [Op.like]: `%${search}%` };
+
+  const { count, rows } = await Company.findAndCountAll({
+    where,
+    limit,
+    offset,
+    order: [['createdAt', 'DESC']],
+    attributes: ['id', 'name', 'slug', 'isActive', 'subscriptionPlan', 'createdAt'],
+  });
+
+  return {
+    total: count,
+    page,
+    limit,
+    totalPages: Math.ceil(count / limit),
     companies: rows,
   };
 };
@@ -320,8 +365,16 @@ module.exports = {
   findCompanyByName,
   updateCompany,
   deactivateCompany,
+  reactivateCompany,         // ✅ NEW
   updateLogo,
   getLogoPublicId,
+  findCompanySettings,       // ✅ NEW
+  findCompanyUsers,          // ✅ NEW
+  assignUserToCompany,       // ✅ NEW
+  removeUserFromCompany,     // ✅ NEW
+  updateUserRole,            // ✅ NEW
   getCompanyStats,
+  getCompanyDashboard,       // ✅ NEW
+  updateSubscription,        // ✅ NEW
   listCompanies,
 };
