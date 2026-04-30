@@ -50,6 +50,12 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         defaultValue: 'Pending'
       },
+      companyId: {
+        type: DataTypes.BIGINT.UNSIGNED,
+        allowNull: false,
+        field: 'company_id'
+      },
+      
 
       decisionNote: {
         type: DataTypes.STRING(300),
