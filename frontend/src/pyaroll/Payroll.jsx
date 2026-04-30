@@ -1,9 +1,4 @@
-// src/pages/Payroll.jsx
-// ================================================
-// PRODUCTION-READY PAYROLL HISTORY PAGE
-// ================================================
-// Dependencies:
-// npm install @tanstack/react-query react-hot-toast framer-motion lucide-react
+
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -29,7 +24,7 @@ import {
   StatCard,
   EmptyState,
   ErrorState,
-} from '../components/ui/StatCardSkeleton'; // keep existing UI kit
+} from '../components/ui/StatCardSkeleton'; 
 
 // ================================================
 // CUSTOM HOOK: useResponsive
