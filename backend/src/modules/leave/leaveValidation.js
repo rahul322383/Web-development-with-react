@@ -9,13 +9,16 @@ const applyLeaveSchema = Joi.object({
   reason: Joi.string().trim().min(5).max(500).required(),
 });
 
+// const managerDecisionSchema = Joi.object({
+//   managerId: Joi.number().integer().positive().required(),
+//   requestId: Joi.number().integer().positive().required(),
+//   status: Joi.string().valid('Approved', 'Rejected').required(),
+//   decisionNote: Joi.string().trim().max(500).optional().allow(''),
+// });
+
 const managerDecisionSchema = Joi.object({
-  managerId: Joi.number().integer().positive().required(),
-  requestId: Joi.number().integer().positive().required(),
   status: Joi.string().valid('Approved', 'Rejected').required(),
   decisionNote: Joi.string().trim().max(500).optional().allow(''),
 });
-
-
 
 module.exports = { applyLeaveSchema, managerDecisionSchema};
