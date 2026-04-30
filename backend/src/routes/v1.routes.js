@@ -30,7 +30,7 @@ router.use('/attendance', attendanceModule.routes);
 router.use('/settings', settingModule.routes);
 router.use('/ai', AImodules.routes)
 router.use('/analytics', anaylticsModule.routes);
-router.use('/company', companyModule.routes);
+router.use('/companies', companyModule.routes);
 
 // ✅ FIX REPORTS
 router.use('/reports', reportsModule.routes);
