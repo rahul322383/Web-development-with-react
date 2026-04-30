@@ -1,5 +1,5 @@
 // src/components/reports/ExpenseReport.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     Loader2,
     Receipt,
@@ -18,6 +18,7 @@ import reportsAPI from '../api/reports.api';
 import ReportDateRange from './ReportDateRange';
 import ExportButtons from './ExportButtons';
 import { useAuth } from '../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 // Indian currency formatter
 const formatIndianCurrency = (amount) => {
@@ -31,6 +32,7 @@ const formatIndianCurrency = (amount) => {
 };
 
 const ExpenseReport = () => {
+    const navigate = useNavigate();
     const { user, meta } = useAuth();
     const [dateRange, setDateRange] = useState(() => {
         const today = new Date();
@@ -45,30 +47,37 @@ const ExpenseReport = () => {
     const [summary, setSummary] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    const [viewMode, setViewMode] = useState('table'); // 'table' or 'cards'
+    const [viewMode, setViewMode] = useState('table');
 
-    const fetchReport = async () => {
+    const fetchReport = useCallback(async () => {
+        const abortController = new AbortController();
         try {
             setLoading(true);
             setError(null);
             const response = await reportsAPI.getExpenses({
                 from: dateRange.from,
                 to: dateRange.to,
-            });
-            setData(response.data?.expenses || response.expenses || []);
-            setSummary(response.data?.summary || response.summary || null);
+            }, { signal: abortController.signal });
+            const responseData = response.data || response;
+            setData(responseData?.expenses || responseData || []);
+            setSummary(responseData?.summary || null);
         } catch (err) {
-            setError(err.response?.data?.message || 'Failed to load expense report');
+            if (err.name !== 'AbortError') {
+                setError(err.response?.data?.message || 'Failed to load expense report');
+            }
         } finally {
             setLoading(false);
         }
-    };
-
-    useEffect(() => {
-        fetchReport();
+        return () => abortController.abort();
     }, [dateRange]);
 
-    // Permission check for export
+    useEffect(() => {
+        const cleanup = fetchReport();
+        return () => {
+            if (cleanup && typeof cleanup === 'function') cleanup();
+        };
+    }, [fetchReport]);
+
     const userRoles = user?.roles?.length
         ? user.roles
         : [user?.primaryRole || meta?.role || 'Employee'];
@@ -104,8 +113,9 @@ const ExpenseReport = () => {
     const summaryCards = [
         {
             title: 'Total Expenses',
-            value: summary?.total || 0,
+            value: summary?.totalAmount || summary?.total || 0,
             icon: IndianRupee,
+            href: '/expenses',
             gradient: 'from-amber-500 to-orange-500',
             bgGradient: 'from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30',
             iconBg: 'bg-amber-100 dark:bg-amber-900/40',
@@ -115,8 +125,9 @@ const ExpenseReport = () => {
         },
         {
             title: 'Pending Approval',
-            value: summary?.pending || 0,
+            value: summary?.pendingAmount || summary?.pending || 0,
             icon: Clock,
+            href: '/expenses?status=pending',
             gradient: 'from-yellow-500 to-amber-500',
             bgGradient: 'from-yellow-50 to-amber-50 dark:from-yellow-950/30 dark:to-amber-950/30',
             iconBg: 'bg-yellow-100 dark:bg-yellow-900/40',
@@ -128,6 +139,7 @@ const ExpenseReport = () => {
             title: 'Average per Employee',
             value: summary?.averagePerEmployee || 0,
             icon: TrendingUp,
+            href: '/expenses',
             gradient: 'from-emerald-500 to-green-500',
             bgGradient: 'from-emerald-50 to-green-50 dark:from-emerald-950/30 dark:to-green-950/30',
             iconBg: 'bg-emerald-100 dark:bg-emerald-900/40',
@@ -203,7 +215,8 @@ const ExpenseReport = () => {
                         return (
                             <div
                                 key={card.title}
-                                className={`group relative overflow-hidden rounded-2xl border border-gray-200 dark:border-gray-700/60 shadow-sm hover:shadow-lg transition-all duration-300 hover:-translate-y-1 bg-gradient-to-br ${card.bgGradient} backdrop-blur-sm`}
+                                onClick={() => card.href && navigate(card.href)}
+                                className={`group relative overflow-hidden rounded-2xl border border-gray-200 dark:border-gray-700/60 shadow-sm hover:shadow-lg transition-all duration-300 hover:-translate-y-1 bg-gradient-to-br ${card.bgGradient} backdrop-blur-sm cursor-pointer`}
                             >
                                 <div
                                     className={`absolute inset-0 bg-gradient-to-r ${card.gradient} opacity-0 group-hover:opacity-10 transition-opacity duration-500`}
@@ -223,8 +236,8 @@ const ExpenseReport = () => {
                                                 <div className="flex items-center gap-1.5 mt-2">
                                                     <span
                                                         className={`inline-flex items-center gap-0.5 text-xs font-medium px-2 py-0.5 rounded-full ${isPositive
-                                                                ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
-                                                                : 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
+                                                            ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
+                                                            : 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
                                                             }`}
                                                     >
                                                         {isPositive ? (
@@ -263,8 +276,8 @@ const ExpenseReport = () => {
                     <button
                         onClick={() => setViewMode('table')}
                         className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${viewMode === 'table'
-                                ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                            ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                            : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
                             }`}
                     >
                         Table
@@ -272,8 +285,8 @@ const ExpenseReport = () => {
                     <button
                         onClick={() => setViewMode('cards')}
                         className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors md:hidden ${viewMode === 'cards'
-                                ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                            ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                            : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
                             }`}
                     >
                         Cards
