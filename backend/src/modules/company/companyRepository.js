@@ -211,7 +211,6 @@ const getCompanyStats = async (companyId) => {
   };
 };
 
-// ✅ NEW — full dashboard aggregation
 const getCompanyDashboard = async (companyId, year) => {
   const start = new Date(Date.UTC(year, 0, 1));
   const end = new Date(Date.UTC(year, 11, 31, 23, 59, 59, 999));
@@ -224,14 +223,20 @@ const getCompanyDashboard = async (companyId, year) => {
     attendanceStats,
   ] = await Promise.all([
 
+    // 👥 Total employees
     User.count({ where: { companyId } }),
 
+    // 🟢 Active employees
     User.count({ where: { companyId, isActive: true } }),
 
+    // 📝 Leave stats (✅ already correct — table has company_id)
     LeaveRequest.findAll({
       attributes: [
         'status',
-        [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'count'],
+        [
+          require('sequelize').fn('COUNT', require('sequelize').col('id')),
+          'count'
+        ],
       ],
       where: {
         companyId,
@@ -241,6 +246,7 @@ const getCompanyDashboard = async (companyId, year) => {
       raw: true,
     }),
 
+    // 💰 Payroll sum (✅ already using JOIN correctly)
     Payroll.sum('netSalary', {
       where: { status: { [Op.in]: ['Processed', 'Locked'] } },
       include: [{
@@ -252,27 +258,48 @@ const getCompanyDashboard = async (companyId, year) => {
       }],
     }),
 
+    // 📊 Attendance stats (🔥 FIXED HERE)
     Attendance.findAll({
       attributes: [
         'status',
-        [require('sequelize').fn('COUNT', require('sequelize').col('Attendance.id')), 'count'],
+        [
+          require('sequelize').fn('COUNT', require('sequelize').col('Attendance.id')),
+          'count'
+        ],
       ],
-      where: { companyId, date: { [Op.between]: [start, end] } },
+      include: [
+        {
+          model: User,
+          as: 'employee',
+          attributes: [],
+          required: true,
+          where: { companyId }, // ✅ moved here
+        }
+      ],
+      where: {
+        date: { [Op.between]: [start, end] }, // ✅ removed companyId from here
+      },
       group: ['status'],
       raw: true,
     }),
   ]);
 
-  // shape leave stats
+  // 🧠 Shape leave stats
   const leaveMap = {};
-  leaveStats.forEach(({ status, count }) => { leaveMap[status] = Number(count); });
+  leaveStats.forEach(({ status, count }) => {
+    leaveMap[status] = Number(count);
+  });
 
-  // shape attendance stats
+  // 🧠 Shape attendance stats
   const attMap = {};
-  attendanceStats.forEach(({ status, count }) => { attMap[status] = Number(count); });
+  attendanceStats.forEach(({ status, count }) => {
+    attMap[status] = Number(count);
+  });
 
   const totalAttendance = Object.values(attMap).reduce((s, v) => s + v, 0);
+
   const presentDays = (attMap.present || 0) + (attMap.late || 0);
+
   const attendancePct = totalAttendance
     ? parseFloat(((presentDays / totalAttendance) * 100).toFixed(1))
     : 0;
@@ -283,11 +310,13 @@ const getCompanyDashboard = async (companyId, year) => {
       active: activeEmployees,
       inactive: totalEmployees - activeEmployees,
     },
+
     leaves: {
       approved: leaveMap.Approved || 0,
       pending: leaveMap.Pending || 0,
       rejected: leaveMap.Rejected || 0,
     },
+
     attendance: {
       present: attMap.present || 0,
       absent: attMap.absent || 0,
@@ -295,6 +324,7 @@ const getCompanyDashboard = async (companyId, year) => {
       onLeave: attMap.on_leave || 0,
       attendancePct,
     },
+
     payroll: {
       totalPaid: Number(payrollSum || 0),
       avgPerEmployee: activeEmployees
@@ -303,7 +333,6 @@ const getCompanyDashboard = async (companyId, year) => {
     },
   };
 };
-
 // ─────────────────────────────────────────────────────────────
 // SUBSCRIPTION
 // ─────────────────────────────────────────────────────────────
