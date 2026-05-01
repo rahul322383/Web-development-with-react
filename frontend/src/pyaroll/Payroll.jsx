@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -24,11 +22,8 @@ import {
   StatCard,
   EmptyState,
   ErrorState,
-} from '../components/ui/StatCardSkeleton'; 
+} from '../components/ui/StatCardSkeleton';
 
-// ================================================
-// CUSTOM HOOK: useResponsive
-// ================================================
 const useResponsive = (breakpoint = 768) => {
   const [isMobile, setIsMobile] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -46,31 +41,18 @@ const useResponsive = (breakpoint = 768) => {
   return isMobile;
 };
 
-// ================================================
-// CUSTOM HOOK: usePayrollData (React Query)
-// ================================================
 const usePayrollData = (userId) => {
   return useQuery({
     queryKey: ['payroll', userId],
     queryFn: async () => {
-      // Normalise API response inside the queryFn
-      const response = await payrollApi.getPayrollByEmployee(userId);
-      if (Array.isArray(response)) return response;
-      if (response?.data?.data && Array.isArray(response.data.data)) return response.data.data;
-      if (response?.data && Array.isArray(response.data)) return response.data;
-      return [];
+      const data = await payrollApi.getPayrollByEmployee(userId);
+      return data;
     },
     enabled: !!userId,
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    onError: (err) => {
-      toast.error(err.message || 'Failed to load payroll history');
-    },
+    staleTime: 5 * 60 * 1000,
   });
 };
 
-// ================================================
-// SUBCOMPONENT: PayrollStatusBadge
-// ================================================
 const PayrollStatusBadge = React.memo(({ status }) => {
   const statusConfig = {
     Queued: { color: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300', icon: Clock },
@@ -91,9 +73,6 @@ const PayrollStatusBadge = React.memo(({ status }) => {
   );
 });
 
-// ================================================
-// SUBCOMPONENT: PayrollCard (memoised)
-// ================================================
 const PayrollCard = React.memo(({ payroll }) => {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -131,8 +110,7 @@ const PayrollCard = React.memo(({ payroll }) => {
             </div>
           </div>
           <ChevronDown
-            className={`w-5 h-5 text-gray-400 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''
-              }`}
+            className={`w-5 h-5 text-gray-400 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
           />
         </div>
       </div>
@@ -180,9 +158,6 @@ const PayrollCard = React.memo(({ payroll }) => {
   );
 });
 
-// ================================================
-// SUBCOMPONENT: PayrollTable (memoised)
-// ================================================
 const PayrollTable = React.memo(({ payrolls }) => (
   <div className="overflow-x-auto">
     <table className="w-full">
@@ -254,26 +229,20 @@ const PayrollTable = React.memo(({ payrolls }) => (
   </div>
 ));
 
-// ================================================
-// MAIN COMPONENT: Payroll
-// ================================================
 const Payroll = () => {
   const { user } = useAuth();
   const { theme } = useTheme();
   const queryClient = useQueryClient();
   const isMobile = useResponsive(768);
 
-  // Local UI state
   const [viewMode, setViewMode] = useState(() => (isMobile ? 'card' : 'table'));
   const [selectedYear, setSelectedYear] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
 
-  // Update viewMode when screen size changes
   useEffect(() => {
     setViewMode(isMobile ? 'card' : 'table');
   }, [isMobile]);
 
-  // Data fetching with React Query
   const {
     data: payrolls = [],
     isLoading,
@@ -281,7 +250,12 @@ const Payroll = () => {
     refetch,
   } = usePayrollData(user?.id);
 
-  // Memoized derived data
+  useEffect(() => {
+    if (error) {
+      toast.error(error.message || 'Failed to load payroll history');
+    }
+  }, [error]);
+
   const availableYears = useMemo(() => {
     const years = new Set();
     payrolls.forEach((p) => years.add(p.year));
@@ -336,7 +310,6 @@ const Payroll = () => {
       <Toaster position="top-right" />
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {/* Header */}
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -357,7 +330,6 @@ const Payroll = () => {
                 )}
               </div>
 
-              {/* View Toggle */}
               <div className="flex gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
                 <button
                   onClick={() => setViewMode('card')}
@@ -381,7 +353,6 @@ const Payroll = () => {
             </div>
           </motion.div>
 
-          {/* Statistics Cards */}
           {payrolls.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
               <StatCard
@@ -405,7 +376,6 @@ const Payroll = () => {
             </div>
           )}
 
-          {/* Filters */}
           <div className="bg-white dark:bg-gray-800 rounded-lg p-4 mb-6 border border-gray-200 dark:border-gray-700">
             <div className="flex flex-col sm:flex-row gap-4">
               <div className="flex-1">
@@ -464,7 +434,6 @@ const Payroll = () => {
             </div>
           </div>
 
-          {/* Main Content */}
           {filteredPayrolls.length === 0 ? (
             <EmptyState
               hasFilters={selectedYear !== 'all' || selectedStatus !== 'all'}
