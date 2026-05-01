@@ -1,7 +1,5 @@
-
 import React, { useMemo } from 'react';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
-
 
 const formatCurrency = (value, currency = 'INR') => {
     const num = typeof value === 'number' && !isNaN(value) ? value : 0;
@@ -13,18 +11,12 @@ const formatCurrency = (value, currency = 'INR') => {
     }).format(num);
 };
 
-/**
- * Format trend percentage
- */
 const formatTrend = (value) => {
     if (value === undefined || value === null) return null;
     const absValue = Math.abs(value);
     return `${absValue.toFixed(1)}%`;
 };
 
-// ================================================
-// SKELETON LOADER
-// ================================================
 const CardSkeleton = ({ count = 4 }) => (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {[...Array(count)].map((_, i) => (
@@ -37,18 +29,12 @@ const CardSkeleton = ({ count = 4 }) => (
     </div>
 );
 
-// ================================================
-// EMPTY STATE
-// ================================================
 const EmptyState = () => (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6 border border-gray-200 dark:border-gray-700 text-center">
         <p className="text-gray-500 dark:text-gray-400">No payroll data available for this year</p>
     </div>
 );
 
-// ================================================
-// TREND INDICATOR COMPONENT
-// ================================================
 const TrendIndicator = ({ value, previousLabel = 'vs last year' }) => {
     if (value === undefined || value === null) return null;
 
@@ -72,18 +58,15 @@ const TrendIndicator = ({ value, previousLabel = 'vs last year' }) => {
                             : 'text-red-600 dark:text-red-400'
                     }`}
             >
-                {isPositive ? '+' : ''}{formatTrend(value)}
+                {isPositive ? '+' : ''}
+                {formatTrend(value)}
             </span>
             <span className="text-xs text-gray-400 dark:text-gray-500 ml-1">{previousLabel}</span>
         </div>
     );
 };
 
-// ================================================
-// MAIN COMPONENT
-// ================================================
 const YTDCards = React.memo(({ summary, loading = false, trends = {} }) => {
-    // Normalize summary data with safe defaults
     const safeSummary = useMemo(() => {
         if (!summary || typeof summary !== 'object') {
             return {
@@ -101,48 +84,48 @@ const YTDCards = React.memo(({ summary, loading = false, trends = {} }) => {
         };
     }, [summary]);
 
-    // Dynamic card configuration
-    const cards = useMemo(() => [
-        {
-            id: 'gross',
-            label: 'Total Gross (YTD)',
-            value: safeSummary.totalGross,
-            isCurrency: true,
-            trendKey: 'totalGross',
-            color: 'gray',
-        },
-        {
-            id: 'net',
-            label: 'Total Net (YTD)',
-            value: safeSummary.totalNet,
-            isCurrency: true,
-            trendKey: 'totalNet',
-            highlight: 'green',
-        },
-        {
-            id: 'tds',
-            label: 'Total TDS (YTD)',
-            value: safeSummary.totalTDS,
-            isCurrency: true,
-            trendKey: 'totalTDS',
-            color: 'gray',
-        },
-        {
-            id: 'months',
-            label: 'Months Processed',
-            value: safeSummary.monthsProcessed,
-            isCurrency: false,
-            trendKey: 'monthsProcessed',
-            color: 'gray',
-        },
-    ], [safeSummary]);
+    const cards = useMemo(
+        () => [
+            {
+                id: 'gross',
+                label: 'Total Gross (YTD)',
+                value: safeSummary.totalGross,
+                isCurrency: true,
+                trendKey: 'totalGross',
+                color: 'gray',
+            },
+            {
+                id: 'net',
+                label: 'Total Net (YTD)',
+                value: safeSummary.totalNet,
+                isCurrency: true,
+                trendKey: 'totalNet',
+                highlight: 'green',
+            },
+            {
+                id: 'tds',
+                label: 'Total TDS (YTD)',
+                value: safeSummary.totalTDS,
+                isCurrency: true,
+                trendKey: 'totalTDS',
+                color: 'gray',
+            },
+            {
+                id: 'months',
+                label: 'Months Processed',
+                value: safeSummary.monthsProcessed,
+                isCurrency: false,
+                trendKey: 'monthsProcessed',
+                color: 'gray',
+            },
+        ],
+        [safeSummary]
+    );
 
-    // Loading state
     if (loading) {
         return <CardSkeleton count={cards.length} />;
     }
 
-    // Empty state (no data processed)
     if (safeSummary.monthsProcessed === 0) {
         return <EmptyState />;
     }
@@ -161,24 +144,17 @@ const YTDCards = React.memo(({ summary, loading = false, trends = {} }) => {
                         key={card.id}
                         className="bg-white dark:bg-gray-800 rounded-lg shadow p-5 border border-gray-200 dark:border-gray-700 transition-all hover:shadow-md"
                     >
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">
-                            {card.label}
-                        </p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">{card.label}</p>
                         <p
                             className={`text-2xl font-semibold ${card.highlight === 'green'
                                     ? 'text-green-600 dark:text-green-400'
                                     : 'text-gray-800 dark:text-gray-100'
                                 }`}
                         >
-                            {card.isCurrency
-                                ? formatCurrency(card.value)
-                                : card.value}
+                            {card.isCurrency ? formatCurrency(card.value) : card.value}
                         </p>
 
-                        {/* Trend indicator (if available) */}
-                        {trend !== undefined && (
-                            <TrendIndicator value={trend} />
-                        )}
+                        {trend !== undefined && <TrendIndicator value={trend} />}
                     </div>
                 );
             })}
@@ -189,16 +165,3 @@ const YTDCards = React.memo(({ summary, loading = false, trends = {} }) => {
 YTDCards.displayName = 'YTDCards';
 
 export default YTDCards;
-
-
-// //example use
-// <YTDCards
-//     summary={ytdSummary}
-//     loading={isLoading}
-//     trends={{
-//         totalGross: 12.5,   // +12.5% vs last year
-//         totalNet: 8.3,
-//         totalTDS: -2.1,
-//         monthsProcessed: 0,
-//     }}
-// />
