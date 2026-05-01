@@ -1,16 +1,9 @@
-
-
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast, { Toaster } from 'react-hot-toast';
-import { useAuth } from '../context/AuthContext';
 import { payrollApi } from '../api/payrollApi';
-import { MonthlyNetTrend } from './PayrollCharts'; 
-import PayslipModal from "./PayslipModal"
+import PayslipModal from './PayslipModal';
 
-// ================================================
-// UTILITY: Payroll Data Adapter
-// ================================================
 const formatMonthlySummary = (data) => ({
     totalGross: data?.totals?.totalGross ?? 0,
     totalNet: data?.totals?.totalNet ?? 0,
@@ -18,31 +11,23 @@ const formatMonthlySummary = (data) => ({
     totalPF: data?.totals?.totalPF ?? 0,
 });
 
-// ================================================
-// CUSTOM HOOK: Debounce
-// ================================================
 const useDebounce = (value, delay) => {
     const [debouncedValue, setDebouncedValue] = useState(value);
-
     useEffect(() => {
         const handler = setTimeout(() => setDebouncedValue(value), delay);
         return () => clearTimeout(handler);
     }, [value, delay]);
-
     return debouncedValue;
 };
 
-// ================================================
-// SUBCOMPONENT: Skeleton Loaders
-// ================================================
 const SkeletonLoader = ({ type, count = 1, rows = 5 }) => {
     if (type === 'cards') {
         return (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                 {[...Array(count)].map((_, i) => (
                     <div key={i} className="bg-white rounded-lg shadow p-5 animate-pulse">
-                        <div className="h-4 bg-gray-200 rounded w-1/2 mb-2"></div>
-                        <div className="h-8 bg-gray-200 rounded w-3/4"></div>
+                        <div className="h-4 bg-gray-200 rounded w-1/2 mb-2" />
+                        <div className="h-8 bg-gray-200 rounded w-3/4" />
                     </div>
                 ))}
             </div>
@@ -51,9 +36,9 @@ const SkeletonLoader = ({ type, count = 1, rows = 5 }) => {
     if (type === 'table') {
         return (
             <div className="bg-white shadow rounded-lg p-4 animate-pulse">
-                <div className="h-6 bg-gray-200 rounded w-1/4 mb-4"></div>
+                <div className="h-6 bg-gray-200 rounded w-1/4 mb-4" />
                 {[...Array(rows)].map((_, i) => (
-                    <div key={i} className="h-12 bg-gray-100 rounded mb-2"></div>
+                    <div key={i} className="h-12 bg-gray-100 rounded mb-2" />
                 ))}
             </div>
         );
@@ -61,9 +46,6 @@ const SkeletonLoader = ({ type, count = 1, rows = 5 }) => {
     return null;
 };
 
-// ================================================
-// SUBCOMPONENT: Summary Cards
-// ================================================
 const SummaryCards = ({ totals, count }) => (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <div className="bg-white rounded-lg shadow p-5">
@@ -85,9 +67,6 @@ const SummaryCards = ({ totals, count }) => (
     </div>
 );
 
-// ================================================
-// SUBCOMPONENT: Process Payroll Card
-// ================================================
 const ProcessPayrollCard = ({ onProcess, isProcessing }) => {
     const [month, setMonth] = useState(new Date().getMonth() + 1);
     const [year, setYear] = useState(new Date().getFullYear());
@@ -129,15 +108,12 @@ const ProcessPayrollCard = ({ onProcess, isProcessing }) => {
     );
 };
 
-// ================================================
-// SUBCOMPONENT: Employee Lookup Card
-// ================================================
 const EmployeeLookupCard = ({ onViewPayslip }) => {
     const [input, setInput] = useState('');
     const debouncedId = useDebounce(input, 500);
     const [shouldFetch, setShouldFetch] = useState(false);
 
-    const { data, isLoading } = useQuery({
+    const { data: records = [], isLoading } = useQuery({
         queryKey: ['employeePayroll', debouncedId],
         queryFn: () => payrollApi.getPayrollByEmployee(debouncedId),
         enabled: shouldFetch && debouncedId.trim().length > 0,
@@ -174,8 +150,8 @@ const EmployeeLookupCard = ({ onViewPayslip }) => {
                 </button>
             </form>
 
-            {data?.records?.length > 0 && (
-                <div className="mt-4">
+            {records.length > 0 && (
+                <div className="mt-4 overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50">
                             <tr>
@@ -186,16 +162,13 @@ const EmployeeLookupCard = ({ onViewPayslip }) => {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200">
-                            {data.records.map((r) => (
+                            {records.map((r) => (
                                 <tr key={r.id}>
                                     <td className="px-6 py-4">{r.month}/{r.year}</td>
                                     <td className="px-6 py-4">₹{r.netSalary?.toLocaleString('en-IN')}</td>
                                     <td className="px-6 py-4">{r.status}</td>
                                     <td className="px-6 py-4">
-                                        <button
-                                            onClick={() => onViewPayslip(r)}
-                                            className="text-blue-600 hover:underline"
-                                        >
+                                        <button onClick={() => onViewPayslip(r)} className="text-blue-600 hover:underline">
                                             View
                                         </button>
                                     </td>
@@ -209,9 +182,6 @@ const EmployeeLookupCard = ({ onViewPayslip }) => {
     );
 };
 
-// ================================================
-// SUBCOMPONENT: Monthly Payroll Table
-// ================================================
 const MonthlyPayrollTable = ({
     records,
     currentPage,
@@ -227,52 +197,54 @@ const MonthlyPayrollTable = ({
         <div className="px-4 py-5 sm:px-6">
             <h3 className="text-lg font-medium">Monthly Payroll ({month}/{year})</h3>
         </div>
-        <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-                <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Employee</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Gross</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Deductions</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Net</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-                </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-                {records.map((p) => (
-                    <tr key={p.id}>
-                        <td className="px-6 py-4">{p.employee?.firstName} {p.employee?.lastName}</td>
-                        <td className="px-6 py-4">₹{p.items?.grossEarnings?.toLocaleString('en-IN')}</td>
-                        <td className="px-6 py-4">₹{p.items?.totalDeductions?.toLocaleString('en-IN')}</td>
-                        <td className="px-6 py-4 font-medium">₹{p.netSalary?.toLocaleString('en-IN')}</td>
-                        <td className="px-6 py-4">
-                            <span
-                                className={`px-2 py-1 text-xs rounded-full ${p.status === 'Locked'
-                                        ? 'bg-green-100 text-green-800'
-                                        : 'bg-yellow-100 text-yellow-800'
-                                    }`}
-                            >
-                                {p.status}
-                            </span>
-                        </td>
-                        <td className="px-6 py-4 space-x-2">
-                            <button onClick={() => onView(p)} className="text-blue-600 hover:underline">
-                                View
-                            </button>
-                            {p.status !== 'Locked' && (
-                                <button
-                                    onClick={() => onLock(p.id)}
-                                    disabled={lockingId === p.id}
-                                    className="text-red-600 hover:underline disabled:opacity-50"
-                                >
-                                    {lockingId === p.id ? 'Locking...' : 'Lock'}
-                                </button>
-                            )}
-                        </td>
+        <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                    <tr>
+                        {['Employee', 'Gross', 'Deductions', 'Net', 'Status', 'Actions'].map((h) => (
+                            <th key={h} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                                {h}
+                            </th>
+                        ))}
                     </tr>
-                ))}
-            </tbody>
-        </table>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                    {records.map((p) => (
+                        <tr key={p.id}>
+                            <td className="px-6 py-4">
+                                {p.employee?.firstName} {p.employee?.lastName}
+                            </td>
+                            <td className="px-6 py-4">₹{p.items?.grossEarnings?.toLocaleString('en-IN')}</td>
+                            <td className="px-6 py-4">₹{p.items?.totalDeductions?.toLocaleString('en-IN')}</td>
+                            <td className="px-6 py-4 font-medium">₹{p.netSalary?.toLocaleString('en-IN')}</td>
+                            <td className="px-6 py-4">
+                                <span
+                                    className={`px-2 py-1 text-xs rounded-full ${p.status === 'Locked' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                                        }`}
+                                >
+                                    {p.status}
+                                </span>
+                            </td>
+                            <td className="px-6 py-4 space-x-2">
+                                <button onClick={() => onView(p)} className="text-blue-600 hover:underline">
+                                    View
+                                </button>
+                                {p.status !== 'Locked' && (
+                                    <button
+                                        onClick={() => onLock(p.id)}
+                                        disabled={lockingId === p.id}
+                                        className="text-red-600 hover:underline disabled:opacity-50"
+                                    >
+                                        {lockingId === p.id ? 'Locking...' : 'Lock'}
+                                    </button>
+                                )}
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+
         {totalPages > 1 && (
             <div className="px-4 py-3 flex justify-between border-t">
                 <button
@@ -297,39 +269,44 @@ const MonthlyPayrollTable = ({
     </div>
 );
 
-// ================================================
-// MAIN COMPONENT: AdminPayroll
-// ================================================
 const AdminPayroll = () => {
-    const { user } = useAuth();
     const queryClient = useQueryClient();
+
+    const [selectedPayroll, setSelectedPayroll] = useState(null);
     const [modalOpen, setModalOpen] = useState(false);
-    const [selectedRecord, setSelectedRecord] = useState(null);
     const [lockingId, setLockingId] = useState(null);
     const [currentPage, setCurrentPage] = useState(1);
+
+    const [summaryMonth, setSummaryMonth] = useState(new Date().getMonth() + 1);
+    const [summaryYear, setSummaryYear] = useState(new Date().getFullYear());
+
     const pageSize = 10;
 
-    // ---------- Data Fetching (React Query) ----------
     const {
         data: monthlySummary,
         isLoading: summaryLoading,
         error: summaryError,
         refetch: refetchSummary,
     } = useQuery({
-        queryKey: ['monthlyPayroll'],
-        queryFn: payrollApi.getMonthlySummary,
-        staleTime: 5 * 60 * 1000, // 5 minutes
+        queryKey: ['monthlyPayroll', summaryMonth, summaryYear],
+        queryFn: () => payrollApi.getMonthlySummary(summaryMonth, summaryYear),
+        staleTime: 5 * 60 * 1000,
         onError: (err) => toast.error(err.message || 'Failed to load summary'),
     });
 
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [summaryMonth, summaryYear]);
+
     const totals = formatMonthlySummary(monthlySummary);
 
-    // ---------- Mutations ----------
     const processMutation = useMutation({
         mutationFn: payrollApi.processPayroll,
         onSuccess: (res) => {
-            toast.success(`Payroll processed for ${res.processedCount} employees`);
-            queryClient.invalidateQueries(['monthlyPayroll']);
+            toast.success(
+                `Payroll processed for ${res.processedCount ?? res.data?.processedCount ?? 0} employees`
+            );
+            queryClient.invalidateQueries({ queryKey: ['monthlyPayroll'] });
         },
         onError: (err) => toast.error(err.message),
     });
@@ -338,29 +315,33 @@ const AdminPayroll = () => {
         mutationFn: payrollApi.lockPayroll,
         onMutate: async ({ payrollId }) => {
             setLockingId(payrollId);
-            // Optimistic update
-            await queryClient.cancelQueries(['monthlyPayroll']);
+            await queryClient.cancelQueries({ queryKey: ['monthlyPayroll'] });
             const previous = queryClient.getQueryData(['monthlyPayroll']);
-            queryClient.setQueryData(['monthlyPayroll'], (old) => ({
-                ...old,
-                records: old.records.map((r) =>
-                    r.id === payrollId ? { ...r, status: 'Locked' } : r
-                ),
-            }));
+            queryClient.setQueryData(['monthlyPayroll'], (old) =>
+                old
+                    ? {
+                        ...old,
+                        records: old.records?.map((r) =>
+                            r.id === payrollId ? { ...r, status: 'Locked' } : r
+                        ),
+                    }
+                    : old
+            );
             return { previous };
         },
         onSuccess: () => {
             toast.success('Payroll locked');
-            queryClient.invalidateQueries(['monthlyPayroll']);
+            queryClient.invalidateQueries({ queryKey: ['monthlyPayroll'] });
         },
-        onError: (err, variables, context) => {
+        onError: (err, _vars, context) => {
             toast.error(err.message);
-            queryClient.setQueryData(['monthlyPayroll'], context.previous);
+            if (context?.previous) {
+                queryClient.setQueryData(['monthlyPayroll'], context.previous);
+            }
         },
         onSettled: () => setLockingId(null),
     });
 
-    // ---------- Handlers ----------
     const handleProcessPayroll = (month, year) => {
         if (!window.confirm(`Process payroll for ${month}/${year}?`)) return;
         processMutation.mutate({ month, year });
@@ -372,18 +353,21 @@ const AdminPayroll = () => {
     };
 
     const openPayslip = (record) => {
-        setSelectedRecord(record);
+        setSelectedPayroll(record);
         setModalOpen(true);
     };
 
-    // Pagination logic for monthly records
+    const closePayslip = () => {
+        setModalOpen(false);
+        setTimeout(() => setSelectedPayroll(null), 300);
+    };
+
     const paginatedRecords = useMemo(() => {
         if (!monthlySummary?.records) return [];
         const start = (currentPage - 1) * pageSize;
         return monthlySummary.records.slice(start, start + pageSize);
     }, [monthlySummary, currentPage]);
 
-    // ---------- Error State ----------
     if (summaryError) {
         return (
             <div className="flex flex-col items-center justify-center h-64">
@@ -404,30 +388,19 @@ const AdminPayroll = () => {
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 <h1 className="text-2xl font-semibold text-gray-900 mb-6">Payroll Administration</h1>
 
-                {/* Monthly Summary Cards with Skeleton */}
                 {summaryLoading ? (
                     <SkeletonLoader type="cards" count={4} />
                 ) : (
                     <SummaryCards totals={totals} count={monthlySummary?.count || 0} />
                 )}
 
-                {/* Net Trend Chart */}
-                {monthlySummary?.trend && (
-                    <div className="mb-6">
-                        <MonthlyNetTrend data={monthlySummary.trend} />
-                    </div>
-                )}
-
-                {/* Process Payroll Section */}
                 <ProcessPayrollCard
                     onProcess={handleProcessPayroll}
                     isProcessing={processMutation.isLoading}
                 />
 
-                {/* Employee Lookup */}
                 <EmployeeLookupCard onViewPayslip={openPayslip} />
 
-                {/* Monthly Summary Table with Pagination */}
                 {summaryLoading ? (
                     <SkeletonLoader type="table" rows={5} />
                 ) : monthlySummary?.records?.length > 0 ? (
@@ -444,22 +417,13 @@ const AdminPayroll = () => {
                     />
                 ) : (
                     <div className="bg-white rounded-lg shadow p-6 text-center text-gray-500">
-                        No payroll records found for this month.
+                        No payroll records found for the selected period.
                     </div>
                 )}
 
-            
-                {/* <PayslipModal
-          isOpen={modalOpen}
-          onClose={() => setModalOpen(false)}
-          payrollId={selectedRecord?.id}
-          month={selectedRecord?.month}
-          year={selectedRecord?.year}
-        /> */}
-
                 <PayslipModal
                     isOpen={modalOpen}
-                    onClose={() => setModalOpen(false)}
+                    onClose={closePayslip}
                     payrollId={selectedPayroll?.id}
                     month={selectedPayroll?.month}
                     year={selectedPayroll?.year}
