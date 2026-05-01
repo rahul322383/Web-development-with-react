@@ -5,7 +5,7 @@ const router = express.Router();
 const authenticate = require('../../middleware/auth.middleware');
 const authorize = require('../../middleware/rbacMiddleware');
 const ctrl = require('./payrollController');
-
+const validate = require('../../middleware/validate.middleware');
 router.use(authenticate);
 
 // ─── Employee routes ──────────────────────────────────────────────────────────
