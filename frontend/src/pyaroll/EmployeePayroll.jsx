@@ -1,11 +1,5 @@
-// src/pages/employee/EmployeePayroll.jsx
-// ================================================
-// PRODUCTION-READY EMPLOYEE PAYROLL PAGE (10/10)
-// ================================================
-// Dependencies:
-// npm install @tanstack/react-query react-hot-toast
-
-import React, { useState, useMemo } from 'react';
+// EmployeePayroll.jsx
+import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import toast, { Toaster } from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
@@ -13,11 +7,7 @@ import { payrollApi } from '../api/payrollApi';
 import YTDCards from './YTDCards';
 import PayslipModal from './PayslipModal';
 import { MonthlyNetTrend } from './PayrollCharts';
-import LoadingSpinner from '../components/common/LoadingSpinner';
 
-// ================================================
-// CONSTANTS & HELPERS
-// ================================================
 const STATUS_STYLES = {
     Locked: 'bg-green-100 text-green-800',
     Paid: 'bg-green-100 text-green-800',
@@ -28,14 +18,8 @@ const STATUS_STYLES = {
     default: 'bg-gray-100 text-gray-800',
 };
 
-const PAGE_SIZE = 10; // client-side pagination
+const PAGE_SIZE = 10;
 
-// Safe array parser
-const safeArray = (data) => (Array.isArray(data) ? data : []);
-
-// ================================================
-// SKELETON LOADER (Table)
-// ================================================
 const TableSkeleton = ({ rows = 5 }) => (
     <div className="animate-pulse">
         <div className="bg-gray-50 px-6 py-3 border-b border-gray-200">
@@ -54,9 +38,6 @@ const TableSkeleton = ({ rows = 5 }) => (
     </div>
 );
 
-// ================================================
-// ERROR STATE WITH RETRY
-// ================================================
 const ErrorState = ({ error, onRetry }) => (
     <div className="text-center py-10">
         <p className="text-red-500 mb-4">{error}</p>
@@ -70,18 +51,10 @@ const ErrorState = ({ error, onRetry }) => (
     </div>
 );
 
-// ================================================
-// EMPTY STATE
-// ================================================
 const EmptyState = () => (
-    <div className="text-center py-10 text-gray-500">
-        No payroll records found.
-    </div>
+    <div className="text-center py-10 text-gray-500">No payroll records found.</div>
 );
 
-// ================================================
-// PAGINATION CONTROLS
-// ================================================
 const Pagination = ({ currentPage, totalPages, onPageChange }) => {
     if (totalPages <= 1) return null;
     return (
@@ -109,69 +82,53 @@ const Pagination = ({ currentPage, totalPages, onPageChange }) => {
     );
 };
 
-// ================================================
-// MAIN COMPONENT
-// ================================================
 const EmployeePayroll = () => {
     const { user } = useAuth();
     const [modalOpen, setModalOpen] = useState(false);
     const [selectedPayroll, setSelectedPayroll] = useState(null);
     const [currentPage, setCurrentPage] = useState(1);
 
-    // ---------- Data Fetching with React Query ----------
-    const {
-        data: payrollData,
-        isLoading,
-        error,
-        refetch,
-    } = useQuery({
+    const { data: payrollData, isLoading, error, refetch } = useQuery({
         queryKey: ['employeePayroll', user?.id],
         queryFn: async () => {
-            // Run both API calls in parallel
             const [summaryRes, historyRes] = await Promise.all([
                 payrollApi.getYTDSummary(),
                 payrollApi.getMyPayrollHistory(),
             ]);
-
-            // Safe extraction
-            const ytd = summaryRes || {};
-            const records = safeArray(historyRes?.records);
-
-            return { ytd, records };
+            return { ytd: summaryRes, records: historyRes };
         },
         enabled: !!user,
-        staleTime: 5 * 60 * 1000, // 5 minutes
-        onError: (err) => {
-            toast.error(err.message || 'Failed to load payroll data');
-        },
+        staleTime: 5 * 60 * 1000,
     });
+
+    useEffect(() => {
+        if (error) {
+            toast.error(error.message || 'Failed to load payroll data');
+        }
+    }, [error]);
 
     const ytdSummary = payrollData?.ytd || null;
     const allHistory = payrollData?.records || [];
 
-    // ---------- Memoized Derived Data ----------
     const trendData = useMemo(() => {
         return [...allHistory]
             .map((item) => ({
                 month: `${item.month}/${item.year}`,
                 net: item.netSalary || 0,
             }))
-            .reverse(); // Most recent first for chart
+            .reverse();
     }, [allHistory]);
 
-    // Pagination logic (client-side)
     const totalPages = Math.ceil(allHistory.length / PAGE_SIZE);
     const paginatedHistory = useMemo(() => {
         const start = (currentPage - 1) * PAGE_SIZE;
         return allHistory.slice(start, start + PAGE_SIZE);
     }, [allHistory, currentPage]);
 
-    // Reset to first page when data changes
-    React.useEffect(() => {
+    useEffect(() => {
         setCurrentPage(1);
     }, [allHistory.length]);
 
-    // ---------- Handlers ----------
     const openPayslip = (record) => {
         if (!record?.id) return;
         setSelectedPayroll(record);
@@ -182,7 +139,6 @@ const EmployeePayroll = () => {
         refetch();
     };
 
-    // ---------- Render Logic ----------
     if (isLoading) {
         return (
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -211,18 +167,13 @@ const EmployeePayroll = () => {
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 <h1 className="text-2xl font-semibold text-gray-900 mb-6">My Payroll</h1>
 
-                {/* YTD Summary Cards */}
                 <YTDCards summary={ytdSummary} />
 
-                {/* Monthly Net Trend Chart */}
                 {trendData.length > 0 && <MonthlyNetTrend data={trendData} />}
 
-                {/* Payroll History Table */}
                 <div className="bg-white shadow overflow-hidden sm:rounded-lg">
                     <div className="px-4 py-5 sm:px-6">
-                        <h3 className="text-lg leading-6 font-medium text-gray-900">
-                            Payroll History
-                        </h3>
+                        <h3 className="text-lg leading-6 font-medium text-gray-900">Payroll History</h3>
                     </div>
 
                     {allHistory.length === 0 ? (
@@ -233,40 +184,22 @@ const EmployeePayroll = () => {
                                 <table className="min-w-full divide-y divide-gray-200">
                                     <thead className="bg-gray-50">
                                         <tr>
-                                            <th
-                                                scope="col"
-                                                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                                            >
+                                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                                 Period
                                             </th>
-                                            <th
-                                                scope="col"
-                                                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                                            >
+                                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                                 Gross (₹)
                                             </th>
-                                            <th
-                                                scope="col"
-                                                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                                            >
+                                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                                 Deductions (₹)
                                             </th>
-                                            <th
-                                                scope="col"
-                                                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                                            >
+                                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                                 Net (₹)
                                             </th>
-                                            <th
-                                                scope="col"
-                                                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                                            >
+                                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                                 Status
                                             </th>
-                                            <th
-                                                scope="col"
-                                                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                                            >
+                                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                                 Actions
                                             </th>
                                         </tr>
@@ -276,8 +209,7 @@ const EmployeePayroll = () => {
                                             const gross = record.items?.grossEarnings || 0;
                                             const deductions = record.items?.totalDeductions || 0;
                                             const net = record.netSalary || 0;
-                                            const statusStyle =
-                                                STATUS_STYLES[record.status] || STATUS_STYLES.default;
+                                            const statusStyle = STATUS_STYLES[record.status] || STATUS_STYLES.default;
 
                                             return (
                                                 <tr key={record.id}>
@@ -294,9 +226,7 @@ const EmployeePayroll = () => {
                                                         ₹{net.toLocaleString('en-IN')}
                                                     </td>
                                                     <td className="px-6 py-4 whitespace-nowrap">
-                                                        <span
-                                                            className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusStyle}`}
-                                                        >
+                                                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusStyle}`}>
                                                             {record.status}
                                                         </span>
                                                     </td>
@@ -315,11 +245,7 @@ const EmployeePayroll = () => {
                                     </tbody>
                                 </table>
                             </div>
-                            <Pagination
-                                currentPage={currentPage}
-                                totalPages={totalPages}
-                                onPageChange={setCurrentPage}
-                            />
+                            <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
                         </>
                     )}
                 </div>
