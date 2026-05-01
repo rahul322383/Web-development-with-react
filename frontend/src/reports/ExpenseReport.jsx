@@ -23,12 +23,13 @@ import { useNavigate } from 'react-router-dom';
 // Indian currency formatter
 const formatIndianCurrency = (amount) => {
     if (amount === undefined || amount === null) return '₹0';
+    const num = typeof amount === 'string' ? parseFloat(amount) : amount;
     return new Intl.NumberFormat('en-IN', {
         style: 'currency',
         currency: 'INR',
         minimumFractionDigits: 0,
         maximumFractionDigits: 0,
-    }).format(amount);
+    }).format(num);
 };
 
 const ExpenseReport = () => {
@@ -49,6 +50,55 @@ const ExpenseReport = () => {
     const [error, setError] = useState(null);
     const [viewMode, setViewMode] = useState('table');
 
+    // Transform the API response into the shape the component expects
+    const transformResponse = (response) => {
+        // Response structure: { success, data: { summary, byCategory, trend, topSpenders } }
+        const responseData = response.data || response;
+        const summaryData = responseData.summary || {};
+
+        // 1. Extract all expense records from totalExpenses.records
+        const allExpenses = summaryData.totalExpenses?.records || [];
+
+        // 2. Build the flat expenses array for the table/cards
+        const expenseList = allExpenses.map(exp => ({
+            id: exp.id,
+            employeeId: exp.employee_id,
+            // Employee name not provided in this response; display ID as fallback
+            employeeName: `Employee ${exp.employee_id}`,
+            category: exp.category,
+            date: exp.created_at,
+            amount: parseFloat(exp.amount),
+            status: exp.manager_approval_status?.toLowerCase() || 'pending',
+            // keep other fields if needed
+            managerStatus: exp.manager_approval_status,
+            financeStatus: exp.finance_approval_status,
+            paymentStatus: exp.payment_status,
+        }));
+
+        // 3. Build summary object for the cards
+        const totalAmount = summaryData.totalAmount?.amount ? parseFloat(summaryData.totalAmount.amount) : 0;
+        const pendingAmount = summaryData.managerPending?.amount ? parseFloat(summaryData.managerPending.amount) : 0;
+        const averageAmount = summaryData.averageAmount?.amount ? parseFloat(summaryData.averageAmount.amount) : 0;
+
+        // 4. Optional: unique employee count for average per employee (if needed)
+        const uniqueEmployeeIds = new Set(expenseList.map(e => e.employeeId));
+        const avgPerEmployee = uniqueEmployeeIds.size > 0 ? totalAmount / uniqueEmployeeIds.size : 0;
+
+        // 5. Compute changes? Not provided in the given JSON – set to undefined
+        //    The UI will conditionally hide the change indicators.
+
+        const transformedSummary = {
+            totalAmount,
+            pendingAmount,
+            averagePerEmployee: avgPerEmployee,   // could also use averageAmount if preferred
+            totalChange: undefined,
+            pendingChange: undefined,
+            averageChange: undefined,
+        };
+
+        return { expenseList, transformedSummary };
+    };
+
     const fetchReport = useCallback(async () => {
         const abortController = new AbortController();
         try {
@@ -58,9 +108,12 @@ const ExpenseReport = () => {
                 from: dateRange.from,
                 to: dateRange.to,
             }, { signal: abortController.signal });
-            const responseData = response.data || response;
-            setData(responseData?.expenses || responseData || []);
-            setSummary(responseData?.summary || null);
+
+            // The response is expected to follow the provided JSON structure
+            const { expenseList, transformedSummary } = transformResponse(response);
+
+            setData(expenseList);
+            setSummary(transformedSummary);
         } catch (err) {
             if (err.name !== 'AbortError') {
                 setError(err.response?.data?.message || 'Failed to load expense report');
@@ -113,7 +166,7 @@ const ExpenseReport = () => {
     const summaryCards = [
         {
             title: 'Total Expenses',
-            value: summary?.totalAmount || summary?.total || 0,
+            value: summary?.totalAmount || 0,
             icon: IndianRupee,
             href: '/expenses',
             gradient: 'from-amber-500 to-orange-500',
@@ -125,7 +178,7 @@ const ExpenseReport = () => {
         },
         {
             title: 'Pending Approval',
-            value: summary?.pendingAmount || summary?.pending || 0,
+            value: summary?.pendingAmount || 0,
             icon: Clock,
             href: '/expenses?status=pending',
             gradient: 'from-yellow-500 to-amber-500',
@@ -153,17 +206,20 @@ const ExpenseReport = () => {
         const config = {
             approved: {
                 icon: CheckCircle,
+                href: '/expenses',
                 bg: 'bg-green-100 dark:bg-green-900/40',
                 text: 'text-green-800 dark:text-green-300',
                 label: 'Approved',
             },
             pending: {
+                href: '/expenses',
                 icon: Clock,
                 bg: 'bg-yellow-100 dark:bg-yellow-900/40',
                 text: 'text-yellow-800 dark:text-yellow-300',
                 label: 'Pending',
             },
             rejected: {
+                href: '/expenses',
                 icon: XCircle,
                 bg: 'bg-red-100 dark:bg-red-900/40',
                 text: 'text-red-800 dark:text-red-300',
@@ -197,12 +253,16 @@ const ExpenseReport = () => {
                         onChange={setDateRange}
                     />
                     {canExport && (
-                        <ExportButtons module="expenses" from={dateRange.from} to={dateRange.to} />
+                        <ExportButtons
+                            module="expenses"
+                            from={dateRange.from}
+                            to={dateRange.to}
+                        />
                     )}
                 </div>
             </div>
 
-            {/* Summary Cards */}
+            {/* Summary Cards (show only if summary exists) */}
             {summary && (
                 <div className="grid grid-cols-1 xs:grid-cols-2 lg:grid-cols-3 gap-4">
                     {summaryCards.map((card) => {
@@ -236,8 +296,8 @@ const ExpenseReport = () => {
                                                 <div className="flex items-center gap-1.5 mt-2">
                                                     <span
                                                         className={`inline-flex items-center gap-0.5 text-xs font-medium px-2 py-0.5 rounded-full ${isPositive
-                                                            ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
-                                                            : 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
+                                                                ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
+                                                                : 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
                                                             }`}
                                                     >
                                                         {isPositive ? (
@@ -276,8 +336,8 @@ const ExpenseReport = () => {
                     <button
                         onClick={() => setViewMode('table')}
                         className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${viewMode === 'table'
-                            ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                            : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                                ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
                             }`}
                     >
                         Table
@@ -285,8 +345,8 @@ const ExpenseReport = () => {
                     <button
                         onClick={() => setViewMode('cards')}
                         className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors md:hidden ${viewMode === 'cards'
-                            ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                            : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                                ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
                             }`}
                     >
                         Cards
