@@ -1,5 +1,5 @@
 // src/components/reports/PayrollReport.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     Loader2,
     IndianRupee,
@@ -12,6 +12,8 @@ import {
     Banknote,
     CircleDollarSign,
     Users,
+    Clock,
+    Lock,
 } from 'lucide-react';
 import reportsAPI from '../api/reports.api';
 import ReportDateRange from './ReportDateRange';
@@ -21,12 +23,20 @@ import { useAuth } from '../context/AuthContext';
 // Indian currency formatter
 const formatIndianCurrency = (amount) => {
     if (amount === undefined || amount === null) return '₹0';
+    const num = typeof amount === 'string' ? parseFloat(amount) : amount;
     return new Intl.NumberFormat('en-IN', {
         style: 'currency',
         currency: 'INR',
         minimumFractionDigits: 0,
         maximumFractionDigits: 0,
-    }).format(amount);
+    }).format(num);
+};
+
+// Format month number to name (e.g., 4 -> April)
+const getMonthName = (month) => {
+    const date = new Date();
+    date.setMonth(month - 1);
+    return date.toLocaleString('en-IN', { month: 'long' });
 };
 
 const PayrollReport = () => {
@@ -46,7 +56,55 @@ const PayrollReport = () => {
     const [error, setError] = useState(null);
     const [viewMode, setViewMode] = useState('table');
 
-    const fetchReport = async () => {
+    // Transform the API response into the shape the component expects
+    const transformResponse = (response) => {
+        const responseData = response.data || response;
+        const summaryData = responseData.summary || {};
+        const allPayrolls = responseData.allPayrolls || summaryData.totalPayrolls?.records || [];
+
+        // 1. Build the flat payroll array for table/cards
+        const payrollList = allPayrolls.map((item) => ({
+            id: item.id,
+            employeeId: item.employee_id,
+            employeeName: `Employee ${item.employee_id}`, // fallback; ideally fetch employee name
+            period: `${getMonthName(item.month)} ${item.year}`,
+            month: item.month,
+            year: item.year,
+            netSalary: parseFloat(item.net_salary),
+            status: item.status?.toLowerCase() || 'processed',
+            processedAt: item.processed_at,
+            // Additional fields if needed
+        }));
+
+        // 2. Extract summary metrics
+        const totalPayrolls = summaryData.totalPayrolls?.value ?? 0;
+        const totalNetSalary = summaryData.totalNetSalary?.value ? parseFloat(summaryData.totalNetSalary.value) : 0;
+        const averageNetSalary = summaryData.averageNetSalary?.value ? parseFloat(summaryData.averageNetSalary.value) : 0;
+        const processedCount = summaryData.statusBreakdown?.processed?.value ? parseInt(summaryData.statusBreakdown.processed.value, 10) : 0;
+        const lockedCount = summaryData.statusBreakdown?.locked?.value ? parseInt(summaryData.statusBreakdown.locked.value, 10) : 0;
+        const draftCount = summaryData.statusBreakdown?.draft?.value ? parseInt(summaryData.statusBreakdown.draft.value, 10) : 0;
+
+        // Optional: include processed count as employeeCount (or a separate card)
+        const employeeCount = payrollList.length; // number of unique employees? but for simplicity use total payroll count
+
+        const transformedSummary = {
+            total: totalPayrolls,
+            totalAmount: totalNetSalary,
+            averageSalary: averageNetSalary,
+            employeeCount: employeeCount,
+            processed: processedCount,
+            locked: lockedCount,
+            draft: draftCount,
+            totalChange: undefined,
+            averageChange: undefined,
+            employeeCountChange: undefined,
+        };
+
+        return { payrollList, transformedSummary };
+    };
+
+    const fetchReport = useCallback(async () => {
+        let isMounted = true;
         try {
             setLoading(true);
             setError(null);
@@ -54,18 +112,23 @@ const PayrollReport = () => {
                 from: dateRange.from,
                 to: dateRange.to,
             });
-            setData(response.data?.payrolls || response.payrolls || []);
-            setSummary(response.data?.summary || response.summary || null);
+            if (!isMounted) return;
+            const { payrollList, transformedSummary } = transformResponse(response);
+            setData(payrollList);
+            setSummary(transformedSummary);
         } catch (err) {
-            setError(err.response?.data?.message || 'Failed to load payroll report');
+            if (isMounted) {
+                setError(err.response?.data?.message || 'Failed to load payroll report');
+            }
         } finally {
-            setLoading(false);
+            if (isMounted) setLoading(false);
         }
-    };
+        return () => { isMounted = false; };
+    }, [dateRange]);
 
     useEffect(() => {
         fetchReport();
-    }, [dateRange]);
+    }, [fetchReport]);
 
     // Permission check for export
     const userRoles = user?.roles?.length
@@ -100,9 +163,33 @@ const PayrollReport = () => {
         );
     }
 
+    const getStatusBadge = (status) => {
+        const config = {
+            processed: {
+                icon: TrendingUp,
+                bg: 'bg-green-100 dark:bg-green-900/40',
+                text: 'text-green-800 dark:text-green-300',
+                label: 'Processed',
+            },
+            locked: {
+                icon: Lock,
+                bg: 'bg-amber-100 dark:bg-amber-900/40',
+                text: 'text-amber-800 dark:text-amber-300',
+                label: 'Locked',
+            },
+            draft: {
+                icon: Clock,
+                bg: 'bg-gray-100 dark:bg-gray-700/40',
+                text: 'text-gray-700 dark:text-gray-300',
+                label: 'Draft',
+            },
+        };
+        return config[status?.toLowerCase()] || config.processed;
+    };
+
     const summaryCards = [
         {
-            title: 'Total Payroll',
+            title: 'Total Payrolls',
             value: summary?.total || 0,
             icon: CircleDollarSign,
             gradient: 'from-emerald-500 to-green-500',
@@ -110,29 +197,29 @@ const PayrollReport = () => {
             iconBg: 'bg-emerald-100 dark:bg-emerald-900/40',
             iconColor: 'text-emerald-600 dark:text-emerald-400',
             change: summary?.totalChange,
-            format: formatIndianCurrency,
+            format: (val) => val.toLocaleString('en-IN'),
         },
         {
-            title: 'Average Salary',
-            value: summary?.averageSalary || 0,
-            icon: TrendingUp,
+            title: 'Total Net Salary',
+            value: summary?.totalAmount || 0,
+            icon: IndianRupee,
             gradient: 'from-blue-500 to-cyan-500',
             bgGradient: 'from-blue-50 to-cyan-50 dark:from-blue-950/30 dark:to-cyan-950/30',
             iconBg: 'bg-blue-100 dark:bg-blue-900/40',
             iconColor: 'text-blue-600 dark:text-blue-400',
-            change: summary?.averageChange,
+            change: summary?.totalChange,
             format: formatIndianCurrency,
         },
         {
-            title: 'Employees Paid',
-            value: summary?.employeeCount || 0,
-            icon: Users,
+            title: 'Average Net Salary',
+            value: summary?.averageSalary || 0,
+            icon: TrendingUp,
             gradient: 'from-purple-500 to-pink-500',
             bgGradient: 'from-purple-50 to-pink-50 dark:from-purple-950/30 dark:to-pink-950/30',
             iconBg: 'bg-purple-100 dark:bg-purple-900/40',
             iconColor: 'text-purple-600 dark:text-purple-400',
-            change: summary?.employeeCountChange,
-            format: (val) => val.toLocaleString('en-IN'),
+            change: summary?.averageChange,
+            format: formatIndianCurrency,
         },
     ];
 
@@ -198,8 +285,8 @@ const PayrollReport = () => {
                                                 <div className="flex items-center gap-1.5 mt-2">
                                                     <span
                                                         className={`inline-flex items-center gap-0.5 text-xs font-medium px-2 py-0.5 rounded-full ${isPositive
-                                                                ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
-                                                                : 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
+                                                            ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
+                                                            : 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
                                                             }`}
                                                     >
                                                         {isPositive ? (
@@ -238,8 +325,8 @@ const PayrollReport = () => {
                     <button
                         onClick={() => setViewMode('table')}
                         className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${viewMode === 'table'
-                                ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                            ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                            : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
                             }`}
                     >
                         Table
@@ -247,8 +334,8 @@ const PayrollReport = () => {
                     <button
                         onClick={() => setViewMode('cards')}
                         className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors md:hidden ${viewMode === 'cards'
-                                ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                            ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                            : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
                             }`}
                     >
                         Cards
@@ -270,23 +357,20 @@ const PayrollReport = () => {
                                         Period
                                     </th>
                                     <th className="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                                        Base Salary
+                                        Net Salary
                                     </th>
                                     <th className="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                                        Bonuses
+                                        Status
                                     </th>
                                     <th className="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                                        Deductions
-                                    </th>
-                                    <th className="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                                        Net Pay
+                                        Processed Date
                                     </th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-200 dark:divide-gray-700/60">
                                 {data.length === 0 ? (
                                     <tr>
-                                        <td colSpan="6" className="px-6 py-12 text-center">
+                                        <td colSpan="5" className="px-6 py-12 text-center">
                                             <div className="flex flex-col items-center">
                                                 <CreditCard className="w-12 h-12 text-gray-300 dark:text-gray-600 mb-3" />
                                                 <p className="text-gray-500 dark:text-gray-400 font-medium">
@@ -299,41 +383,56 @@ const PayrollReport = () => {
                                         </td>
                                     </tr>
                                 ) : (
-                                    data.map((item) => (
-                                        <tr
-                                            key={item.id}
-                                            className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors group"
-                                        >
-                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="p-1.5 bg-gray-100 dark:bg-gray-700 rounded-lg">
-                                                        <User className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                                    data.map((item) => {
+                                        const statusConfig = getStatusBadge(item.status);
+                                        const StatusIcon = statusConfig.icon;
+                                        return (
+                                            <tr
+                                                key={item.id}
+                                                className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors group"
+                                            >
+                                                <td className="px-6 py-4 whitespace-nowrap">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="p-1.5 bg-gray-100 dark:bg-gray-700 rounded-lg">
+                                                            <User className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                                                        </div>
+                                                        <span className="font-medium text-gray-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                                                            {item.employeeName}
+                                                        </span>
                                                     </div>
-                                                    <span className="font-medium text-gray-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                                                        {item.employeeName}
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-gray-600 dark:text-gray-300">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                                                        {item.period}
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap">
+                                                    <span className="font-semibold text-gray-900 dark:text-white">
+                                                        {formatIndianCurrency(item.netSalary)}
                                                     </span>
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-gray-600 dark:text-gray-300">
-                                                <div className="flex items-center gap-1.5">
-                                                    <Calendar className="w-3.5 h-3.5 text-gray-400" />
-                                                    {item.period}
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-gray-600 dark:text-gray-300">
-                                                {formatIndianCurrency(item.baseSalary)}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-emerald-600 dark:text-emerald-400">
-                                                {formatIndianCurrency(item.bonuses)}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-red-600 dark:text-red-400">
-                                                {formatIndianCurrency(item.deductions)}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap font-semibold text-gray-900 dark:text-white">
-                                                {formatIndianCurrency(item.netPay)}
-                                            </td>
-                                        </tr>
-                                    ))
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap">
+                                                    <span
+                                                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${statusConfig.bg} ${statusConfig.text}`}
+                                                    >
+                                                        <StatusIcon className="w-3 h-3" />
+                                                        {statusConfig.label}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-gray-500 dark:text-gray-400">
+                                                    {item.processedAt
+                                                        ? new Date(item.processedAt).toLocaleDateString('en-IN', {
+                                                            day: 'numeric',
+                                                            month: 'short',
+                                                            year: 'numeric',
+                                                        })
+                                                        : '—'
+                                                    }
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
                                 )}
                             </tbody>
                         </table>
@@ -352,54 +451,61 @@ const PayrollReport = () => {
                         </p>
                     </div>
                 ) : (
-                    data.map((item) => (
-                        <div
-                            key={item.id}
-                            className="bg-white dark:bg-gray-800/80 rounded-xl border border-gray-200 dark:border-gray-700/60 p-4 shadow-sm hover:shadow-md transition-all"
-                        >
-                            <div className="flex items-start justify-between mb-3">
-                                <div className="flex items-center gap-2">
-                                    <div className="p-2 bg-gray-100 dark:bg-gray-700 rounded-lg">
-                                        <User className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                    data.map((item) => {
+                        const statusConfig = getStatusBadge(item.status);
+                        const StatusIcon = statusConfig.icon;
+                        return (
+                            <div
+                                key={item.id}
+                                className="bg-white dark:bg-gray-800/80 rounded-xl border border-gray-200 dark:border-gray-700/60 p-4 shadow-sm hover:shadow-md transition-all"
+                            >
+                                <div className="flex items-start justify-between mb-3">
+                                    <div className="flex items-center gap-2">
+                                        <div className="p-2 bg-gray-100 dark:bg-gray-700 rounded-lg">
+                                            <User className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                                        </div>
+                                        <span className="font-medium text-gray-900 dark:text-white">
+                                            {item.employeeName}
+                                        </span>
                                     </div>
-                                    <span className="font-medium text-gray-900 dark:text-white">
-                                        {item.employeeName}
+                                    <span
+                                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${statusConfig.bg} ${statusConfig.text}`}
+                                    >
+                                        <StatusIcon className="w-3 h-3" />
+                                        {statusConfig.label}
                                     </span>
                                 </div>
-                                <span className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1">
-                                    <Calendar className="w-3.5 h-3.5" />
-                                    {item.period}
-                                </span>
-                            </div>
 
-                            <div className="space-y-2">
-                                <div className="flex items-center justify-between">
-                                    <span className="text-sm text-gray-500 dark:text-gray-400">Base Salary</span>
-                                    <span className="text-sm font-medium text-gray-900 dark:text-white">
-                                        {formatIndianCurrency(item.baseSalary)}
-                                    </span>
-                                </div>
-                                <div className="flex items-center justify-between">
-                                    <span className="text-sm text-gray-500 dark:text-gray-400">Bonuses</span>
-                                    <span className="text-sm font-medium text-emerald-600 dark:text-emerald-400">
-                                        {formatIndianCurrency(item.bonuses)}
-                                    </span>
-                                </div>
-                                <div className="flex items-center justify-between">
-                                    <span className="text-sm text-gray-500 dark:text-gray-400">Deductions</span>
-                                    <span className="text-sm font-medium text-red-600 dark:text-red-400">
-                                        {formatIndianCurrency(item.deductions)}
-                                    </span>
-                                </div>
-                                <div className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-gray-700">
-                                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Net Pay</span>
-                                    <span className="text-lg font-bold text-gray-900 dark:text-white">
-                                        {formatIndianCurrency(item.netPay)}
-                                    </span>
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm text-gray-500 dark:text-gray-400">Period</span>
+                                        <span className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-1">
+                                            <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                                            {item.period}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm text-gray-500 dark:text-gray-400">Net Salary</span>
+                                        <span className="text-base font-bold text-gray-900 dark:text-white">
+                                            {formatIndianCurrency(item.netSalary)}
+                                        </span>
+                                    </div>
+                                    {item.processedAt && (
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-sm text-gray-500 dark:text-gray-400">Processed On</span>
+                                            <span className="text-xs text-gray-500 dark:text-gray-400">
+                                                {new Date(item.processedAt).toLocaleDateString('en-IN', {
+                                                    day: 'numeric',
+                                                    month: 'short',
+                                                    year: 'numeric',
+                                                })}
+                                            </span>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
-                        </div>
-                    ))
+                        );
+                    })
                 )}
             </div>
         </div>
