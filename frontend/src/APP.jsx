@@ -258,6 +258,9 @@ import EmployeePayroll from "./pyaroll/EmployeePayroll";
 import AdminPayroll from "./pyaroll/AdminPayroll";
 import AnalyticsDashboard from "./analytics/AnalyticsDashboard";
 import CompanyPage from './company/CompanyPage'
+import PayrollDashboard from "./pyaroll/PayrollDashboard"
+
+
 
 
 
@@ -339,7 +342,7 @@ function AppRoutes() {
 
           <Route path="/payroll" element={
             <ProtectedRoute>
-              {["admin", "hr", "finance"].includes(user?.role?.toLowerCase())
+              {["Admin", "HR", "Finance", 'Manager'].includes(user?.role?.toLowerCase())
                 ? <AdminPayroll />
                 : <EmployeePayroll />
               }
