@@ -40,10 +40,14 @@ const EmployeesReport = () => {
         try {
             setLoading(true);
             setError(null);
-            const response = await reportsAPI.getEmployees({
-                from: dateRange.from,
-                to: dateRange.to,
-            }, { signal: abortController.signal });
+            const response = await reportsAPI.getEmployees(
+                {
+                    from: dateRange.from,
+                    to: dateRange.to,
+                },
+                { signal: abortController.signal }
+            );
+            // Unwrap the data (the API wraps it in { success, data })
             const data = response.data || response;
             setApiData(data);
         } catch (err) {
@@ -63,57 +67,85 @@ const EmployeesReport = () => {
         };
     }, [fetchReport]);
 
+    // Process the raw API data into a flat employee list and summary statistics
     const { employees, summary } = useMemo(() => {
-        if (!apiData) return { employees: [], summary: null, roleMap: new Map() };
-
-        const roleMap = new Map();
-        if (apiData.byRole) {
-            apiData.byRole.forEach((roleGroup) => {
-                roleGroup.employees?.forEach((emp) => {
-                    roleMap.set(emp.id, roleGroup.role);
-                });
-            });
+        if (!apiData) {
+            return { employees: [], summary: null };
         }
 
-        const rawList = apiData.list || [];
+        // 1. Extract employee list (the API provides "list" array)
+        const rawEmployees = apiData.list || [];
 
-        const enrichedEmployees = rawList.map((emp) => ({
-            ...emp,
+        // 2. Build role mapping from byRole.records
+        const roleMap = new Map();
+        const byRoleRecords = apiData.byRole?.records || [];
+        byRoleRecords.forEach((roleGroup) => {
+            const roleName = roleGroup.role;
+            const roleEmployees = roleGroup.employees || [];
+            roleEmployees.forEach((emp) => {
+                roleMap.set(emp.id, roleName);
+            });
+        });
+
+        // 3. Enrich each employee with fullName, role, formatted join date
+        const enrichedEmployees = rawEmployees.map((emp) => ({
+            id: emp.id,
+            first_name: emp.first_name,
+            last_name: emp.last_name,
+            email: emp.email,
+            department: emp.department,
+            is_active: emp.is_active === 1,
+            created_at: emp.created_at,
             fullName: `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Unknown',
             role: roleMap.get(emp.id) || 'Employee',
             joinDate: emp.created_at,
         }));
 
-        const totalEmployees = enrichedEmployees.length;
-        const activeEmployees = enrichedEmployees.filter((e) => e.is_active === 1).length;
-        const inactiveEmployees = totalEmployees - activeEmployees;
-
+        // 4. Build summary cards using data from the API's summary object (if present)
+        //    Fallback to computed values if the summary is missing (backward compatibility)
+        const summaryFromApi = apiData.summary;
+        let total = enrichedEmployees.length;
+        let active = enrichedEmployees.filter((e) => e.is_active).length;
+        let inactive = total - active;
         let newHiresCount = 0;
-        if (apiData.newHires) {
-            apiData.newHires.forEach((group) => {
-                newHiresCount += group.employees?.length || 0;
-            });
+
+        if (summaryFromApi) {
+            // Use API summary values if available (they are more reliable)
+            total = summaryFromApi.totalEmployees?.value ?? total;
+            active = summaryFromApi.activeEmployees?.value ?? active;
+            inactive = summaryFromApi.inactiveEmployees?.value ?? inactive;
+            // Count new hires from the newHires.records array
+            const newHiresRecords = apiData.newHires?.records || [];
+            newHiresCount = newHiresRecords.reduce(
+                (sum, dayGroup) => sum + (dayGroup.employees?.length || 0),
+                0
+            );
+        } else {
+            // Fallback: count new hires from newHires.records if summary missing
+            const newHiresRecords = apiData.newHires?.records || [];
+            newHiresCount = newHiresRecords.reduce(
+                (sum, dayGroup) => sum + (dayGroup.employees?.length || 0),
+                0
+            );
         }
 
-        const turnoverRate = totalEmployees > 0
-            ? ((inactiveEmployees / totalEmployees) * 100).toFixed(1)
-            : '0.0';
+        const turnoverRate = total > 0 ? (inactive / total) * 100 : 0;
 
         const summaryStats = {
-            total: totalEmployees,
-            active: activeEmployees,
+            total,
+            active,
+            inactive,
             newHires: newHiresCount,
-            departures: inactiveEmployees,
-            turnoverRate: parseFloat(turnoverRate),
+            turnoverRate: parseFloat(turnoverRate.toFixed(1)),
         };
 
         return { employees: enrichedEmployees, summary: summaryStats };
     }, [apiData]);
 
+    // Permission check for export
     const userRoles = user?.roles?.length
         ? user.roles
         : [user?.primaryRole || meta?.role || 'Employee'];
-
     const canExport = userRoles.some((role) =>
         ['Admin', 'HR', 'Manager', 'Finance'].includes(role)
     );
@@ -167,7 +199,7 @@ const EmployeesReport = () => {
             },
             {
                 title: 'Departures',
-                value: summary.departures,
+                value: summary.inactive,
                 icon: UserMinus,
                 href: '/department-dashboard',
                 gradient: 'from-red-500 to-rose-500',
@@ -197,7 +229,9 @@ const EmployeesReport = () => {
                         <Users className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                     </div>
                     <div>
-                        <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Employee Analytics</h2>
+                        <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                            Employee Analytics
+                        </h2>
                         <p className="text-sm text-gray-500 dark:text-gray-400">
                             Workforce statistics and trends
                         </p>
@@ -210,7 +244,11 @@ const EmployeesReport = () => {
                         onChange={setDateRange}
                     />
                     {canExport && (
-                        <ExportButtons module="employees" from={dateRange.from} to={dateRange.to} />
+                        <ExportButtons
+                            module="employees"
+                            from={dateRange.from}
+                            to={dateRange.to}
+                        />
                     )}
                 </div>
             </div>
