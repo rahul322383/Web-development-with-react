@@ -1,5 +1,5 @@
 // src/components/reports/LeaveReport.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     Loader2,
     Calendar,
@@ -36,7 +36,49 @@ const LeaveReport = () => {
     const [error, setError] = useState(null);
     const [viewMode, setViewMode] = useState('table');
 
-    const fetchReport = async () => {
+    // Transform the API response into the shape the component expects
+    const transformResponse = (response) => {
+        const responseData = response.data || response;
+        const summaryData = responseData.summary || {};
+
+        // 1. Extract all leave records from totalRequests.records
+        const allLeaves = summaryData.totalRequests?.records || [];
+
+        // 2. Build the flat leave array for the table/cards
+        const leaveList = allLeaves.map(leave => ({
+            id: leave.id,
+            employeeId: leave.employee_id,
+            employeeName: `Employee ${leave.employee_id}`, // fallback; ideally join with employee data
+            leaveType: leave.reason || 'Not specified',
+            startDate: leave.start_date,
+            endDate: leave.end_date,
+            days: leave.days_requested,
+            status: leave.status?.toLowerCase() || 'pending',
+        }));
+
+        // 3. Build summary object for the cards (using counts from the nested summary)
+        const total = summaryData.totalRequests?.count ?? 0;
+        const approved = summaryData.approvedRequests?.count ?? 0;
+        const pending = summaryData.pendingRequests?.count ?? 0;
+        const rejected = summaryData.rejectedRequests?.count ?? 0;
+
+        // Optional: change percentages – not provided in this JSON, so set undefined
+        const transformedSummary = {
+            total: typeof total === 'string' ? parseInt(total, 10) : total,
+            approved: typeof approved === 'string' ? parseInt(approved, 10) : approved,
+            pending: typeof pending === 'string' ? parseInt(pending, 10) : pending,
+            rejected: typeof rejected === 'string' ? parseInt(rejected, 10) : rejected,
+            totalChange: undefined,
+            approvedChange: undefined,
+            pendingChange: undefined,
+            rejectedChange: undefined,
+        };
+
+        return { leaveList, transformedSummary };
+    };
+
+    const fetchReport = useCallback(async () => {
+        let isMounted = true;
         try {
             setLoading(true);
             setError(null);
@@ -44,18 +86,23 @@ const LeaveReport = () => {
                 from: dateRange.from,
                 to: dateRange.to,
             });
-            setData(response.data?.leaves || response.leaves || []);
-            setSummary(response.data?.summary || response.summary || null);
+            if (!isMounted) return;
+            const { leaveList, transformedSummary } = transformResponse(response);
+            setData(leaveList);
+            setSummary(transformedSummary);
         } catch (err) {
-            setError(err.response?.data?.message || 'Failed to load leave report');
+            if (isMounted) {
+                setError(err.response?.data?.message || 'Failed to load leave report');
+            }
         } finally {
-            setLoading(false);
+            if (isMounted) setLoading(false);
         }
-    };
+        return () => { isMounted = false; };
+    }, [dateRange]);
 
     useEffect(() => {
         fetchReport();
-    }, [dateRange]);
+    }, [fetchReport]);
 
     // Permission check for export
     const userRoles = user?.roles?.length
