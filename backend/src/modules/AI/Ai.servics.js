@@ -548,6 +548,7 @@ const logger = require('../../config/logger');
 const { LeaveRequest, LeaveBalance, Payroll, User, Attendance } = require('../../database/initModels');
 const { Op } = require('sequelize');
 const { OpenAI } = require('openai');
+const { Sequelize } = require('sequelize');
 
 // ─────────────────────────────────────────────
 // GROQ CLIENT
@@ -587,6 +588,10 @@ MANAGER-ONLY ACTIONS:
 - get_team_leaves     → list pending leave requests from team members
 - approve_leave       → approve a team member's leave (REQUIRES: leaveId)
 - reject_leave        → reject a team member's leave (REQUIRES: leaveId, rejectionReason)
+- who_on_leave_tomorrow → list team members on leave tomorrow
+- get_late_employees  → list team members who were late this week (params: days optional, default 7)
+- get_burnout_report  → analyze team burnout risk based on overtime, late logins, leave patterns
+- get_leave_predictions → predict which team members are likely to take leave soon
 
 ━━━ LEAVE TYPES ━━━
 Valid values for leaveType: "Sick", "Casual", "Paid", "Maternity", "Paternity", "Bereavement", "Unpaid"
@@ -625,19 +630,34 @@ GENERAL:
 - Notice period: 30 days for employees, 30–90 days based on grade for managers
 - Remote/WFH must be pre-approved by manager via official channel
 
+BURNOUT SIGNALS (for analysis):
+- High risk: 3+ late logins in a week, consecutive sick leaves, attendance < 70%, sudden spike in leave requests
+- Medium risk: 2 late logins in a week, WFH > 60% of days, declining attendance trend
+- Low risk: normal patterns, stable attendance above 80%
+
+LEAVE PREDICTION SIGNALS:
+- Employee has low leave balance remaining (< 3 days) → likely to take Unpaid/Sick
+- History of leaves around specific months → pattern-based prediction
+- Multiple sick leaves recently → likely upcoming sick leave
+- High stress indicators (late, absent spikes) → leave likely in next 2 weeks
+
 ━━━ RULES ━━━
 1. Respond ONLY with valid JSON. No markdown, no code fences, no text outside JSON.
 2. Today is ${today}. Tomorrow is ${tomorrow}. Current year: ${currentYear}. Resolve all relative dates.
 3. For apply_leave: startDate, endDate, leaveType, reason are ALL mandatory. Missing any → action = "clarify".
-4. For cancel_leave: leaveId is mandatory. If user says "cancel my last leave" → ask for confirmation by listing their recent leaves first using get_my_leaves.
+4. For cancel_leave: leaveId is mandatory. If user says "cancel my last leave" → ask for confirmation.
 5. For reject_leave: rejectionReason is mandatory.
 6. Dates must be YYYY-MM-DD. Month params must be YYYY-MM.
 7. For general_answer: write a clear, policy-accurate "reply".
-8. Detect if the user is asking a status filter: params may include status ("Pending","Approved","Rejected") or leaveType.
+8. Detect if the user is asking a status filter: params may include status or leaveType.
 9. If user asks about "team" or "my reportees" actions → use manager actions.
-10. Be concise, friendly, and professional in all reply/question fields.
+10. "who is on leave tomorrow" / "tomorrow's leaves" → who_on_leave_tomorrow
+11. "late employees" / "who came late" → get_late_employees
+12. "burnout" / "stress report" / "team health" → get_burnout_report
+13. "leave prediction" / "who might take leave" / "predict leaves" → get_leave_predictions
+14. Be concise, friendly, and professional in all reply/question fields.
 
-━━━ RESPONSE FORMAT (always this exact structure) ━━━
+━━━ RESPONSE FORMAT ━━━
 {
   "action": "<action_name>",
   "params": {},
@@ -647,20 +667,26 @@ GENERAL:
 
 ━━━ EXAMPLES ━━━
 
+User: "who is on leave tomorrow"
+→ {"action":"who_on_leave_tomorrow","params":{},"reply":"Checking who's on leave tomorrow..."}
+
+User: "show late employees this week"
+→ {"action":"get_late_employees","params":{"days":7},"reply":"Fetching late arrivals this week..."}
+
+User: "burnout report for my team"
+→ {"action":"get_burnout_report","params":{},"reply":"Analyzing team burnout risk..."}
+
+User: "who might take leave soon"
+→ {"action":"get_leave_predictions","params":{},"reply":"Running leave prediction analysis..."}
+
 User: "leave balance"
 → {"action":"get_leave_balance","params":{},"reply":"Checking your leave balance..."}
 
 User: "apply sick leave from May 5 to May 7 I have fever"
-→ {"action":"apply_leave","params":{"startDate":"2026-05-05","endDate":"2026-05-07","leaveType":"Sick","reason":"fever"},"reply":"Applying your sick leave..."}
+→ {"action":"apply_leave","params":{"startDate":"${currentYear}-05-05","endDate":"${currentYear}-05-07","leaveType":"Sick","reason":"fever"},"reply":"Applying your sick leave..."}
 
 User: "apply leave tomorrow"
 → {"action":"clarify","params":{},"question":"Sure! Could you tell me: the end date, leave type (Sick/Casual/Paid), and reason?"}
-
-User: "cancel leave"
-→ {"action":"clarify","params":{},"question":"Which leave would you like to cancel? Please share the Leave ID, or I can show your recent leaves."}
-
-User: "cancel leave L-1042"
-→ {"action":"cancel_leave","params":{"leaveId":"L-1042"},"reply":"Cancelling leave L-1042..."}
 
 User: "show pending leaves"
 → {"action":"get_my_leaves","params":{"status":"Pending"},"reply":"Fetching your pending leaves..."}
@@ -671,32 +697,17 @@ User: "payslip for March"
 User: "attendance last 7 days"
 → {"action":"get_attendance","params":{"days":7},"reply":"Fetching your attendance for the last 7 days..."}
 
-User: "holidays this year"
-→ {"action":"get_holidays","params":{"year":${currentYear}},"reply":"Fetching public holidays for ${currentYear}..."}
+User: "what is the notice period"
+→ {"action":"general_answer","params":{},"reply":"Notice period is 30 days for employees. For managers, it ranges from 30 to 90 days depending on grade."}
 
-User: "my profile"
-→ {"action":"get_profile","params":{},"reply":"Fetching your profile..."}
+User: "can I work from home"
+→ {"action":"general_answer","params":{},"reply":"Yes! WFH is allowed but must be pre-approved by your manager through the official channel."}
 
-User: "approve leave for Rahul"
-→ {"action":"clarify","params":{},"question":"Please provide the Leave ID to approve. You can check pending team leaves first."}
-
-User: "team pending leaves"
-→ {"action":"get_team_leaves","params":{},"reply":"Fetching your team's pending leave requests..."}
-
-User: "reject leave L-2033"
-→ {"action":"clarify","params":{},"question":"Please provide a reason for rejecting leave L-2033."}
-
-User: "reject leave L-2033 reason: not enough coverage"
-→ {"action":"reject_leave","params":{"leaveId":"L-2033","rejectionReason":"not enough coverage"},"reply":"Rejecting leave L-2033..."}
-
-User: "what is the leave policy"
-→ {"action":"general_answer","params":{},"reply":"You get 21 days annually: 7 Sick, 7 Casual, 14 Paid. Casual/Paid needs 1-day advance notice. Sick leave can be same-day. Medical cert required for 3+ consecutive sick days. Unused Paid leaves (max 10) carry over to next year."}
+User: "what happens if attendance is low"
+→ {"action":"general_answer","params":{},"reply":"If your attendance falls below 70% in a month, it triggers an HR review. Try to maintain at least 70% monthly attendance."}
 
 User: "when is salary credited"
 → {"action":"general_answer","params":{},"reply":"Salary is credited on the last working day of every month, directly to your registered bank account."}
-
-User: "can I take half day"
-→ {"action":"general_answer","params":{},"reply":"Half-day leaves are not supported in the current system. Minimum leave unit is 1 full working day."}
 `.trim();
 
 // ─────────────────────────────────────────────
@@ -739,7 +750,7 @@ const parseIntent = async (userMessage, conversationHistory = []) => {
     try {
         const cleaned = raw.replace(/```json|```/g, "").trim();
         return JSON.parse(cleaned);
-    } catch (e) {
+    } catch {
         return {
             action: "general_answer",
             params: {},
@@ -765,38 +776,143 @@ const calculateWorkingDays = (startDate, endDate) => {
 };
 
 // ─────────────────────────────────────────────
+// BURNOUT SCORE CALCULATOR
+// ─────────────────────────────────────────────
+const calcBurnoutScore = (attendance, leaveHistory) => {
+    let score = 0;
+    const flags = [];
+
+    const lateCount = attendance.filter(a => a.status === 'Late').length;
+    const absentCount = attendance.filter(a => a.status === 'Absent').length;
+    const total = attendance.length || 1;
+    const attendancePct = Math.round(((total - absentCount) / total) * 100);
+
+    if (lateCount >= 3) { score += 35; flags.push(`${lateCount} late arrivals`); }
+    else if (lateCount === 2) { score += 15; flags.push(`${lateCount} late arrivals`); }
+
+    if (attendancePct < 70) { score += 30; flags.push(`${attendancePct}% attendance`); }
+    else if (attendancePct < 80) { score += 15; flags.push(`${attendancePct}% attendance`); }
+
+    const recentSickLeaves = leaveHistory.filter(l =>
+        l.leaveType === 'Sick' && l.status === 'Approved' &&
+        new Date(l.startDate) > new Date(Date.now() - 30 * 86400000)
+    ).length;
+
+    if (recentSickLeaves >= 2) { score += 25; flags.push(`${recentSickLeaves} sick leaves (30d)`); }
+    else if (recentSickLeaves === 1) { score += 10; flags.push(`${recentSickLeaves} sick leave (30d)`); }
+
+    const totalLeaveRequests = leaveHistory.filter(l =>
+        new Date(l.createdAt) > new Date(Date.now() - 30 * 86400000)
+    ).length;
+    if (totalLeaveRequests >= 3) { score += 10; flags.push(`${totalLeaveRequests} leave requests (30d)`); }
+
+    score = Math.min(score, 100);
+
+    let risk = 'Low';
+    if (score >= 60) risk = 'High';
+    else if (score >= 30) risk = 'Medium';
+
+    return { score, risk, flags, attendancePct, lateCount };
+};
+
+// ─────────────────────────────────────────────
+// LEAVE PREDICTION SCORE
+// ─────────────────────────────────────────────
+const calcLeavePrediction = (employee, balance, leaveHistory, attendance) => {
+    let score = 0;
+    const reasons = [];
+
+    // Low balance → likely to exhaust soon or take unpaid
+    const remaining = balance?.remaining ?? 21;
+    if (remaining <= 2) { score += 40; reasons.push('Very low leave balance'); }
+    else if (remaining <= 5) { score += 20; reasons.push('Low leave balance'); }
+
+    // Recent sick leaves → health issue pattern
+    const recentSick = leaveHistory.filter(l =>
+        l.leaveType === 'Sick' &&
+        new Date(l.startDate) > new Date(Date.now() - 14 * 86400000)
+    ).length;
+    if (recentSick >= 1) { score += 30; reasons.push('Recent sick leave pattern'); }
+
+    // High absenteeism
+    const absentCount = attendance.filter(a => a.status === 'Absent').length;
+    if (absentCount >= 3) { score += 20; reasons.push('Frequent absences'); }
+
+    // Historical pattern — same month last year
+    const thisMonth = new Date().getMonth() + 1;
+    const sameMonthLastYear = leaveHistory.filter(l =>
+        new Date(l.startDate).getMonth() + 1 === thisMonth &&
+        new Date(l.startDate).getFullYear() < new Date().getFullYear()
+    ).length;
+    if (sameMonthLastYear >= 1) { score += 15; reasons.push('Historical leave in this month'); }
+
+    // Burnout signals
+    const lateCount = attendance.filter(a => a.status === 'Late').length;
+    if (lateCount >= 3) { score += 10; reasons.push('High stress indicators'); }
+
+    score = Math.min(score, 100);
+
+    let likelihood = 'Low';
+    if (score >= 60) likelihood = 'High';
+    else if (score >= 30) likelihood = 'Medium';
+
+    return { score, likelihood, reasons };
+};
+
+// ─────────────────────────────────────────────
 // VALIDATION
 // ─────────────────────────────────────────────
 const validateParams = (action, params = {}) => {
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
 
     if (action === 'apply_leave') {
-        if (!params.startDate || !dateRegex.test(params.startDate))
-            throw new Error('Invalid start date');
-        if (!params.endDate || !dateRegex.test(params.endDate))
-            throw new Error('Invalid end date');
-        if (!params.reason || params.reason.trim().length < 2)
-            throw new Error('Reason is required');
-        if (!params.leaveType)
-            throw new Error('Leave type is required');
+        if (!params.startDate || !dateRegex.test(params.startDate)) {
+            return { success: false, message: 'Invalid start date' };
+        }
+
+        if (!params.endDate || !dateRegex.test(params.endDate)) {
+            return { success: false, message: 'Invalid end date' };
+        }
+
+        if (!params.reason || params.reason.trim().length < 2) {
+            return { success: false, message: 'Reason is required' };
+        }
+
+        if (!params.leaveType) {
+            return { success: false, message: 'Leave type is required' };
+        }
+
         const start = new Date(params.startDate);
         const end = new Date(params.endDate);
-        if (end < start) throw new Error('End date cannot be before start date');
+
+        if (end < start) {
+            return { success: false, message: 'End date cannot be before start date' };
+        }
     }
 
     if (action === 'cancel_leave') {
-        if (!params.leaveId) throw new Error('Leave ID is required to cancel');
+        if (!params.leaveId) {
+            return { success: false, message: 'Leave ID is required to cancel' };
+        }
     }
 
     if (action === 'approve_leave') {
-        if (!params.leaveId) throw new Error('Leave ID is required to approve');
+        if (!params.leaveId) {
+            return { success: false, message: 'Leave ID is required to approve' };
+        }
     }
 
     if (action === 'reject_leave') {
-        if (!params.leaveId) throw new Error('Leave ID is required to reject');
-        if (!params.rejectionReason || params.rejectionReason.trim().length < 3)
-            throw new Error('Rejection reason is required');
+        if (!params.leaveId) {
+            return { success: false, message: 'Leave ID is required to reject' };
+        }
+
+        if (!params.rejectionReason || params.rejectionReason.trim().length < 3) {
+            return { success: false, message: 'Rejection reason is required' };
+        }
     }
+
+    return { success: true };
 };
 
 // ─────────────────────────────────────────────
@@ -843,7 +959,6 @@ const handlers = {
     apply_leave: async (user, params) => {
         const days = calculateWorkingDays(params.startDate, params.endDate);
 
-        // Check balance
         const balance = await LeaveBalance.findOne({
             where: { employeeId: user.id, year: new Date().getFullYear() },
         });
@@ -858,9 +973,18 @@ const handlers = {
             };
         }
 
+        // 🔥 IMPORTANT FIX
+        if (!user.managerId) {
+            return {
+                text: 'You are not assigned to any manager. Please contact HR.',
+                data: null,
+            };
+        }
+
         const leave = await LeaveRequest.create({
+            companyId: user.company_id, // ✅ FIXED
             employeeId: user.id,
-            managerId: user.managerId || null,
+            managerId: user.managerId,  // ✅ FIXED (no null)
             startDate: params.startDate,
             endDate: params.endDate,
             leaveType,
@@ -874,7 +998,6 @@ const handlers = {
             data: { type: 'leave_applied', leave },
         };
     },
-
     cancel_leave: async (user, params) => {
         const leave = await LeaveRequest.findOne({
             where: { id: params.leaveId, employeeId: user.id },
@@ -882,10 +1005,7 @@ const handlers = {
 
         if (!leave) return { text: `Leave ID ${params.leaveId} not found.`, data: null };
         if (leave.status !== 'Pending') {
-            return {
-                text: `Cannot cancel leave that is already ${leave.status}.`,
-                data: null,
-            };
+            return { text: `Cannot cancel leave that is already ${leave.status}.`, data: null };
         }
 
         await leave.update({ status: 'Cancelled' });
@@ -923,10 +1043,7 @@ const handlers = {
         fromDate.setDate(fromDate.getDate() - days);
 
         const records = await Attendance.findAll({
-            where: {
-                employeeId: user.id,
-                date: { [Op.gte]: fromDate },
-            },
+            where: { employeeId: user.id, date: { [Op.gte]: fromDate } },
             order: [['date', 'DESC']],
         });
 
@@ -946,7 +1063,6 @@ const handlers = {
     get_holidays: async (_user, params) => {
         const year = params.year || new Date().getFullYear();
 
-        // Static public holidays — replace with DB query if you have a Holiday model
         const holidays = [
             { date: `${year}-01-26`, name: 'Republic Day' },
             { date: `${year}-03-17`, name: 'Holi' },
@@ -1002,9 +1118,7 @@ const handlers = {
         });
 
         if (!leave) return { text: `Leave ${params.leaveId} not found in your team.`, data: null };
-        if (leave.status !== 'Pending') {
-            return { text: `Leave is already ${leave.status}.`, data: null };
-        }
+        if (leave.status !== 'Pending') return { text: `Leave is already ${leave.status}.`, data: null };
 
         await leave.update({ status: 'Approved', approvedAt: new Date(), approvedBy: user.id });
 
@@ -1020,9 +1134,7 @@ const handlers = {
         });
 
         if (!leave) return { text: `Leave ${params.leaveId} not found in your team.`, data: null };
-        if (leave.status !== 'Pending') {
-            return { text: `Leave is already ${leave.status}.`, data: null };
-        }
+        if (leave.status !== 'Pending') return { text: `Leave is already ${leave.status}.`, data: null };
 
         await leave.update({
             status: 'Rejected',
@@ -1034,6 +1146,200 @@ const handlers = {
         return {
             text: `Leave ${params.leaveId} rejected.`,
             data: { type: 'leave_rejected', leave },
+        };
+    },
+
+    // ─────────────────────────────────────────────
+    // NEW: WHO IS ON LEAVE TOMORROW
+    // ─────────────────────────────────────────────
+    who_on_leave_tomorrow: async (user) => {
+        const tomorrowStr = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+
+        const leaves = await LeaveRequest.findAll({
+            where: {
+                managerId: user.id,
+                status: 'Approved',
+                startDate: { [Op.lte]: tomorrowStr },
+                endDate: { [Op.gte]: tomorrowStr },
+            },
+            include: [{ model: User, as: 'employee', attributes: ['name', 'designation', 'department'] }],
+        });
+
+        return {
+            text: leaves.length
+                ? `${leaves.length} team member(s) on leave tomorrow (${tomorrowStr})`
+                : `No one from your team is on leave tomorrow (${tomorrowStr})`,
+            data: { type: 'on_leave_tomorrow', leaves, date: tomorrowStr },
+        };
+    },
+
+    // ─────────────────────────────────────────────
+    // NEW: GET LATE EMPLOYEES
+    // ─────────────────────────────────────────────
+    get_late_employees: async (user, params) => {
+        const days = params.days || 7;
+        const fromDate = new Date();
+        fromDate.setDate(fromDate.getDate() - days);
+
+        // Get all team members
+        const teamMembers = await User.findAll({
+            where: { managerId: user.id },
+            attributes: ['id', 'name', 'designation'],
+        });
+
+        if (!teamMembers.length) {
+            return { text: 'No team members found under your supervision.', data: null };
+        }
+
+        const teamIds = teamMembers.map(m => m.id);
+
+        const lateRecords = await Attendance.findAll({
+            where: {
+                employeeId: { [Op.in]: teamIds },
+                status: 'Late',
+                date: { [Op.gte]: fromDate },
+            },
+            include: [{ model: User, as: 'employee', attributes: ['name', 'designation'] }],
+            order: [['date', 'DESC']],
+        });
+
+        // Group by employee
+        const grouped = lateRecords.reduce((acc, rec) => {
+            const id = rec.employeeId;
+            if (!acc[id]) {
+                acc[id] = {
+                    employee: rec.employee,
+                    count: 0,
+                    dates: [],
+                };
+            }
+            acc[id].count++;
+            acc[id].dates.push(rec.date);
+            return acc;
+        }, {});
+
+        const summary = Object.values(grouped).sort((a, b) => b.count - a.count);
+
+        return {
+            text: summary.length
+                ? `${summary.length} team member(s) had late arrivals in the last ${days} days`
+                : `No late arrivals recorded in your team in the last ${days} days`,
+            data: { type: 'late_employees', employees: summary, days },
+        };
+    },
+
+    // ─────────────────────────────────────────────
+    // NEW: BURNOUT DETECTION
+    // ─────────────────────────────────────────────
+    get_burnout_report: async (user) => {
+        const teamMembers = await User.findAll({
+            where: { manager_id: user.id }, 
+            attributes: [
+                'id',
+                'designation',
+                'department',
+                ['first_name', 'firstName'],
+                ['last_name', 'lastName'],
+            ],
+        });
+        if (!teamMembers.length) {
+            return { text: 'No team members found under your supervision.', data: null };
+        }
+
+        const teamIds = teamMembers.map(m => m.id);
+        const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000);
+
+        // Fetch attendance & leave history for all team members
+        const [allAttendance, allLeaves] = await Promise.all([
+            Attendance.findAll({
+                where: { employeeId: { [Op.in]: teamIds }, date: { [Op.gte]: thirtyDaysAgo } },
+            }),
+            LeaveRequest.findAll({
+                where: { employeeId: { [Op.in]: teamIds }, createdAt: { [Op.gte]: thirtyDaysAgo } },
+            }),
+        ]);
+
+        const results = teamMembers.map(member => {
+            const attendance = allAttendance.filter(a => a.employeeId === member.id);
+            const leaveHistory = allLeaves.filter(l => l.employeeId === member.id);
+            const { score, risk, flags, attendancePct, lateCount } = calcBurnoutScore(attendance, leaveHistory);
+
+            return {
+                employee: { id: member.id, name: member.name, designation: member.designation },
+                score,
+                risk,
+                flags,
+                attendancePct,
+                lateCount,
+            };
+        }).sort((a, b) => b.score - a.score);
+
+        const highRisk = results.filter(r => r.risk === 'High').length;
+        const mediumRisk = results.filter(r => r.risk === 'Medium').length;
+
+        return {
+            text: `Team burnout report: ${highRisk} high risk, ${mediumRisk} medium risk out of ${results.length} members`,
+            data: { type: 'burnout_report', employees: results, summary: { highRisk, mediumRisk, total: results.length } },
+        };
+    },
+
+ 
+    get_leave_predictions: async (user) => {
+        const teamMembers = await User.findAll({
+            where: { manager_id: user.id }, // ✅ fixed
+            attributes: [
+                'id',
+                'designation',
+                'department',
+                [Sequelize.literal("CONCAT(first_name, ' ', last_name)"), 'name'] // ✅ fixed
+            ],
+        });
+
+        if (!teamMembers.length) {
+            return { text: 'No team members found under your supervision.', data: null };
+        }
+
+        const teamIds = teamMembers.map(m => m.id);
+        const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000);
+
+        const [allAttendance, allLeaves, allBalances] = await Promise.all([
+            Attendance.findAll({
+                where: { employeeId: { [Op.in]: teamIds }, date: { [Op.gte]: thirtyDaysAgo } },
+            }),
+            LeaveRequest.findAll({
+                where: { employeeId: { [Op.in]: teamIds } },
+            }),
+            LeaveBalance.findAll({
+                where: { employeeId: { [Op.in]: teamIds }, year: new Date().getFullYear() },
+            }),
+        ]);
+
+        const results = teamMembers.map(member => {
+            const attendance = allAttendance.filter(a => a.employeeId === member.id);
+            const leaveHistory = allLeaves.filter(l => l.employeeId === member.id);
+            const balance = allBalances.find(b => b.employeeId === member.id);
+
+            const { score, likelihood, reasons } =
+                calcLeavePrediction(member, balance, leaveHistory, attendance);
+
+            return {
+                employee: {
+                    id: member.id,
+                    name: member.get('name'), // ✅ important for literal
+                    designation: member.designation
+                },
+                score,
+                likelihood,
+                reasons,
+                remainingDays: balance?.remaining ?? 'N/A',
+            };
+        }).sort((a, b) => b.score - a.score);
+
+        const highLikelihood = results.filter(r => r.likelihood === 'High').length;
+
+        return {
+            text: `Leave predictions: ${highLikelihood} team member(s) likely to take leave soon`,
+            data: { type: 'leave_predictions', employees: results },
         };
     },
 
