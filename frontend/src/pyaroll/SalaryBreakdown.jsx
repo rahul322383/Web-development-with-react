@@ -1,19 +1,6 @@
-// src/components/payroll/SalaryBreakdown.jsx
-// ================================================
-// PRODUCTION-READY SALARY BREAKDOWN (9.5/10)
-// ================================================
 import React, { useMemo } from 'react';
 import { TrendingUp, TrendingDown, Wallet } from 'lucide-react';
 
-// ================================================
-// UTILITIES
-// ================================================
-/**
- * Safe currency formatter using Intl.NumberFormat
- * @param {number} value - The amount to format
- * @param {string} currency - ISO currency code (default: INR)
- * @returns {string} Formatted currency string
- */
 const formatCurrency = (value, currency = 'INR') => {
     const num = typeof value === 'number' && !isNaN(value) ? value : 0;
     return new Intl.NumberFormat('en-IN', {
@@ -24,11 +11,6 @@ const formatCurrency = (value, currency = 'INR') => {
     }).format(num);
 };
 
-/**
- * Configuration for earnings components.
- * Maps backend field names to display labels and optional icons/colors.
- * Add new fields here to support additional salary components.
- */
 const EARNINGS_CONFIG = {
     baseSalary: { label: 'Basic Salary', icon: null },
     hra: { label: 'HRA', icon: null },
@@ -41,9 +23,6 @@ const EARNINGS_CONFIG = {
     otherEarnings: { label: 'Other Earnings', icon: null },
 };
 
-/**
- * Configuration for deduction components.
- */
 const DEDUCTIONS_CONFIG = {
     pfEmployee: { label: 'PF (Employee)', icon: null },
     professionalTax: { label: 'Professional Tax', icon: null },
@@ -53,9 +32,6 @@ const DEDUCTIONS_CONFIG = {
     otherDeductions: { label: 'Other Deductions', icon: TrendingDown },
 };
 
-// ================================================
-// SUBCOMPONENTS
-// ================================================
 const SectionHeader = ({ title, icon: Icon }) => (
     <div className="flex items-center gap-2 mb-3">
         {Icon && <Icon className="w-5 h-5 text-gray-500" />}
@@ -85,11 +61,7 @@ const EmptyRow = ({ colSpan = 2, message = 'No data available' }) => (
     </tr>
 );
 
-// ================================================
-// MAIN COMPONENT
-// ================================================
 const SalaryBreakdown = React.memo(({ breakdown }) => {
-    // Early return for invalid data
     if (!breakdown || typeof breakdown !== 'object') {
         return (
             <div className="p-4 text-center text-gray-500 dark:text-gray-400">
@@ -100,7 +72,6 @@ const SalaryBreakdown = React.memo(({ breakdown }) => {
 
     const items = breakdown.items || {};
 
-    // Dynamically build earnings array from config
     const earnings = useMemo(() => {
         return Object.entries(EARNINGS_CONFIG)
             .map(([key, config]) => ({
@@ -111,7 +82,6 @@ const SalaryBreakdown = React.memo(({ breakdown }) => {
             .filter((item) => typeof item.value === 'number' && item.value > 0);
     }, [items]);
 
-    // Dynamically build deductions array from config
     const deductions = useMemo(() => {
         return Object.entries(DEDUCTIONS_CONFIG)
             .map(([key, config]) => ({
@@ -122,7 +92,6 @@ const SalaryBreakdown = React.memo(({ breakdown }) => {
             .filter((item) => typeof item.value === 'number' && item.value > 0);
     }, [items]);
 
-    // Optional: Validate gross earnings matches sum of components (development only)
     if (process.env.NODE_ENV === 'development') {
         const calculatedGross = earnings.reduce((sum, e) => sum + e.value, 0);
         const apiGross = items.grossEarnings || 0;
@@ -147,7 +116,6 @@ const SalaryBreakdown = React.memo(({ breakdown }) => {
 
     return (
         <div className="space-y-6" role="region" aria-label="Salary breakdown">
-            {/* Earnings Section */}
             <div>
                 <SectionHeader title="Earnings" icon={TrendingUp} />
                 <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden bg-white dark:bg-gray-900">
@@ -172,7 +140,6 @@ const SalaryBreakdown = React.memo(({ breakdown }) => {
                 </div>
             </div>
 
-            {/* Deductions Section */}
             <div>
                 <SectionHeader title="Deductions" icon={TrendingDown} />
                 <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden bg-white dark:bg-gray-900">
@@ -197,7 +164,6 @@ const SalaryBreakdown = React.memo(({ breakdown }) => {
                 </div>
             </div>
 
-            {/* Net Pay Summary */}
             <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-100 dark:border-blue-800">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
