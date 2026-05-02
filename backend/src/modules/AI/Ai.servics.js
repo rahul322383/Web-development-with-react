@@ -1153,23 +1153,31 @@ const handlers = {
     // NEW: WHO IS ON LEAVE TOMORROW
     // ─────────────────────────────────────────────
     who_on_leave_tomorrow: async (user) => {
-        const tomorrowStr = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        tomorrow.setHours(0, 0, 0, 0);
 
         const leaves = await LeaveRequest.findAll({
             where: {
                 managerId: user.id,
                 status: 'Approved',
-                startDate: { [Op.lte]: tomorrowStr },
-                endDate: { [Op.gte]: tomorrowStr },
+                startDate: { [Op.lte]: tomorrow },
+                endDate: { [Op.gte]: tomorrow },
             },
-            include: [{ model: User, as: 'employee', attributes: ['name', 'designation', 'department'] }],
+            include: [
+                {
+                    model: User,
+                    as: 'employee',
+                    attributes: ['first_name','last_name', 'designation', 'department'],
+                },
+            ],
         });
 
         return {
             text: leaves.length
-                ? `${leaves.length} team member(s) on leave tomorrow (${tomorrowStr})`
-                : `No one from your team is on leave tomorrow (${tomorrowStr})`,
-            data: { type: 'on_leave_tomorrow', leaves, date: tomorrowStr },
+                ? `${leaves.length} team member(s) on leave tomorrow`
+                : `No one from your team is on leave tomorrow`,
+            data: { type: 'on_leave_tomorrow', leaves, date: tomorrow },
         };
     },
 
@@ -1184,7 +1192,7 @@ const handlers = {
         // Get all team members
         const teamMembers = await User.findAll({
             where: { managerId: user.id },
-            attributes: ['id', 'name', 'designation'],
+            attributes: ['id', 'first_name', 'last_name', 'designation'],
         });
 
         if (!teamMembers.length) {
@@ -1199,7 +1207,7 @@ const handlers = {
                 status: 'Late',
                 date: { [Op.gte]: fromDate },
             },
-            include: [{ model: User, as: 'employee', attributes: ['name', 'designation'] }],
+            include: [{ model: User, as: 'employee', attributes: ['first_name', 'last_name', 'designation'] }],
             order: [['date', 'DESC']],
         });
 
@@ -1391,13 +1399,19 @@ const chat = async (user, message, history = []) => {
         };
 
     } catch (error) {
-        logger.error({
-            event: 'AI_ERROR',
-            userId: user?.id,
-            message: error.message,
-            code: error.code,
-            stack: error.stack,
-        });
+        console.error("🔥 FULL ERROR OBJECT:", error);
+
+        console.error("🔥 MESSAGE:", error.message);
+        console.error("🔥 SQL:", error.sql);
+        console.error("🔥 PARAMETERS:", error.parameters);
+
+        if (error.parent) {
+            console.error("🔥 DB ERROR:", error.parent.sqlMessage);
+            console.error("🔥 DB CODE:", error.parent.code);
+        }
+
+        throw error;
+    
 
         if (error.code === 'CONFIG_ERROR') {
             return { success: false, reply: 'AI assistant is not configured. Contact your administrator.', action: 'config_error' };
