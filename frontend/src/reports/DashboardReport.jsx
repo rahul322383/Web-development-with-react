@@ -86,30 +86,38 @@ const DashboardReport = () => {
         const leave = apiResponse.leave || {};
         const expenses = apiResponse.expenses || {};
 
-        const totalEmployees = employees.summary?.total || 0;
-        const activeEmployees = parseInt(employees.summary?.active, 10) || 0;
-        const inactiveEmployees = parseInt(employees.summary?.inactive, 10) || 0;
-        const totalDepartments = employees.summary?.totalDepartments || 0;
+        // Employee summary (nested inside .data)
+        const empSummary = employees.summary?.data || {};
+        const totalEmployees = empSummary.total || 0;
+        const activeEmployees = parseInt(empSummary.active, 10) || 0;
+        const inactiveEmployees = parseInt(empSummary.inactive, 10) || 0;
+        const totalDepartments = empSummary.totalDepartments || 0;
 
-        const totalPayroll = parseFloat(payroll.summary?.totalNetSalary) || 0;
-        const avgNetSalary = parseFloat(payroll.summary?.avgNetSalary) || 0;
-        const payrollCount = parseInt(payroll.summary?.totalPayrolls, 10) || 0;
-        const processedPayrolls = parseInt(payroll.summary?.processed, 10) || 0;
+        // Payroll summary (nested inside .data)
+        const payrollSummary = payroll.summary?.data || {};
+        const totalPayroll = parseFloat(payrollSummary.totalNetSalary) || 0;
+        const avgNetSalary = parseFloat(payrollSummary.avgNetSalary) || 0;
+        const payrollCount = parseInt(payrollSummary.totalPayrolls, 10) || 0;
+        const processedPayrolls = parseInt(payrollSummary.processed, 10) || 0;
 
-        const leaveRequests = parseInt(leave.summary?.total, 10) || 0;
-        const pendingLeaves = parseInt(leave.summary?.pending, 10) || 0;
-        const approvedLeaves = parseInt(leave.summary?.approved, 10) || 0;
-        const rejectedLeaves = parseInt(leave.summary?.rejected, 10) || 0;
-        const totalApprovedDays = parseFloat(leave.summary?.totalApprovedDays) || 0;
+        // Leave summary (nested inside .data)
+        const leaveSummary = leave.summary?.data || {};
+        const leaveRequests = parseInt(leaveSummary.total, 10) || 0;
+        const pendingLeaves = parseInt(leaveSummary.pending, 10) || 0;
+        const approvedLeaves = parseInt(leaveSummary.approved, 10) || 0;
+        const rejectedLeaves = parseInt(leaveSummary.rejected, 10) || 0;
+        const totalApprovedDays = parseFloat(leaveSummary.totalApprovedDays) || 0;
 
-        const totalExpenses = parseFloat(expenses.summary?.totalAmount) || 0;
-        const expenseCount = expenses.summary?.total || 0;
-        const managerPendingAmount = parseFloat(expenses.summary?.managerPendingAmount) || 0;
-        const financePendingAmount = parseFloat(expenses.summary?.financePendingAmount) || 0;
-        const totalPaidOut = parseFloat(expenses.summary?.totalPaidOut) || 0;
-        const totalUnpaid = parseFloat(expenses.summary?.totalUnpaid) || 0;
+        // Expense summary (nested inside .data)
+        const expenseSummary = expenses.summary?.data || {};
+        const totalExpenses = parseFloat(expenseSummary.totalAmount) || 0;
+        const expenseCount = expenseSummary.total || 0;
+        const managerPendingAmount = parseFloat(expenseSummary.managerPendingAmount) || 0;
+        const financePendingAmount = parseFloat(expenseSummary.financePendingAmount) || 0;
+        const totalPaidOut = parseFloat(expenseSummary.totalPaidOut) || 0;
+        const totalUnpaid = parseFloat(expenseSummary.totalUnpaid) || 0;
 
-        // Recent activity feed
+        // Recent activity feed using the .list arrays
         const recentActivity = [];
 
         if (Array.isArray(employees.list)) {
@@ -137,7 +145,7 @@ const DashboardReport = () => {
             leave.list.slice(0, 2).forEach(l => {
                 recentActivity.push({
                     type: 'leave',
-                    description: `Leave request ${l.status?.toLowerCase()} for ${l.days} day(s)`,
+                    description: `Leave request ${l.status?.toLowerCase()} for ${l.days_requested} day(s)`,
                     timestamp: l.created_at,
                 });
             });
@@ -376,8 +384,8 @@ const DashboardReport = () => {
                             >
                                 <div className="flex items-center gap-3 mb-2 sm:mb-0">
                                     <div className={`w-2 h-2 rounded-full ${activity.type === 'employee' ? 'bg-blue-500' :
-                                            activity.type === 'expense' ? 'bg-amber-500' :
-                                                activity.type === 'leave' ? 'bg-purple-500' : 'bg-gray-500'
+                                        activity.type === 'expense' ? 'bg-amber-500' :
+                                            activity.type === 'leave' ? 'bg-purple-500' : 'bg-gray-500'
                                         }`}></div>
                                     <span className="text-sm text-gray-700 dark:text-gray-300">
                                         {activity.description}
