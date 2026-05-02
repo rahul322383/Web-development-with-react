@@ -1,14 +1,7 @@
 'use strict';
 
-/**
- * Twilio SMS integration (clean version)
- */
-
 let twilioClient = null;
 
-// ─────────────────────────────────────────────────────────────
-// TWILIO CLIENT (lazy init)
-// ─────────────────────────────────────────────────────────────
 
 const getTwilioClient = () => {
     if (twilioClient) return twilioClient;
@@ -28,10 +21,6 @@ const getTwilioClient = () => {
         return null;
     }
 };
-
-// ─────────────────────────────────────────────────────────────
-// SEND SMS
-// ─────────────────────────────────────────────────────────────
 
 const sendSMS = async (to, body) => {
     if (process.env.SMS_ENABLED !== 'true') return false;
@@ -54,9 +43,6 @@ const sendSMS = async (to, body) => {
     }
 };
 
-// ─────────────────────────────────────────────────────────────
-// SMS TEMPLATES
-// ─────────────────────────────────────────────────────────────
 
 const SMS_MESSAGES = {
     PAYROLL_PROCESSED: ({ netSalary, month, year }) =>
@@ -83,9 +69,6 @@ const SMS_MESSAGES = {
     SYSTEM: ({ message }) => String(message).slice(0, 160),
 };
 
-// ─────────────────────────────────────────────────────────────
-// MESSAGE BUILDER
-// ─────────────────────────────────────────────────────────────
 
 const getSMSMessage = (type, data) => {
     const builder = SMS_MESSAGES[type] || SMS_MESSAGES.SYSTEM;
