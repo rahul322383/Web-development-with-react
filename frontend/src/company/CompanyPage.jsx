@@ -1611,7 +1611,7 @@ export default function CompanyManagement() {
     <div className="min-h-screen bg-slate-50 font-sans">
       <Toast />   {/* ✅ new toast UI */}
 
-      <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-100">
+      {/* <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-100">
         <div className="max-w-7xl mx-auto px-6 py-3.5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center">
@@ -1623,7 +1623,7 @@ export default function CompanyManagement() {
           </div>
           {!selected && <span className="text-xs text-slate-400">Admin Panel</span>}
         </div>
-      </header>
+      </header> */}
 
       <main className="max-w-7xl mx-auto px-6 py-8">
         {selected ? (
