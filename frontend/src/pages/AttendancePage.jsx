@@ -55,8 +55,30 @@ const cleanParams = (params) => {
     );
 };
 
-// Helper to convert minutes to hours with 2 decimals
+// ===== NEW HELPER: minutes → readable hours & minutes =====
+const formatDuration = (minutes) => {
+    if (!minutes || minutes <= 0) return '';
+    const hrs = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    if (hrs === 0) return `${mins}m`;
+    if (mins === 0) return `${hrs}h`;
+    return `${hrs}h ${mins}m`;
+};
+
+// Helper to convert minutes to hours with 2 decimals (unchanged, for worked hours)
 const minutesToHours = (minutes) => (minutes / 60).toFixed(2);
+
+// ===== NEW: format the server’s check‑in message =====
+const formatCheckInMessage = (rawMessage) => {
+    // Example: "Checked in. Marked late by 808 min."
+    const match = rawMessage.match(/late by (\d+) min/i);
+    if (match) {
+        const lateMinutes = parseInt(match[1], 10);
+        const formatted = formatDuration(lateMinutes) || '0m';
+        return rawMessage.replace(match[0], `late by ${formatted}`);
+    }
+    return rawMessage;
+};
 
 const Button = ({ children, variant = 'primary', isLoading, ...props }) => {
     const base = "px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
@@ -138,7 +160,8 @@ const CheckInOutCard = ({ onSuccess }) => {
         setMessage('');
         try {
             const res = await checkIn({ checkInTime: getCurrentTime() });
-            setMessage(res.data.message);
+            const raw = res.data.message;
+            setMessage(formatCheckInMessage(raw)); // ✅ format the late minutes
             onSuccess?.();
         } catch (err) {
             setError(err.response?.data?.message || 'Check-in failed');
@@ -269,7 +292,9 @@ const MyAttendanceTable = () => {
                                     <td className="p-3">
                                         {rec.workedMinutes ? `${minutesToHours(rec.workedMinutes)} hrs` : '—'}
                                     </td>
-                                    <td className="p-3">{rec.lateMinutes ? `${rec.lateMinutes} min` : '—'}</td>
+                                    <td className="p-3">
+                                        {rec.lateMinutes > 0 ? formatDuration(rec.lateMinutes) : '—'}
+                                    </td>
                                 </tr>
                             ))
                         )}
@@ -312,7 +337,6 @@ const TodaySummary = () => {
         const fetchSummary = async () => {
             try {
                 const res = await getTodaySummary();
-                // API returns { success, data: { present, late, absent, onLeave, totalEmployees } }
                 setSummary(res.data.data);
             } catch (error) {
                 console.error(error);
@@ -444,7 +468,6 @@ const TeamReport = () => {
                             <tr><td colSpan={6} className="p-3 text-center text-gray-500">No records found</td></tr>
                         ) : (
                             records.map(rec => {
-                                // Handle possible employee name sources
                                 const employeeName = rec.employee?.name || rec.employeeName || `ID: ${rec.employeeId}`;
                                 return (
                                     <tr key={rec.id} className="border-t dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
@@ -496,7 +519,6 @@ const OvertimeSummary = () => {
         setError('');
         try {
             const res = await getOvertimeSummary(cleanParams(params));
-            // API returns { data: { totalOvertimeHours, employeeName } }
             setData(res.data.data);
         } catch (err) {
             setError(err.response?.data?.message || 'Failed to fetch');
