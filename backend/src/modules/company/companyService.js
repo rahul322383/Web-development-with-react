@@ -101,7 +101,7 @@ const createCompany = (payload, actor) =>
     if (existing) return fail('Company already exists', 409);
 
     const slug = await generateUniqueSlug(payload.name);
-    console.log(slug)
+
 
     const company = await withTransaction((t) =>
       companyRepository.createCompany({
@@ -115,7 +115,7 @@ const createCompany = (payload, actor) =>
         annualLeaveQuota: payload.annualLeaveQuota ?? 21,
       }, t)
     );
-    console.log(company)
+  
 
     sendAuditLog(buildAudit('COMPANY_CREATED', actor?.id, {
       companyId: company.id,
@@ -323,12 +323,14 @@ const getCompanyUsers = (companyId, query, actor) =>
 
 const addUserToCompany = (companyId, userId, actor) =>
   safeExecute(async () => {
-    const perm = assertPermission(actor, 'CREATE_USER');
+    const perm = assertPermission(actor, 'ADD_COMPANY_USER');
+    
     if (!perm.allowed) return fail(perm.message, 403);
 
     assertCompanyAccess(actor, companyId);
 
     const company = await companyRepository.findCompanyById(companyId);
+  
     if (!company) return fail('Company not found', 404);
 
     const user = await User.findByPk(userId);
@@ -363,7 +365,7 @@ const addUserToCompany = (companyId, userId, actor) =>
 
 const removeUserFromCompany = (companyId, userId, actor) =>
   safeExecute(async () => {
-    const perm = assertPermission(actor, 'DELETE_USER');
+    const perm = assertPermission(actor, 'UPDATE_USER_ROLE');
     if (!perm.allowed) return fail(perm.message, 403);
 
     assertCompanyAccess(actor, companyId);
@@ -421,16 +423,50 @@ const getCompanyStats = (companyId, actor) =>
     const perm = assertPermission(actor, 'VIEW_DASHBOARD');
     if (!perm.allowed) return fail(perm.message, 403);
 
-    const [company, stats] = await Promise.all([
+    const [
+      company,
+      stats,
+      employees,
+      departments,
+      leaveStats,
+      payrollStats
+    ] = await Promise.all([
       companyRepository.findCompanyById(companyId),
       companyRepository.getCompanyStats(companyId),
+      companyRepository.getEmployees(companyId),
+      companyRepository.getDepartments(companyId),
+      companyRepository.getLeaveStats(companyId),
+      companyRepository.getPayrollStats(companyId),
     ]);
 
     if (!company) return fail('Company not found', 404);
 
     return ok({
-      company: { id: company.id, name: company.name, plan: company.subscriptionPlan },
+      company: {
+        id: company.id,
+        name: company.name,
+        slug: company.slug,
+        email: company.email,
+        phone: company.phone,
+        website: company.website,
+        industry: company.industry,
+        size: company.companySize,
+        plan: company.subscriptionPlan,
+        createdAt: company.createdAt,
+      },
+
       stats,
+
+      employees: {
+        total: employees.length,
+        list: employees,
+      },
+
+      departments,
+
+      leave: leaveStats,
+
+      payroll: payrollStats,
     });
   }, 'STATS_FAILED');
 
