@@ -30,7 +30,7 @@ const Contact = () => {
     company: '',
     phone: '',
     message: '',
-    inquiryType: 'general'
+    inquiryType: ''
   });
 
   const [formStatus, setFormStatus] = useState({
@@ -38,6 +38,7 @@ const Contact = () => {
     success: false,
     message: ''
   });
+
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -52,16 +53,16 @@ const Contact = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
-    
+
     // Simulate API call
     setTimeout(() => {
       setFormStatus({
         submitted: true,
         success: true,
-        message: 'Thank you for reaching out! We\'ll get back to you within 24 hours.'
+        message: 'Thank you for reaching out! Our India team will get back to you within 24 hours.'
       });
       setIsSubmitting(false);
-      
+
       // Reset form after 3 seconds
       setTimeout(() => {
         setFormStatus({
@@ -82,48 +83,55 @@ const Contact = () => {
     }, 1500);
   };
 
+  // Indian contact information
   const contactInfo = [
     {
       icon: Mail,
       title: 'Email Us',
-      details: ['support@hrms.com', 'sales@hrms.com'],
+      details: ['rahulkurm666@gmail.com'],
       action: 'Send a message',
       color: 'from-blue-500 to-indigo-500'
     },
     {
       icon: Phone,
       title: 'Call Us',
-      details: ['+1 (555) 123-4567', '+1 (555) 987-6543'],
-      action: 'Request a call',
+      details: ['+91 80 1234 5678'],
+      action: 'Request a callback',
       color: 'from-indigo-500 to-purple-500'
     },
     {
       icon: MapPin,
       title: 'Visit Us',
-      details: ['San Francisco, CA', 'New York, NY'],
+      details: ['Bengaluru, Karnataka'],
       action: 'Get directions',
       color: 'from-purple-500 to-pink-500'
     }
   ];
 
+  // Indian office hours (IST)
   const officeHours = [
-    { day: 'Monday - Friday', hours: '9:00 AM - 6:00 PM' },
-    { day: 'Saturday', hours: '10:00 AM - 4:00 PM' },
+    { day: 'Monday - Friday', hours: '9:30 AM - 6:30 PM IST' },
+    { day: 'Saturday', hours: '10:00 AM - 2:00 PM IST' },
     { day: 'Sunday', hours: 'Closed' }
   ];
 
+  // Localized FAQs
   const faqs = [
     {
       question: 'How quickly do you respond to inquiries?',
-      answer: 'We aim to respond to all inquiries within 24 hours during business days.'
+      answer: 'Our India support team aims to respond within 24 hours during business days (IST).'
     },
     {
-      question: 'Do you offer demo sessions?',
-      answer: 'Yes! Schedule a personalized demo with our sales team to see the platform in action.'
+      question: 'Do you offer demo sessions in Indian languages?',
+      answer: 'Yes! We can arrange product demos in Hindi, English, and several regional languages on request.'
     },
     {
-      question: 'What support channels are available?',
-      answer: 'We offer email, phone, and live chat support during business hours.'
+      question: 'What support channels are available for Indian customers?',
+      answer: 'We offer email, phone (Indian toll‑free numbers), and live chat support during business hours. Enterprise clients also get a dedicated account manager.'
+    },
+    {
+      question: 'Is the platform GST compliant?',
+      answer: 'Absolutely. Our billing and invoicing system is fully GST ready, with support for all Indian states and UT codes.'
     }
   ];
 
@@ -147,7 +155,7 @@ const Contact = () => {
       <section className="relative pt-24 lg:pt-32 pb-20 overflow-hidden">
         {/* Background Gradient */}
         <div className="absolute inset-0 bg-gradient-to-br from-indigo-50 via-white to-purple-50 dark:from-slate-950 dark:via-slate-950 dark:to-slate-950" />
-       <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/10 to-purple-500/10" />
+        <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/10 to-purple-500/10" />
 
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative">
           <motion.div
@@ -164,7 +172,7 @@ const Contact = () => {
             >
               <Headphones className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
               <span className="text-sm font-medium text-indigo-700 dark:text-indigo-300">
-                Get in Touch
+                Get in Touch — India Team
               </span>
             </motion.div>
 
@@ -189,7 +197,7 @@ const Contact = () => {
               transition={{ delay: 0.4 }}
               className="text-xl text-slate-600 dark:text-slate-400 max-w-2xl mx-auto"
             >
-              Have questions? Our team is ready to assist you. Reach out through any of our channels and we'll respond within 24 hours.
+              Our dedicated India team is ready to assist you. Reach out through any channel and we'll respond within 24 hours, IST.
             </motion.p>
           </motion.div>
         </div>
@@ -259,11 +267,10 @@ const Contact = () => {
                   <motion.div
                     initial={{ opacity: 0, scale: 0.9 }}
                     animate={{ opacity: 1, scale: 1 }}
-                    className={`p-6 rounded-xl ${
-                      formStatus.success
+                    className={`p-6 rounded-xl ${formStatus.success
                         ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800'
                         : 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-start space-x-3">
                       {formStatus.success ? (
@@ -272,18 +279,16 @@ const Contact = () => {
                         <AlertCircle className="w-6 h-6 text-red-600 dark:text-red-400 flex-shrink-0" />
                       )}
                       <div>
-                        <h3 className={`font-semibold ${
-                          formStatus.success
+                        <h3 className={`font-semibold ${formStatus.success
                             ? 'text-green-800 dark:text-green-300'
                             : 'text-red-800 dark:text-red-300'
-                        }`}>
+                          }`}>
                           {formStatus.success ? 'Message Sent!' : 'Error'}
                         </h3>
-                        <p className={`text-sm mt-1 ${
-                          formStatus.success
+                        <p className={`text-sm mt-1 ${formStatus.success
                             ? 'text-green-700 dark:text-green-400'
                             : 'text-red-700 dark:text-red-400'
-                        }`}>
+                          }`}>
                           {formStatus.message}
                         </p>
                       </div>
@@ -303,7 +308,7 @@ const Contact = () => {
                           onChange={handleChange}
                           required
                           className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 transition-all"
-                          placeholder="John"
+                          placeholder=""
                         />
                       </div>
                       <div>
@@ -317,7 +322,7 @@ const Contact = () => {
                           onChange={handleChange}
                           required
                           className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 transition-all"
-                          placeholder="Doe"
+                          placeholder=""
                         />
                       </div>
                     </div>
@@ -334,7 +339,7 @@ const Contact = () => {
                           onChange={handleChange}
                           required
                           className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 transition-all"
-                          placeholder="john@company.com"
+                          placeholder=""
                         />
                       </div>
                       <div>
@@ -347,7 +352,7 @@ const Contact = () => {
                           value={formData.company}
                           onChange={handleChange}
                           className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 transition-all"
-                          placeholder="Acme Inc."
+                          placeholder=""
                         />
                       </div>
                     </div>
@@ -355,7 +360,7 @@ const Contact = () => {
                     <div className="grid md:grid-cols-2 gap-6">
                       <div>
                         <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                          Phone Number
+                          Phone Number (India)
                         </label>
                         <input
                           type="tel"
@@ -363,26 +368,31 @@ const Contact = () => {
                           value={formData.phone}
                           onChange={handleChange}
                           className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 transition-all"
-                          placeholder="+1 (555) 000-0000"
+                          placeholder=""
                         />
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                           Inquiry Type *
                         </label>
-                        <select
-                          name="inquiryType"
-                          value={formData.inquiryType}
-                          onChange={handleChange}
-                          required
-                          className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 transition-all"
-                        >
-                          <option value="general">General Inquiry</option>
-                          <option value="sales">Sales</option>
-                          <option value="support">Technical Support</option>
-                          <option value="partnership">Partnership</option>
-                          <option value="demo">Request Demo</option>
-                        </select>
+                          <select
+                            name="inquiryType"
+                            value={formData.inquiryType}
+                            onChange={handleChange}
+                            required
+                            className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 transition-all"
+                          >
+                            <option value="" disabled>
+                              Select Inquiry Type
+                            </option>
+
+                            <option value="general">General Inquiry</option>
+                            <option value="sales">Sales</option>
+                            <option value="support">Technical Support</option>
+                            <option value="partnership">Partnership</option>
+                            <option value="demo">Request Demo</option>
+                            <option value="gst">GST / Billing</option>
+                          </select>
                       </div>
                     </div>
 
@@ -397,7 +407,7 @@ const Contact = () => {
                         required
                         rows="5"
                         className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 transition-all resize-none"
-                        placeholder="Tell us how we can help..."
+                        placeholder="Tell us how we can help your team..."
                       />
                     </div>
 
@@ -452,7 +462,7 @@ const Contact = () => {
                     <Clock className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                   </div>
                   <h3 className="text-xl font-semibold text-slate-900 dark:text-white">
-                    Office Hours
+                    Office Hours (IST)
                   </h3>
                 </div>
 
@@ -468,7 +478,7 @@ const Contact = () => {
                 <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-800">
                   <p className="text-sm text-slate-600 dark:text-slate-400">
                     <span className="font-semibold text-indigo-600 dark:text-indigo-400">24/7</span>{' '}
-                    emergency support available for enterprise clients
+                    emergency support for enterprise clients
                   </p>
                 </div>
               </div>
@@ -478,7 +488,7 @@ const Contact = () => {
                 <Globe className="w-10 h-10 mb-4 opacity-90" />
                 <h3 className="text-xl font-semibold mb-2">Need immediate help?</h3>
                 <p className="text-indigo-100 text-sm mb-6">
-                  Check our knowledge base or join our community forum for quick answers.
+                  Browse our knowledge base in English and Hindi or join our Indian HR community.
                 </p>
                 <div className="space-y-3">
                   <button className="w-full bg-white/20 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-white/30 transition-colors backdrop-blur border border-white/30">
@@ -528,7 +538,7 @@ const Contact = () => {
               Frequently Asked Questions
             </h2>
             <p className="text-xl text-slate-600 dark:text-slate-400">
-              Quick answers to common questions about our support and services.
+              Quick answers to common questions from Indian organisations.
             </p>
           </motion.div>
 
@@ -572,7 +582,7 @@ const Contact = () => {
         </div>
       </section>
 
-      {/* Map Section */}
+      {/* Map Section with Indian offices */}
       <section className="py-20">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
@@ -582,10 +592,10 @@ const Contact = () => {
               viewport={{ once: true }}
             >
               <h2 className="text-3xl lg:text-4xl font-bold text-slate-900 dark:text-white mb-6">
-                Visit our headquarters
+                Visit our India offices
               </h2>
               <p className="text-lg text-slate-600 dark:text-slate-400 mb-8">
-                We have offices in San Francisco and New York. Schedule a visit or drop by for a coffee and a chat about how we can help your team.
+                We have offices in Bengaluru and Mumbai. Schedule a visit or drop by for a chai and a chat about how we can help your team scale.
               </p>
 
               <div className="space-y-6">
@@ -594,10 +604,10 @@ const Contact = () => {
                     <Building2 className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-slate-900 dark:text-white">San Francisco</h3>
+                    <h3 className="font-semibold text-slate-900 dark:text-white">Bengaluru</h3>
                     <p className="text-sm text-slate-600 dark:text-slate-400">
-                      123 Market Street, Suite 400<br />
-                      San Francisco, CA 94105
+                      No. 12/A, 4th Floor, Salarpuria Symbiosis,<br />
+                      Bannerghatta Main Rd, Bengaluru, Karnataka 560076
                     </p>
                   </div>
                 </div>
@@ -607,10 +617,10 @@ const Contact = () => {
                     <Building2 className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-slate-900 dark:text-white">New York</h3>
+                    <h3 className="font-semibold text-slate-900 dark:text-white">Mumbai</h3>
                     <p className="text-sm text-slate-600 dark:text-slate-400">
-                      456 Madison Avenue, 15th Floor<br />
-                      New York, NY 10022
+                      201, 2nd Floor, B‑Wing, Supreme Business Park,<br />
+                      Hiranandani Gardens, Powai, Mumbai 400076
                     </p>
                   </div>
                 </div>
@@ -629,12 +639,12 @@ const Contact = () => {
               className="relative h-96 rounded-2xl overflow-hidden shadow-2xl"
             >
               <img
-                src="https://images.unsplash.com/photo-1526778548025-fa2f459cd5c1?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=2070&q=80"
-                alt="Map"
+                src="https://images.unsplash.com/photo-1587474260584-136574528ed5?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=2070&q=80"
+                alt="Bengaluru skyline"
                 className="w-full h-full object-cover"
               />
               <div className="absolute inset-0 bg-gradient-to-tr from-indigo-600/20 to-purple-600/20 mix-blend-overlay" />
-              
+
               {/* Map Pin */}
               <motion.div
                 initial={{ scale: 0 }}
@@ -663,13 +673,13 @@ const Contact = () => {
             viewport={{ once: true }}
             className="relative bg-gradient-to-br from-indigo-600 to-purple-600 rounded-3xl overflow-hidden"
           >
-<div className="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg%20width%3D%2260%22%20height%3D%2260%22%20viewBox%3D%220%200%2060%2060%22%20xmlns%3D%22http://www.w3.org/2000/svg%22%3E%3Cg%20fill%3D%22none%22%20fill-rule%3D%22evenodd%22%3E%3Cg%20fill%3D%22%23FFFFFF%22%20fill-opacity%3D%220.1%22%3E%3Cpath%20d%3D%22M36%2034v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6%2034v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6%204V0H4v4H0v2h4v4h2V6h4V4H6z%22/%3E%3C/g%3E%3C/g%3E%3C/svg%3E')] opacity-20" />
+            <div className="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg%20width%3D%2260%22%20height%3D%2260%22%20viewBox%3D%220%200%2060%2060%22%20xmlns%3D%22http://www.w3.org/2000/svg%22%3E%3Cg%20fill%3D%22none%22%20fill-rule%3D%22evenodd%22%3E%3Cg%20fill%3D%22%23FFFFFF%22%20fill-opacity%3D%220.1%22%3E%3Cpath%20d%3D%22M36%2034v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6%2034v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6%204V0H4v4H0v2h4v4h2V6h4V4H6z%22/%3E%3C/g%3E%3C/g%3E%3C/svg%3E')] opacity-20" />
             <div className="relative py-16 px-8 text-center">
               <h2 className="text-3xl lg:text-4xl font-bold text-white mb-4">
                 Ready to transform your HR management?
               </h2>
               <p className="text-xl text-indigo-100 mb-8 max-w-2xl mx-auto">
-                Join thousands of companies already using our platform to streamline their HR operations.
+                Join over 10,000 Indian companies already using our platform to streamline their HR and stay GST compliant.
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <button className="group px-8 py-4 text-base font-medium text-indigo-600 bg-white rounded-full hover:shadow-2xl hover:shadow-indigo-500/25 transition-all duration-300 transform hover:scale-105">
