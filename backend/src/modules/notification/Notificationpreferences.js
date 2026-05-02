@@ -1,19 +1,7 @@
 'use strict';
 
-/**
- * src/modules/notification/notificationPreferences.js
- *
- * Reads and writes per-user notification channel preferences
- * from the existing `settings` table (key/value store per user).
- *
- * Preference key format:  notif_pref_{EVENT_TYPE}
- * Value format (JSON):    { email: true, sms: false, in_app: true }
- *
- * Example stored row:
- *   user_id = 5
- *   key     = "notif_pref_PAYROLL"
- *   value   = '{"email":true,"sms":true,"in_app":true}'
- */
+
+
 
 const { Setting } = require('../../database/initModels');
 
@@ -82,10 +70,7 @@ const setPreferences = async (userId, eventType, prefs) => {
     return merged;
 };
 
-/**
- * setAllPreferences
- * Bulk update — sets the same channel prefs for all event types at once.
- */
+
 const setAllPreferences = async (userId, prefs) => {
     await Promise.all(
         PREF_EVENTS.map(evt => setPreferences(userId, evt, prefs)),
