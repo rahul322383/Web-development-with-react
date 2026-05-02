@@ -21,11 +21,76 @@ import {
   UserPlus,
   FileText,
   Briefcase,
-  MessageSquare
+  MessageSquare,
+  Hash,
+  Tag,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import notificationApi from '../api/notificationApi';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow, format, parse } from 'date-fns';
+
+// ========================
+// METADATA HELPER
+// ========================
+const extractMetadata = (notification) => {
+  const { metadata, type } = notification;
+  if (!metadata) return null;
+
+  // Payroll notifications
+  if (type === 'PAYROLL') {
+    const { month, year, netSalary } = metadata;
+    const monthName = month ? format(parse(month.toString(), 'M', new Date()), 'MMMM') : null;
+    return {
+      icon: CreditCard,
+      label: 'Payroll',
+      fields: [
+        netSalary !== null && netSalary !== undefined
+          ? { key: 'Net Salary', value: `₹${parseFloat(netSalary).toLocaleString()}` }
+          : null,
+        month && year
+          ? { key: 'Period', value: `${monthName} ${year}` }
+          : month
+            ? { key: 'Month', value: monthName }
+            : year
+              ? { key: 'Year', value: year.toString() }
+              : null,
+      ].filter(Boolean),
+    };
+  }
+
+  // Expense submission (system notification)
+  if (
+    type === 'SYSTEM' &&
+    metadata.type === 'EXPENSE_SUBMISSION'
+  ) {
+    // Extract amount from the message if present
+    const amountMatch = notification.message?.match(/INR\s*(\d+)/i);
+    const amount = amountMatch ? `₹${amountMatch[1]}` : 'N/A';
+    return {
+      icon: DollarSign,
+      label: 'Expense',
+      fields: [
+        { key: 'Expense ID', value: metadata.expenseId ? `#${metadata.expenseId}` : 'N/A' },
+        { key: 'Amount', value: amount },
+      ],
+    };
+  }
+
+  // Generic fallback: show raw metadata keys
+  const keys = Object.keys(metadata);
+  if (keys.length > 0) {
+    return {
+      icon: Info,
+      label: 'Details',
+      fields: keys.map((key) => ({
+        key: key.charAt(0).toUpperCase() + key.slice(1),
+        value: metadata[key]?.toString() || 'N/A',
+      })),
+    };
+  }
+
+  return null;
+};
 
 // ========================
 // NOTIFICATION CARD COMPONENT
@@ -38,100 +103,101 @@ const NotificationCard = ({ notification, onMarkRead, onDelete, isNew }) => {
         border: 'border-blue-200 dark:border-blue-800',
         icon: Calendar,
         iconColor: 'text-blue-600 dark:text-blue-400',
-        hover: 'hover:bg-blue-100 dark:hover:bg-blue-900/30'
+        hover: 'hover:bg-blue-100 dark:hover:bg-blue-900/30',
       },
       leave_approved: {
         bg: 'bg-green-50 dark:bg-green-900/20',
         border: 'border-green-200 dark:border-green-800',
         icon: CheckCircle,
         iconColor: 'text-green-600 dark:text-green-400',
-        hover: 'hover:bg-green-100 dark:hover:bg-green-900/30'
+        hover: 'hover:bg-green-100 dark:hover:bg-green-900/30',
       },
       leave_rejected: {
         bg: 'bg-red-50 dark:bg-red-900/20',
         border: 'border-red-200 dark:border-red-800',
         icon: XCircle,
         iconColor: 'text-red-600 dark:text-red-400',
-        hover: 'hover:bg-red-100 dark:hover:bg-red-900/30'
+        hover: 'hover:bg-red-100 dark:hover:bg-red-900/30',
       },
       expense: {
         bg: 'bg-emerald-50 dark:bg-emerald-900/20',
         border: 'border-emerald-200 dark:border-emerald-800',
         icon: DollarSign,
         iconColor: 'text-emerald-600 dark:text-emerald-400',
-        hover: 'hover:bg-emerald-100 dark:hover:bg-emerald-900/30'
+        hover: 'hover:bg-emerald-100 dark:hover:bg-emerald-900/30',
       },
       expense_approved: {
         bg: 'bg-green-50 dark:bg-green-900/20',
         border: 'border-green-200 dark:border-green-800',
         icon: CheckCircle,
         iconColor: 'text-green-600 dark:text-green-400',
-        hover: 'hover:bg-green-100 dark:hover:bg-green-900/30'
+        hover: 'hover:bg-green-100 dark:hover:bg-green-900/30',
       },
       expense_rejected: {
         bg: 'bg-red-50 dark:bg-red-900/20',
         border: 'border-red-200 dark:border-red-800',
         icon: XCircle,
         iconColor: 'text-red-600 dark:text-red-400',
-        hover: 'hover:bg-red-100 dark:hover:bg-red-900/30'
+        hover: 'hover:bg-red-100 dark:hover:bg-red-900/30',
       },
       payroll: {
         bg: 'bg-purple-50 dark:bg-purple-900/20',
         border: 'border-purple-200 dark:border-purple-800',
         icon: CreditCard,
         iconColor: 'text-purple-600 dark:text-purple-400',
-        hover: 'hover:bg-purple-100 dark:hover:bg-purple-900/30'
+        hover: 'hover:bg-purple-100 dark:hover:bg-purple-900/30',
       },
       system: {
         bg: 'bg-gray-50 dark:bg-gray-900/20',
         border: 'border-gray-200 dark:border-gray-800',
         icon: Info,
         iconColor: 'text-gray-600 dark:text-gray-400',
-        hover: 'hover:bg-gray-100 dark:hover:bg-gray-900/30'
+        hover: 'hover:bg-gray-100 dark:hover:bg-gray-900/30',
       },
       success: {
         bg: 'bg-green-50 dark:bg-green-900/20',
         border: 'border-green-200 dark:border-green-800',
         icon: CheckCircle,
         iconColor: 'text-green-600 dark:text-green-400',
-        hover: 'hover:bg-green-100 dark:hover:bg-green-900/30'
+        hover: 'hover:bg-green-100 dark:hover:bg-green-900/30',
       },
       warning: {
         bg: 'bg-amber-50 dark:bg-amber-900/20',
         border: 'border-amber-200 dark:border-amber-800',
         icon: AlertTriangle,
         iconColor: 'text-amber-600 dark:text-amber-400',
-        hover: 'hover:bg-amber-100 dark:hover:bg-amber-900/30'
+        hover: 'hover:bg-amber-100 dark:hover:bg-amber-900/30',
       },
       error: {
         bg: 'bg-red-50 dark:bg-red-900/20',
         border: 'border-red-200 dark:border-red-800',
         icon: XCircle,
         iconColor: 'text-red-600 dark:text-red-400',
-        hover: 'hover:bg-red-100 dark:hover:bg-red-900/30'
+        hover: 'hover:bg-red-100 dark:hover:bg-red-900/30',
       },
       user_joined: {
         bg: 'bg-cyan-50 dark:bg-cyan-900/20',
         border: 'border-cyan-200 dark:border-cyan-800',
         icon: UserPlus,
         iconColor: 'text-cyan-600 dark:text-cyan-400',
-        hover: 'hover:bg-cyan-100 dark:hover:bg-cyan-900/30'
+        hover: 'hover:bg-cyan-100 dark:hover:bg-cyan-900/30',
       },
       message: {
         bg: 'bg-indigo-50 dark:bg-indigo-900/20',
         border: 'border-indigo-200 dark:border-indigo-800',
         icon: MessageSquare,
         iconColor: 'text-indigo-600 dark:text-indigo-400',
-        hover: 'hover:bg-indigo-100 dark:hover:bg-indigo-900/30'
-      }
+        hover: 'hover:bg-indigo-100 dark:hover:bg-indigo-900/30',
+      },
     };
     return styles[type] || styles.system;
   };
 
   const styles = getTypeStyles(notification.type);
   const IconComponent = styles.icon;
-  
-  const formattedTime = notification.createdAt 
+  const metadataInfo = extractMetadata(notification);
+
+  const formattedTime = notification.createdAt
     ? formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true })
     : 'Just now';
 
@@ -155,12 +221,12 @@ const NotificationCard = ({ notification, onMarkRead, onDelete, isNew }) => {
           </span>
         </div>
       )}
-      
+
       <div className="flex items-start gap-3">
         <div className={`flex-shrink-0 ${styles.iconColor}`}>
           <IconComponent className="w-5 h-5" />
         </div>
-        
+
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2 mb-1">
             <h4 className="font-semibold text-gray-900 dark:text-white text-sm">
@@ -170,17 +236,39 @@ const NotificationCard = ({ notification, onMarkRead, onDelete, isNew }) => {
               <span className="flex-shrink-0 w-2 h-2 bg-blue-600 rounded-full animate-pulse" />
             )}
           </div>
-          
+
           <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
             {notification.message}
           </p>
-          
+
+          {/* Metadata details */}
+          {metadataInfo && metadataInfo.fields.length > 0 && (
+            <div className="mb-2 p-2 bg-white/50 dark:bg-black/10 rounded-lg">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">
+                <metadataInfo.icon className="w-3.5 h-3.5" />
+                {metadataInfo.label}
+              </div>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+                {metadataInfo.fields.map((field, idx) => (
+                  <div key={idx} className="flex gap-1">
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      {field.key}:
+                    </span>
+                    <span className="text-xs font-medium text-gray-900 dark:text-white truncate">
+                      {field.value}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center justify-between">
             <span className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-500">
               <Clock className="w-3 h-3" />
               {formattedTime}
             </span>
-            
+
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -205,7 +293,7 @@ const FilterTabs = ({ activeFilter, onFilterChange, counts }) => {
   const tabs = [
     { id: 'all', label: 'All', count: counts.all },
     { id: 'unread', label: 'Unread', count: counts.unread },
-    { id: 'read', label: 'Read', count: counts.read }
+    { id: 'read', label: 'Read', count: counts.read },
   ];
 
   return (
@@ -223,11 +311,9 @@ const FilterTabs = ({ activeFilter, onFilterChange, counts }) => {
           `}
         >
           {tab.label}
-          {tab.count > 0 && (
-            <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-gray-200 dark:bg-gray-600">
-              {tab.count}
-            </span>
-          )}
+          <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-gray-200 dark:bg-gray-600">
+            {tab.count}
+          </span>
         </button>
       ))}
     </div>
@@ -242,18 +328,18 @@ const EmptyState = ({ filter }) => {
     all: {
       title: 'No notifications yet',
       description: 'When you receive notifications, they will appear here',
-      icon: Inbox
+      icon: Inbox,
     },
     unread: {
       title: 'No unread notifications',
       description: "You're all caught up!",
-      icon: CheckCheck
+      icon: CheckCheck,
     },
     read: {
       title: 'No read notifications',
       description: 'Notifications you mark as read will appear here',
-      icon: CheckCircle
-    }
+      icon: CheckCircle,
+    },
   };
 
   const { title, description, icon: Icon } = messages[filter] || messages.all;
@@ -267,12 +353,8 @@ const EmptyState = ({ filter }) => {
       <div className="w-24 h-24 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-4">
         <Icon className="w-12 h-12 text-gray-400 dark:text-gray-600" />
       </div>
-      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-        {title}
-      </h3>
-      <p className="text-gray-500 dark:text-gray-400 max-w-sm">
-        {description}
-      </p>
+      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">{title}</h3>
+      <p className="text-gray-500 dark:text-gray-400 max-w-sm">{description}</p>
     </motion.div>
   );
 };
@@ -283,7 +365,10 @@ const EmptyState = ({ filter }) => {
 const NotificationSkeleton = () => (
   <div className="space-y-3">
     {[...Array(5)].map((_, i) => (
-      <div key={i} className="p-4 rounded-xl border border-gray-200 dark:border-gray-800 animate-pulse">
+      <div
+        key={i}
+        className="p-4 rounded-xl border border-gray-200 dark:border-gray-800 animate-pulse"
+      >
         <div className="flex items-start gap-3">
           <div className="w-5 h-5 bg-gray-200 dark:bg-gray-700 rounded" />
           <div className="flex-1">
@@ -314,26 +399,31 @@ export const Notifications = () => {
   const [newNotificationIds, setNewNotificationIds] = useState(new Set());
   const [isConnected, setIsConnected] = useState(true);
 
+  // Update browser tab title with unread count
+  useEffect(() => {
+    document.title = unreadCount > 0
+      ? `(${unreadCount}) Notifications - HR Portal`
+      : 'Notifications - HR Portal';
+  }, [unreadCount]);
+
   // Fetch all notifications
   const fetchNotifications = useCallback(async () => {
     try {
       setError(null);
-      
+
       const [notificationsData, unreadData] = await Promise.all([
         notificationApi.getNotifications(50, 0),
-        notificationApi.getUnreadCount()
+        notificationApi.getUnreadCount(),
       ]);
 
-      // Handle different response structures
-      const notificationList = Array.isArray(notificationsData) 
-        ? notificationsData 
+      const notificationList = Array.isArray(notificationsData)
+        ? notificationsData
         : notificationsData?.notifications || notificationsData?.data || [];
-      
+
       setNotifications(notificationList);
       setUnreadCount(unreadData?.count || unreadData?.unread || 0);
-      
     } catch (err) {
-      console.error('Failed to fetch notifications:', err);
+      
       setError(err.message || 'Failed to fetch notifications');
       toast.error('Failed to load notifications');
     } finally {
@@ -342,45 +432,22 @@ export const Notifications = () => {
     }
   }, []);
 
-  // Initial fetch
   useEffect(() => {
     fetchNotifications();
   }, [fetchNotifications]);
-
-  // Poll for new notifications every 30 seconds
-  // useEffect(() => {
-  //   const interval = setInterval(async () => {
-  //     try {
-  //       const unreadData = await notificationApi.getUnreadCount();
-  //       const newCount = unreadData?.count || unreadData?.unread || 0;
-        
-  //       if (newCount > unreadCount) {
-  //         // New notifications available, refresh the list
-  //         fetchNotifications();
-  //       } else {
-  //         setUnreadCount(newCount);
-  //       }
-  //     } catch (err) {
-  //       console.error('Failed to poll notifications:', err);
-  //     }
-  //   }, 30000);
-
-  //   return () => clearInterval(interval);
-  // }, [unreadCount, fetchNotifications]);
 
   // Mark single notification as read
   const handleMarkAsRead = async (id) => {
     try {
       await notificationApi.markAsRead(id);
-      
-      setNotifications(prev =>
-        prev.map(n => n.id === id ? { ...n, isRead: true, read: true } : n)
+
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, isRead: true, read: true } : n))
       );
-      setUnreadCount(prev => Math.max(0, prev - 1));
-      
+      setUnreadCount((prev) => Math.max(0, prev - 1));
       toast.success('Notification marked as read');
     } catch (err) {
-      console.error('Failed to mark as read:', err);
+    
       toast.error('Failed to mark as read');
     }
   };
@@ -389,33 +456,28 @@ export const Notifications = () => {
   const handleMarkAllRead = async () => {
     try {
       await notificationApi.markAllAsRead();
-      
-      setNotifications(prev =>
-        prev.map(n => ({ ...n, isRead: true, read: true }))
-      );
+
+      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true, read: true })));
       setUnreadCount(0);
-      
       toast.success('All notifications marked as read');
     } catch (err) {
-      console.error('Failed to mark all as read:', err);
-      toast.error('Failed to mark all as read');
+     
     }
   };
 
   // Delete single notification
   const handleDelete = async (id) => {
     try {
-      const notification = notifications.find(n => n.id === id);
+      const notification = notifications.find((n) => n.id === id);
       await notificationApi.deleteNotification(id);
-      
-      setNotifications(prev => prev.filter(n => n.id !== id));
+
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
       if (notification && !notification.isRead && !notification.read) {
-        setUnreadCount(prev => Math.max(0, prev - 1));
+        setUnreadCount((prev) => Math.max(0, prev - 1));
       }
-      
       toast.success('Notification deleted');
     } catch (err) {
-      console.error('Failed to delete notification:', err);
+     
       toast.error('Failed to delete notification');
     }
   };
@@ -423,31 +485,26 @@ export const Notifications = () => {
   // Clear all notifications
   const handleClearAll = async () => {
     if (notifications.length === 0) return;
-    
-    const confirmed = window.confirm('Are you sure you want to delete all notifications?');
-    if (!confirmed) return;
 
+    
     try {
       await notificationApi.clearAllNotifications();
-      
       setNotifications([]);
       setUnreadCount(0);
-      
       toast.success('All notifications cleared');
     } catch (err) {
-      console.error('Failed to clear notifications:', err);
+     
       toast.error('Failed to clear notifications');
     }
   };
 
-  // Handle refresh
   const handleRefresh = async () => {
     setRefreshing(true);
     await fetchNotifications();
   };
 
   // Filter notifications
-  const filteredNotifications = notifications.filter(n => {
+  const filteredNotifications = notifications.filter((n) => {
     const isRead = n.isRead || n.read;
     if (activeFilter === 'unread') return !isRead;
     if (activeFilter === 'read') return isRead;
@@ -456,8 +513,8 @@ export const Notifications = () => {
 
   const filterCounts = {
     all: notifications.length,
-    unread: notifications.filter(n => !n.isRead && !n.read).length,
-    read: notifications.filter(n => n.isRead || n.read).length
+    unread: notifications.filter((n) => !n.isRead && !n.read).length,
+    read: notifications.filter((n) => n.isRead || n.read).length,
   };
 
   if (loading) {
@@ -495,7 +552,6 @@ export const Notifications = () => {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        
         {/* Header */}
         <div className="mb-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -504,19 +560,18 @@ export const Notifications = () => {
                 <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
                   <Bell className="w-8 h-8 text-blue-600 dark:text-blue-400" />
                   Notifications
-                  {unreadCount > 0 && (
-                    <span className="ml-2 px-2.5 py-1 text-sm font-semibold bg-blue-600 text-white rounded-full">
-                      {unreadCount} new
-                    </span>
-                  )}
+                  {/* <span className="ml-2 px-2.5 py-1 text-sm font-semibold bg-blue-600 text-white rounded-full">
+                    {unreadCount} unread
+                  </span> */}
                 </h1>
-                
+
                 {/* Connection Status */}
-                <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
-                  isConnected 
-                    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                    : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'
-                }`}>
+                <div
+                  className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${isConnected
+                      ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                      : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'
+                    }`}
+                >
                   {isConnected ? (
                     <>
                       <Wifi className="w-3 h-3" />
@@ -542,7 +597,10 @@ export const Notifications = () => {
                 className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
                 title="Refresh"
               >
-                <RefreshCw className={`w-5 h-5 text-gray-600 dark:text-gray-400 ${refreshing ? 'animate-spin' : ''}`} />
+                <RefreshCw
+                  className={`w-5 h-5 text-gray-600 dark:text-gray-400 ${refreshing ? 'animate-spin' : ''
+                    }`}
+                />
               </button>
 
               {notifications.length > 0 && (
@@ -567,15 +625,26 @@ export const Notifications = () => {
               )}
             </div>
           </div>
+
+          {/* Bell icon with unread count */}
+          <div className="flex items-center gap-2 mt-4">
+            <div className="relative">
+              <Bell className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+              {unreadCount >= 0 && (
+                <span className="absolute -top-2 -right-2 px-1.5 py-0.5 text-xs font-bold text-white bg-red-500 rounded-full min-w-[20px] text-center leading-none">
+                  {unreadCount}
+                </span>
+              )}
+            </div>
+            <span className="text-sm font-medium text-gray-600 dark:text-gray-400">
+              {unreadCount} unread notification{unreadCount !== 1 ? 's' : ''}
+            </span>
+          </div>
         </div>
 
         {/* Filter Tabs */}
         <div className="mb-6">
-          <FilterTabs
-            activeFilter={activeFilter}
-            onFilterChange={setActiveFilter}
-            counts={filterCounts}
-          />
+          <FilterTabs activeFilter={activeFilter} onFilterChange={setActiveFilter} counts={filterCounts} />
         </div>
 
         {/* Notifications List */}
@@ -600,19 +669,16 @@ export const Notifications = () => {
         </div>
 
         {/* Footer */}
-        {filteredNotifications.length > 0 && (
+        {/* {filteredNotifications.length > 0 && (
           <div className="mt-4 text-center">
             <p className="text-sm text-gray-500 dark:text-gray-400">
               Showing {filteredNotifications.length} of {notifications.length} notifications
             </p>
           </div>
-        )}
+        )} */}
       </div>
     </div>
   );
 };
 
 export default Notifications;
-
-
-
