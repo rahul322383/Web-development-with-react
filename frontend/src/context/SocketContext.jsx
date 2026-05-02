@@ -1,8 +1,9 @@
 // context/SocketContext.jsx
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { io } from 'socket.io-client';
 import { useAuth } from './AuthContext';
 import { toast } from 'sonner';
+import notificationApi from '../api/notificationApi'; // import your API
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:8001';
 
@@ -20,7 +21,19 @@ export const SocketProvider = ({ children }) => {
   const [socket, setSocket] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
   const [newNotification, setNewNotification] = useState(null);
+  const [unreadCount, setUnreadCount] = useState(0);
   const { user, isAuthenticated } = useAuth();
+
+  // Function to fetch the initial unread count from the API
+  const refreshUnreadCount = useCallback(async () => {
+    try {
+      const data = await notificationApi.getUnreadCount();
+      const count = data?.count ?? data?.unread ?? 0;
+      setUnreadCount(count);
+    } catch (err) {
+      console.error('Failed to fetch unread count:', err);
+    }
+  }, []);
 
   useEffect(() => {
     if (!isAuthenticated || !user?.id) return;
@@ -29,9 +42,7 @@ export const SocketProvider = ({ children }) => {
     if (!token) return;
 
     const socketInstance = io(SOCKET_URL, {
-      auth: {
-        token: localStorage.getItem('accessToken')
-      },
+      auth: { token },
       transports: ['websocket', 'polling'],
       withCredentials: true,
       reconnection: true,
@@ -45,6 +56,8 @@ export const SocketProvider = ({ children }) => {
     socketInstance.on('connect', () => {
       setIsConnected(true);
       socketInstance.emit('register', user.id);
+      // Refresh count when connection is established
+      refreshUnreadCount();
     });
 
     socketInstance.on('disconnect', () => {
@@ -57,7 +70,8 @@ export const SocketProvider = ({ children }) => {
 
     socketInstance.on('new-notification', (notification) => {
       setNewNotification(notification);
-
+      // Increment unread count automatically
+      setUnreadCount(prev => prev + 1);
       toast.success(notification.message, {
         description: notification.title || 'New Notification',
         action: {
@@ -67,9 +81,21 @@ export const SocketProvider = ({ children }) => {
       });
     });
 
-    socketInstance.on('notification-read', () => { });
+    // If the server emits the ID of the read notification (recommended)
+    socketInstance.on('notification-read', (data) => {
+      // data could be { id } or { count } – adjust accordingly
+      if (typeof data?.count === 'number') {
+        setUnreadCount(data.count); // server sends the new total
+      } else {
+        // fallback: decrement by 1 if an ID was received
+        setUnreadCount(prev => Math.max(0, prev - 1));
+      }
+    });
 
-    socketInstance.on('notifications-cleared', () => { });
+    socketInstance.on('notifications-cleared', () => {
+      setUnreadCount(0);
+      setNewNotification(null);
+    });
 
     return () => {
       socketInstance.off('connect');
@@ -80,7 +106,7 @@ export const SocketProvider = ({ children }) => {
       socketInstance.off('notifications-cleared');
       socketInstance.disconnect();
     };
-  }, [isAuthenticated, user?.id]);
+  }, [isAuthenticated, user?.id, refreshUnreadCount]);
 
   const emitEvent = (eventName, data) => {
     if (socket && isConnected) {
@@ -96,6 +122,9 @@ export const SocketProvider = ({ children }) => {
         newNotification,
         setNewNotification,
         emitEvent,
+        unreadCount,
+        setUnreadCount,     // allow components to manually update after API calls
+        refreshUnreadCount, // manual refresh
       }}
     >
       {children}
