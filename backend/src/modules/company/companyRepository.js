@@ -1,6 +1,6 @@
 'use strict';
 
-const { Op } = require('sequelize');
+const { Sequelize, Op } = require('sequelize');
 const models = require('../../database/initModels');
 const { Company, User, Payroll,
   LeaveRequest, Attendance } = models;
@@ -14,11 +14,14 @@ const MAX_LIMIT = 100;
 const createCompany = async (data, transaction = null) =>
   Company.create(data, { transaction });
 
-const findCompanyById = async (id, options = {}) => {
-  const { includeInactive = false, attributes = null } = options;
-  const where = { id };
-  if (!includeInactive) where.isActive = true;
-  return Company.findOne({ where, attributes: attributes || undefined });
+const findCompanyById = async (id, { includeInactive = false, attributes } = {}) => {
+  return Company.findOne({
+    where: {
+      id,
+      ...(includeInactive ? {} : { isActive: true }),
+    },
+    ...(attributes && { attributes }),
+  });
 };
 
 const findCompanyBySlug = async (slug) =>
@@ -385,9 +388,99 @@ const listCompanies = async ({
   };
 };
 
-// ─────────────────────────────────────────────────────────────
+
+const getEmployees = async (companyId) => {
+  return await User.findAll({
+    where: { company_id: companyId },
+    attributes: [
+      'id',
+      'first_name',
+      'last_name',
+      'email',
+      'designation',
+      'department',
+      
+    
+      [Sequelize.literal("CONCAT(first_name, ' ', last_name)"), 'name']
+    ],
+    order: [['id', 'DESC']]
+  });
+};
+
+const getDepartments = async (companyId) => {
+  const departments = await User.findAll({
+    where: { company_id: companyId },
+    attributes: [
+      'department',
+      [Sequelize.fn('COUNT', Sequelize.col('id')), 'totalEmployees']
+    ],
+    group: ['department'],
+  });
+
+  return departments;
+};
+
+
+
+
+const getLeaveStats = async (companyId) => {
+  const leaves = await LeaveRequest.findAll({
+    where: { company_id: companyId },
+    attributes: [
+      'status',
+      [Sequelize.fn('COUNT', Sequelize.col('id')), 'count']
+    ],
+    group: ['status']
+  });
+
+  const formatted = {
+    pending: 0,
+    approved: 0,
+    rejected: 0
+  };
+
+  leaves.forEach(l => {
+    const status = l.status.toLowerCase();
+    formatted[status] = parseInt(l.get('count'));
+  });
+
+  return formatted;
+};
+
+
+
+
+
+const getPayrollStats = async (companyId) => {
+  const result = await Payroll.findAll({
+    include: [
+      {
+        model: User,
+        as: 'employee',
+        attributes: [],
+        where: { companyId } 
+      }
+    ],
+    attributes: [
+      [Sequelize.fn('COUNT', Sequelize.col('Payroll.id')), 'totalRuns'],
+      [Sequelize.fn('SUM', Sequelize.col('net_salary')), 'totalSalary'],
+      [Sequelize.fn('AVG', Sequelize.col('net_salary')), 'avgSalary']
+    ],
+    raw: true
+  });
+
+  return {
+    totalRuns: parseInt(result[0]?.totalRuns || 0),
+    totalSalary: parseFloat(result[0]?.totalSalary || 0),
+    avgSalary: parseFloat(result[0]?.avgSalary || 0),
+  };
+};
 
 module.exports = {
+  getPayrollStats,
+  getDepartments,
+  getLeaveStats,
+  getEmployees,
   createCompany,
   findCompanyById,
   findCompanyBySlug,
