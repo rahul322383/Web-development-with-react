@@ -11,6 +11,7 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.BIGINT.UNSIGNED,
         allowNull: false
       },
+      
       month: {
         type: DataTypes.INTEGER.UNSIGNED,
         allowNull: false
