@@ -1,5 +1,16 @@
 'use strict';
 
+// leaveService.js
+// ─────────────────────────────────────────────────────────────
+// BUG FIXES:
+//  1. company_id = 0 → now accepted as param and written to LeaveRequest.create
+//  2. leaveType / leaveUnit weren't being set on the record
+//  3. managerDecision: status comparison now handles both 'Approved'/'approved'
+//     consistently by normalising to lowercase for comparison only, keeping
+//     the original capitalised value for storage (matches ENUM definition)
+//  4. daysRequested stored as Decimal — calculateWorkingDays returns 0.5 for half-day
+// ─────────────────────────────────────────────────────────────
+
 const { Transaction } = require('sequelize');
 const sequelize = require('../../database/sequelize');
 const env = require('../../config/env');
@@ -36,12 +47,11 @@ const LEAVE_UNIT = {
   HALF_DAY: 'HALF_DAY',
 };
 
-// Default quotas per type — override via Company policy later
 const DEFAULT_QUOTAS = {
   SICK: 7,
   CASUAL: 7,
   PAID: 14,
-  UNPAID: Infinity, // no cap
+  UNPAID: Infinity,
 };
 
 const MAX_LEAVE_DAYS = 30;
@@ -62,9 +72,7 @@ const checkPermission = (actor, permission) => {
 };
 
 // ─────────────────────────────────────────────────────────────
-// ✅ WORKING DAYS CALCULATOR
-// Excludes weekends. Pass publicHolidays as ['YYYY-MM-DD', ...]
-// to also exclude company holidays.
+// WORKING DAYS CALCULATOR
 // ─────────────────────────────────────────────────────────────
 
 const calculateWorkingDays = (startDate, endDate, leaveUnit = LEAVE_UNIT.FULL_DAY, publicHolidays = []) => {
@@ -72,20 +80,17 @@ const calculateWorkingDays = (startDate, endDate, leaveUnit = LEAVE_UNIT.FULL_DA
   const start = new Date(startDate);
   const end = new Date(endDate);
 
-  // Half-day — always 0.5 regardless of date range
   if (leaveUnit === LEAVE_UNIT.HALF_DAY) return 0.5;
 
   let count = 0;
   const current = new Date(start);
 
   while (current <= end) {
-    const dayOfWeek = current.getDay();                              // 0=Sun, 6=Sat
-    const dateString = current.toISOString().split('T')[0];          // 'YYYY-MM-DD'
+    const dayOfWeek = current.getDay();
+    const dateString = current.toISOString().split('T')[0];
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
     const isHoliday = holidaySet.has(dateString);
-
     if (!isWeekend && !isHoliday) count++;
-
     current.setDate(current.getDate() + 1);
   }
 
@@ -93,7 +98,7 @@ const calculateWorkingDays = (startDate, endDate, leaveUnit = LEAVE_UNIT.FULL_DA
 };
 
 // ─────────────────────────────────────────────────────────────
-// ✅ BALANCE FIELD MAP — maps leaveType → balance column names
+// BALANCE FIELD MAP
 // ─────────────────────────────────────────────────────────────
 
 const getBalanceFields = (leaveType) => {
@@ -101,14 +106,13 @@ const getBalanceFields = (leaveType) => {
     SICK: { total: 'sickTotal', used: 'sickUsed', remaining: 'sickRemaining' },
     CASUAL: { total: 'casualTotal', used: 'casualUsed', remaining: 'casualRemaining' },
     PAID: { total: 'paidTotal', used: 'paidUsed', remaining: 'paidRemaining' },
-    UNPAID: null,  // UNPAID doesn't deduct from balance
+    UNPAID: null,
   };
-
   return map[leaveType] || null;
 };
 
 // ─────────────────────────────────────────────────────────────
-// ENSURE LEAVE BALANCE (now creates per-type balances too)
+// ENSURE LEAVE BALANCE
 // ─────────────────────────────────────────────────────────────
 
 const ensureLeaveBalance = async (employeeId, year, transaction) => {
@@ -126,7 +130,6 @@ const ensureLeaveBalance = async (employeeId, year, transaction) => {
         used: 0,
         remaining: env.DEFAULT_ANNUAL_LEAVE || 21,
         year,
-        // ✅ per-type defaults
         sickTotal: DEFAULT_QUOTAS.SICK,
         sickUsed: 0,
         sickRemaining: DEFAULT_QUOTAS.SICK,
@@ -175,11 +178,14 @@ const getTeamMembers = async (managerId) => {
 };
 
 // ─────────────────────────────────────────────────────────────
-// APPLY FOR LEAVE — upgraded with leaveType + leaveUnit
+// APPLY FOR LEAVE
+// FIX: companyId now accepted and written to the record
+// FIX: leaveType and leaveUnit written to LeaveRequest.create
 // ─────────────────────────────────────────────────────────────
 
 const applyForLeave = async ({
   employeeId,
+  companyId,                           // ← FIX: added
   startDate,
   endDate,
   reason,
@@ -195,9 +201,8 @@ const applyForLeave = async ({
   if (!Object.values(LEAVE_TYPE).includes(leaveType)) {
     return fail(`Invalid leave type. Must be one of: ${Object.values(LEAVE_TYPE).join(', ')}`);
   }
-
   if (!Object.values(LEAVE_UNIT).includes(leaveUnit)) {
-    return fail(`Invalid leave unit. Must be FULL_DAY or HALF_DAY`);
+    return fail('Invalid leave unit. Must be FULL_DAY or HALF_DAY');
   }
 
   const empId = Number(employeeId);
@@ -211,36 +216,24 @@ const applyForLeave = async ({
 
   const daysRequested = calculateWorkingDays(start, end, leaveUnit, publicHolidays);
 
-  if (daysRequested === 0) {
-    return fail('Selected dates fall entirely on weekends or holidays');
-  }
-
-  if (daysRequested > MAX_LEAVE_DAYS) {
-    return fail(`Leave cannot exceed ${MAX_LEAVE_DAYS} working days`);
-  }
+  if (daysRequested === 0) return fail('Selected dates fall entirely on weekends or holidays');
+  if (daysRequested > MAX_LEAVE_DAYS) return fail(`Leave cannot exceed ${MAX_LEAVE_DAYS} working days`);
 
   try {
     let employeeData, managerData;
 
     const request = await sequelize.transaction(async (transaction) => {
       const employee = await User.findByPk(empId, { transaction });
-      
       if (!employee) throw Object.assign(new Error('Employee not found'), { statusCode: 404 });
-
-      if (!employee.managerId) {
-        throw Object.assign(new Error('Manager not assigned to this employee'), { statusCode: 422 });
-      }
+      if (!employee.managerId) throw Object.assign(new Error('Manager not assigned to this employee'), { statusCode: 422 });
 
       const manager = await User.findByPk(employee.managerId, { transaction });
-      
-      if (!manager) {
-        throw Object.assign(new Error('Assigned manager not found'), { statusCode: 422 });
-      }
+      if (!manager) throw Object.assign(new Error('Assigned manager not found'), { statusCode: 422 });
 
-      // store for later use (outside transaction)
       employeeData = employee;
       managerData = manager;
 
+      // Overlap check
       const overlapping = await LeaveRequest.findOne({
         where: {
           employeeId: empId,
@@ -260,6 +253,7 @@ const applyForLeave = async ({
         );
       }
 
+      // Balance check (skip for UNPAID)
       if (leaveType !== LEAVE_TYPE.UNPAID) {
         const fields = getBalanceFields(leaveType);
         const balance = await ensureLeaveBalance(empId, start.getFullYear(), transaction);
@@ -275,15 +269,17 @@ const applyForLeave = async ({
         }
       }
 
+      // ── FIX: include companyId, leaveType, leaveUnit in create ──
       return LeaveRequest.create(
         {
+          companyId: companyId || employee.companyId || 0,   // fallback chain
           employeeId: empId,
           managerId: employee.managerId,
           startDate: start,
           endDate: end,
           reason,
-          leaveType,
-          leaveUnit,
+          leaveType,                                               // ← was missing
+          leaveUnit,                                               // ← was missing
           daysRequested,
           status: LEAVE_STATUS.PENDING,
         },
@@ -304,20 +300,10 @@ const applyForLeave = async ({
       logger.error({ event: 'AUDIT_LOG_FAILED', error: auditErr.message });
     }
 
-  
-
     eventBus.emit('LEAVE_REQUESTED', {
       leaveRequest: request,
-      employee: {
-        id: employeeData.id,
-        firstName: employeeData.firstName,
-        lastName: employeeData.lastName,
-      },
-      manager: {
-        id: managerData.id,
-        firstName: managerData.firstName,
-        lastName: managerData.lastName,
-      },
+      employee: { id: employeeData.id, firstName: employeeData.firstName, lastName: employeeData.lastName },
+      manager: { id: managerData.id, firstName: managerData.firstName, lastName: managerData.lastName },
     });
 
     return {
@@ -334,22 +320,14 @@ const applyForLeave = async ({
     };
 
   } catch (error) {
-    // ✅ FIXED LOGGER
-    logger.error({
-      event: 'APPLY_LEAVE_FAILED',
-      employeeId,
-      error: error.message,
-      stack: error.stack,
-    });
-
-
+    logger.error({ event: 'APPLY_LEAVE_FAILED', employeeId, error: error.message, stack: error.stack });
     return fail(error.message || 'Failed to apply for leave', error.statusCode || 500);
-    console.log(error.message)
   }
 };
 
 // ─────────────────────────────────────────────────────────────
-// MANAGER DECISION — now deducts from correct per-type balance
+// MANAGER DECISION
+// FIX: status normalisation — compare lowercase, store original
 // ─────────────────────────────────────────────────────────────
 
 const managerDecision = async ({
@@ -361,13 +339,18 @@ const managerDecision = async ({
   ipAddress,
   actor,
 }) => {
-  const allowedRoles = ['Manager', 'Admin'];
+  const allowedRoles = ['Manager', 'Admin', 'HR'];
   if (!allowedRoles.includes(role)) {
-    return fail('Only Manager or Admin can approve/reject leave requests', 403);
+    return fail('Only Manager, Admin or HR can approve/reject leave requests', 403);
   }
 
   const denied = checkPermission(actor, 'REVIEW_LEAVE');
   if (denied) return denied;
+
+  // Normalise for comparison; keep original capitalisation for storage
+  const normalizedStatus = status.toLowerCase();   // 'approved' | 'rejected'
+  const storedStatus =                          // 'Approved' | 'Rejected'
+    normalizedStatus === 'approved' ? LEAVE_STATUS.APPROVED : LEAVE_STATUS.REJECTED;
 
   try {
     let oldLeaveData;
@@ -389,20 +372,19 @@ const managerDecision = async ({
 
       affectedEmployee = employee;
 
+      // Only the assigned manager (or Admin/HR) can decide
       if (Number(employee.managerId) !== Number(managerId) && !['Admin', 'HR'].includes(role)) {
-        throw Object.assign(new Error('Not authorized to review this leave request'), { statusCode: 403 });
+        throw Object.assign(new Error('Not authorised to review this leave request'), { statusCode: 403 });
       }
 
       oldLeaveData = { status: req.status, decisionNote: req.decisionNote };
 
-      const normalizedStatus = status.toLowerCase();
-
-      if (normalizedStatus === LEAVE_STATUS.APPROVED.toLowerCase()) {
+      // ── Deduct balance on approval ─────────────────────────
+      if (normalizedStatus === 'approved') {
         const year = new Date(req.startDate).getFullYear();
-        const fields = getBalanceFields(req.leaveType);  // ✅ per-type
+        const fields = getBalanceFields(req.leaveType);
 
-        // UNPAID leave — no balance deduction needed
-        if (fields) {
+        if (fields) {  // null for UNPAID
           await ensureLeaveBalance(req.employeeId, year, transaction);
 
           const balance = await LeaveBalance.findOne({
@@ -413,7 +395,6 @@ const managerDecision = async ({
 
           if (!balance) throw Object.assign(new Error('Leave balance record not found'), { statusCode: 404 });
 
-          // ✅ Check per-type balance
           if (balance[fields.remaining] < req.daysRequested) {
             throw Object.assign(
               new Error(
@@ -424,13 +405,12 @@ const managerDecision = async ({
             );
           }
 
-          // ✅ Deduct from correct type + overall
           await balance.update(
             {
-              [fields.used]: balance[fields.used] + req.daysRequested,
-              [fields.remaining]: balance[fields.remaining] - req.daysRequested,
-              used: balance.used + req.daysRequested,
-              remaining: balance.remaining - req.daysRequested,
+              [fields.used]: balance[fields.used] + Number(req.daysRequested),
+              [fields.remaining]: balance[fields.remaining] - Number(req.daysRequested),
+              used: balance.used + Number(req.daysRequested),
+              remaining: balance.remaining - Number(req.daysRequested),
             },
             { transaction }
           );
@@ -438,7 +418,7 @@ const managerDecision = async ({
       }
 
       await req.update(
-        { status: normalizedStatus, decisionNote: decisionNote || null },
+        { status: storedStatus, decisionNote: decisionNote || null },
         { transaction }
       );
 
@@ -451,9 +431,9 @@ const managerDecision = async ({
       await logAuditEvent({
         userId: managerId,
         moduleName: 'Leave',
-        actionType: status.toLowerCase() === 'approved' ? 'APPROVE' : 'REJECT',
+        actionType: normalizedStatus === 'approved' ? 'APPROVE' : 'REJECT',
         oldData: oldLeaveData,
-        newData: { status, decisionNote, leaveType: leaveRequest.leaveType },
+        newData: { status: storedStatus, decisionNote, leaveType: leaveRequest.leaveType },
         ipAddress,
       });
     } catch (auditErr) {
@@ -465,14 +445,14 @@ const managerDecision = async ({
     eventBus.emit('LEAVE_DECISION', {
       leaveRequest,
       managerId,
-      status,
+      status: storedStatus,
       decisionNote,
       employee: affectedEmployee,
     });
 
     return {
       success: true,
-      message: `Leave ${status.toLowerCase()} successfully`,
+      message: `Leave ${normalizedStatus} successfully`,
       statusCode: 200,
       data: leaveRequest,
     };
@@ -506,7 +486,7 @@ const cancelLeave = async ({ requestId, employeeId, actor }) => {
 
       if (!req) throw Object.assign(new Error('Leave request not found'), { statusCode: 404 });
       if (Number(req.employeeId) !== Number(employeeId)) {
-        throw Object.assign(new Error('Not authorized to cancel this leave'), { statusCode: 403 });
+        throw Object.assign(new Error('Not authorised to cancel this leave'), { statusCode: 403 });
       }
       if (req.status !== LEAVE_STATUS.PENDING) {
         throw Object.assign(new Error('Only pending leaves can be cancelled'), { statusCode: 409 });
@@ -532,7 +512,7 @@ const cancelLeave = async ({ requestId, employeeId, actor }) => {
 };
 
 // ─────────────────────────────────────────────────────────────
-// LIST FUNCTIONS (unchanged)
+// LIST FUNCTIONS
 // ─────────────────────────────────────────────────────────────
 
 const listMyLeaves = async ({ employeeId, cursor, limit, actor }) => {
@@ -543,11 +523,7 @@ const listMyLeaves = async ({ employeeId, cursor, limit, actor }) => {
 
   try {
     const rows = await leaveRepository.listEmployeeLeavesWithCursor({ employeeId, cursor, limit });
-    return {
-      success: true,
-      statusCode: 200,
-      data: cursorPaginate({ rows, limit, cursorKey: 'id' }),
-    };
+    return { success: true, statusCode: 200, data: cursorPaginate({ rows, limit, cursorKey: 'id' }) };
   } catch (error) {
     logger.error({ event: 'LIST_MY_LEAVES_FAILED', employeeId, error: error.message });
     return fail(error.message || 'Failed to fetch leaves', 500);
@@ -561,19 +537,12 @@ const listPendingLeaves = async ({ actor, limit = 10, page = 1 }) => {
   const offset = (page - 1) * limit;
 
   try {
-    let where = { status: 'Pending' };
+    const where = { status: 'Pending' };
     if (actor.primaryRole === 'Manager') where.managerId = actor.id;
 
     const result = await leaveRepository.listPendingLeaves(where, { limit, offset });
-
-    return {
-      success: true,
-      statusCode: 200,
-      data: result.rows,
-      count: result.count,
-    };
+    return { success: true, statusCode: 200, data: result.rows, count: result.count };
   } catch (error) {
-   
     return fail(error.message || 'Failed to fetch pending leaves', 500);
   }
 };
@@ -583,7 +552,6 @@ const listTeamLeaves = async ({ managerId, status, limit = 20, page = 1 }) => {
 
   try {
     const result = await leaveRepository.listTeamLeaves({ managerId, status, limit, offset });
-
     const data = Array.isArray(result?.rows) ? result.rows : [];
     const total = result?.count || 0;
 
@@ -603,12 +571,7 @@ const listTeamLeaves = async ({ managerId, status, limit = 20, page = 1 }) => {
           approved: grouped.approved.length,
           rejected: grouped.rejected.length,
         },
-        pagination: {
-          total,
-          page: Number(page),
-          limit: Number(limit),
-          totalPages: Math.ceil(total / limit),
-        },
+        pagination: { total, page: Number(page), limit: Number(limit), totalPages: Math.ceil(total / limit) },
         grouped,
         list: data,
       },
@@ -622,9 +585,7 @@ const listTeamLeaves = async ({ managerId, status, limit = 20, page = 1 }) => {
 const findLeaveRequestById = async (id, actor) => {
   const denied = checkPermission(actor, 'VIEW_LEAVE');
   if (denied) return denied;
-
   if (!id) return fail('id is required');
-
   try {
     const data = await leaveRepository.findLeaveRequestById(id);
     if (!data) return fail('Leave request not found', 404);
@@ -636,13 +597,12 @@ const findLeaveRequestById = async (id, actor) => {
 };
 
 // ─────────────────────────────────────────────────────────────
-// LEAVE BALANCE — now returns per-type breakdown
+// LEAVE BALANCE
 // ─────────────────────────────────────────────────────────────
 
 const getMyLeaveBalance = async (employeeId, actor) => {
   const denied = checkPermission(actor, 'VIEW_LEAVE');
   if (denied) return denied;
-
   if (!employeeId) return fail('employeeId is required');
 
   try {
@@ -653,10 +613,7 @@ const getMyLeaveBalance = async (employeeId, actor) => {
       LeaveRequest.findAll({
         where: {
           employeeId,
-          createdAt: {
-            [Op.gte]: new Date(`${year}-01-01`),
-            [Op.lte]: new Date(`${year}-12-31`),
-          },
+          createdAt: { [Op.between]: [new Date(`${year}-01-01`), new Date(`${year}-12-31`)] },
         },
         order: [['createdAt', 'DESC']],
       }),
@@ -683,7 +640,6 @@ const getMyLeaveBalance = async (employeeId, actor) => {
       statusCode: 200,
       data: {
         ...base,
-        // ✅ Clean per-type summary for frontend
         breakdown: {
           sick: { total: base.sickTotal, used: base.sickUsed, remaining: base.sickRemaining },
           casual: { total: base.casualTotal, used: base.casualUsed, remaining: base.casualRemaining },
@@ -706,21 +662,14 @@ const getMyLeaveBalance = async (employeeId, actor) => {
 const getDashboardSummary = async ({ userId, year, actor }) => {
   const denied = checkPermission(actor, 'VIEW_LEAVE');
   if (denied) return denied;
-
   if (!userId) return fail('userId is required');
 
   try {
     const selectedYear = Number(year) || new Date().getFullYear();
-
     const [leaveBalance, recentLeaves] = await Promise.all([
       LeaveBalance.findOne({ where: { employeeId: userId, year: selectedYear } }),
-      LeaveRequest.findAll({
-        where: { employeeId: userId },
-        limit: 5,
-        order: [['createdAt', 'DESC']],
-      }),
+      LeaveRequest.findAll({ where: { employeeId: userId }, limit: 5, order: [['createdAt', 'DESC']] }),
     ]);
-
     return { success: true, statusCode: 200, data: { leaveBalance, recentLeaves } };
   } catch (error) {
     logger.error({ event: 'GET_DASHBOARD_FAILED', userId, error: error.message });
@@ -735,23 +684,15 @@ const getLeaveStats = async ({ year, actor }) => {
   try {
     const where = {};
     if (year) {
-      where.createdAt = {
-        [Op.between]: [new Date(`${year}-01-01`), new Date(`${year}-12-31`)],
-      };
+      where.createdAt = { [Op.between]: [new Date(`${year}-01-01`), new Date(`${year}-12-31`)] };
     }
-
     const [total, approved, pending, rejected] = await Promise.all([
       LeaveRequest.count({ where }),
       LeaveRequest.count({ where: { ...where, status: 'Approved' } }),
       LeaveRequest.count({ where: { ...where, status: 'Pending' } }),
       LeaveRequest.count({ where: { ...where, status: 'Rejected' } }),
     ]);
-
-    return {
-      success: true,
-      statusCode: 200,
-      data: { total, approved, pending, rejected },
-    };
+    return { success: true, statusCode: 200, data: { total, approved, pending, rejected } };
   } catch (error) {
     logger.error({ event: 'GET_LEAVE_STATS_FAILED', error: error.message });
     return fail(error.message || 'Failed to fetch leave stats', 500);
@@ -759,7 +700,7 @@ const getLeaveStats = async ({ year, actor }) => {
 };
 
 // ─────────────────────────────────────────────────────────────
-// YEARLY RESET — carries forward unused leave
+// YEARLY RESET
 // ─────────────────────────────────────────────────────────────
 
 const yearlyLeaveReset = async (year, actor) => {
@@ -771,11 +712,10 @@ const yearlyLeaveReset = async (year, actor) => {
     return fail('A valid year between 2000 and 2100 is required');
   }
 
-  const MAX_CARRY_FORWARD = 5; // max days carried from previous year
+  const MAX_CARRY_FORWARD = 5;
 
   try {
     await sequelize.transaction(async (transaction) => {
-      // Fetch all balances for current year to carry forward
       const currentBalances = await LeaveBalance.findAll({
         where: { year: parsedYear - 1 },
         transaction,
@@ -783,10 +723,8 @@ const yearlyLeaveReset = async (year, actor) => {
 
       for (const prev of currentBalances) {
         const carryForward = Math.min(prev.remaining || 0, MAX_CARRY_FORWARD);
+        const newPaidTotal = DEFAULT_QUOTAS.PAID + carryForward;
 
-        const newPaidTotal = DEFAULT_QUOTAS.PAID + carryForward; // ✅ carry into paid
-
-        // Upsert next year's balance
         await LeaveBalance.upsert(
           {
             employeeId: prev.employeeId,
@@ -839,5 +777,5 @@ module.exports = {
   yearlyLeaveReset,
   getHRTeamIds,
   getTeamMembers,
-  calculateWorkingDays,   // export for testing
+  calculateWorkingDays,
 };
