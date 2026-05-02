@@ -1,4 +1,4 @@
-
+// components/layout/Header.jsx (adjust import path as needed)
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
@@ -12,9 +12,9 @@ import {
 import { toast } from "sonner";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
-import notificationApi  from "../../api/notificationApi";
+import notificationApi from "../../api/notificationApi";
 import { formatDistanceToNow } from "date-fns";
-
+import { useSocket } from '../../context/SocketContext'
 // Notification type config
 const notificationTypeConfig = {
   leave_approved: { icon: CheckCircle, color: 'text-green-500', bgColor: 'bg-green-50 dark:bg-green-950/20' },
@@ -36,7 +36,6 @@ export const Header = () => {
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
-  const [unreadCount, setUnreadCount] = useState(0);
   const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
   const [pagination, setPagination] = useState({
     limit: 20,
@@ -54,28 +53,10 @@ export const Header = () => {
   const { user, meta, isAuthenticated, isLoading, logout } = useAuth();
   const isDarkMode = theme === "dark";
 
-  // Fetch unread count periodically
-  useEffect(() => {
-    if (!isAuthenticated) return;
+  // ✅ Use the shared unread count from SocketContext (no local state)
+  const { unreadCount, setUnreadCount } = useSocket();
 
-    const fetchUnreadCount = async () => {
-      try {
-        const response = await notificationApi.getUnreadCount();
-        setUnreadCount(response.count || 0);
-      } catch (error) {
-        console.error('Failed to fetch unread count:', error);
-      }
-    };
-
-    fetchUnreadCount();
-    
-    // Poll for new notifications every 10 seconds
-    const interval = setInterval(fetchUnreadCount, 10000);
-    
-    return () => clearInterval(interval);
-  }, [isAuthenticated]);
-
-  // Fetch notifications when dropdown opens
+  // Fetch notifications when the dropdown opens
   const fetchNotifications = useCallback(async (reset = true) => {
     if (!isAuthenticated) return;
 
@@ -85,23 +66,23 @@ export const Header = () => {
         pagination.limit,
         reset ? 0 : pagination.offset
       );
-      
+
       const notificationData = response.notifications || response.data || [];
-      
+
       if (reset) {
         setNotifications(notificationData);
       } else {
         setNotifications(prev => [...prev, ...notificationData]);
       }
-      
+
       setPagination({
         limit: pagination.limit,
         offset: reset ? pagination.limit : pagination.offset + pagination.limit,
         total: response.total || notificationData.length,
         hasMore: notificationData.length === pagination.limit
       });
-      
-      // Update unread count
+
+      // Sync the global unread count with what the backend reports
       if (response.unreadCount !== undefined) {
         setUnreadCount(response.unreadCount);
       }
@@ -110,7 +91,7 @@ export const Header = () => {
     } finally {
       setIsLoadingNotifications(false);
     }
-  }, [isAuthenticated, pagination.limit, pagination.offset]);
+  }, [isAuthenticated, pagination.limit, pagination.offset, setUnreadCount]);
 
   // Load notifications when dropdown opens
   useEffect(() => {
@@ -119,25 +100,26 @@ export const Header = () => {
     }
   }, [isNotificationOpen, isAuthenticated, fetchNotifications]);
 
-  // Mark notification as read
+  // Mark a single notification as read and update the global count
   const markAsRead = async (notificationId) => {
     try {
       await notificationApi.markAsRead(notificationId);
-      
-      setNotifications(prev => 
+
+      setNotifications(prev =>
         prev.map(n => n.id === notificationId ? { ...n, read: true } : n)
       );
+      // Decrease the shared unread count
       setUnreadCount(prev => Math.max(0, prev - 1));
     } catch (error) {
       console.error('Failed to mark notification as read:', error);
     }
   };
 
-  // Mark all as read
+  // Mark all as read and reset the global count
   const markAllAsRead = async () => {
     try {
       await notificationApi.markAllAsRead();
-      
+
       setNotifications(prev => prev.map(n => ({ ...n, read: true })));
       setUnreadCount(0);
       toast.success('All notifications marked as read');
@@ -147,15 +129,16 @@ export const Header = () => {
     }
   };
 
-  // Delete notification
+  // Delete a notification and adjust the global count if it was unread
   const deleteNotification = async (notificationId, event) => {
     event.stopPropagation();
-    
+
     try {
+      const notif = notifications.find(n => n.id === notificationId);
       await notificationApi.deleteNotification(notificationId);
-      
+
       setNotifications(prev => prev.filter(n => n.id !== notificationId));
-      if (!notifications.find(n => n.id === notificationId)?.read) {
+      if (notif && !notif.read) {
         setUnreadCount(prev => Math.max(0, prev - 1));
       }
       toast.success('Notification deleted');
@@ -165,11 +148,11 @@ export const Header = () => {
     }
   };
 
-  // Clear all notifications
+  // Clear all notifications and reset the global count
   const clearAllNotifications = async () => {
     try {
       await notificationApi.clearAllNotifications();
-      
+
       setNotifications([]);
       setUnreadCount(0);
       toast.success('All notifications cleared');
@@ -179,19 +162,19 @@ export const Header = () => {
     }
   };
 
-  // Handle notification click
+  // Handle notification click (mark as read and navigate if link exists)
   const handleNotificationClick = async (notification) => {
     if (!notification.read) {
       await markAsRead(notification.id);
     }
-    
+
     if (notification.link) {
       navigate(notification.link);
       setIsNotificationOpen(false);
     }
   };
 
-  // Load more notifications
+  // Load more notifications for infinite scroll
   const loadMoreNotifications = () => {
     if (pagination.hasMore && !isLoadingNotifications) {
       fetchNotifications(false);
@@ -254,18 +237,18 @@ export const Header = () => {
       const baseItems = [
         { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
       ];
-      
+
       if (user?.primaryRole === 'Admin' || user?.primaryRole === 'Manager') {
         baseItems.push({ name: "Users", href: "/users", icon: Users });
       }
-      
+
       if (meta?.department === 'HR' || user?.primaryRole === 'Admin') {
         baseItems.push({ name: "Recruitment", href: "/recruitment", icon: Briefcase });
       }
-      
+
       return baseItems;
     }
-    
+
     return [
       { name: "Home", href: "/", icon: Home },
       { name: "Features", href: "/features", icon: Sparkles },
@@ -307,20 +290,17 @@ export const Header = () => {
 
   return (
     <>
-
-
       <header
-        className={`fixed top-0 left-0 right-0 z-40 transition-all duration-500 ${
-          isScrolled
+        className={`fixed top-0 left-0 right-0 z-40 transition-all duration-500 ${isScrolled
             ? "bg-white/90 dark:bg-slate-950/90 backdrop-blur-xl shadow-lg border-b border-slate-200/20 dark:border-slate-700/30"
             : "bg-white dark:bg-slate-950"
-        }`}
+          }`}
       >
         <div className="px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            {/* LOGO - Fixed gap */}
-            <Link 
-              to={isAuthenticated ? "/dashboard" : "/"} 
+            {/* LOGO */}
+            <Link
+              to={isAuthenticated ? "/dashboard" : "/"}
               className="flex items-center gap-2 group shrink-0"
             >
               <motion.div
@@ -335,7 +315,7 @@ export const Header = () => {
               </span>
             </Link>
 
-            {/* DESKTOP NAV - Fixed spacing */}
+            {/* DESKTOP NAV */}
             <nav className="hidden lg:flex items-center gap-1 ml-8">
               {navItems.map((item) => {
                 const Icon = item.icon;
@@ -362,7 +342,7 @@ export const Header = () => {
               })}
             </nav>
 
-            {/* RIGHT ACTIONS - Fixed gap */}
+            {/* RIGHT ACTIONS */}
             <div className="flex items-center gap-2">
               {/* THEME TOGGLE */}
               <motion.button
@@ -384,7 +364,7 @@ export const Header = () => {
                 </motion.div>
               </motion.button>
 
-              {/* NOTIFICATION BELL */}
+              {/* NOTIFICATION BELL – always shows the shared real‑time count */}
               {isAuthenticated && (
                 <div className="relative" ref={notificationRef}>
                   <motion.button
@@ -395,11 +375,14 @@ export const Header = () => {
                     aria-label="Notifications"
                   >
                     <Bell className="w-5 h-5 text-slate-600 dark:text-slate-300" />
-                    {unreadCount > 0 && (
-                      <span className="absolute -top-0.5 -right-0.5 flex items-center justify-center min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full ring-2 ring-white dark:ring-slate-900">
-                        {unreadCount > 99 ? '99+' : unreadCount}
-                      </span>
-                    )}
+                    <span
+                      className={`absolute -top-0.5 -right-0.5 flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-bold rounded-full ring-2 ring-white dark:ring-slate-900 ${unreadCount > 0
+                          ? 'bg-red-500 text-white'
+                          : 'bg-gray-300 dark:bg-gray-600 text-gray-600 dark:text-gray-300'
+                        }`}
+                    >
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </span>
                   </motion.button>
 
                   {/* Notification Dropdown */}
@@ -412,7 +395,6 @@ export const Header = () => {
                         transition={{ duration: 0.2 }}
                         className="absolute right-0 mt-3 w-96 max-w-[calc(100vw-2rem)] rounded-2xl overflow-hidden bg-white dark:bg-slate-900 shadow-xl border border-slate-200 dark:border-slate-700 z-50"
                       >
-                        {/* Notification Header */}
                         <div className="p-4 border-b border-slate-100 dark:border-slate-800">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
@@ -448,7 +430,6 @@ export const Header = () => {
                           </div>
                         </div>
 
-                        {/* Notification List */}
                         <div className="max-h-[400px] overflow-y-auto">
                           {isLoadingNotifications ? (
                             <div className="flex items-center justify-center py-12">
@@ -472,15 +453,14 @@ export const Header = () => {
                                 {notifications.map((notification) => {
                                   const config = getNotificationConfig(notification.type);
                                   const Icon = config.icon;
-                                  
+
                                   return (
                                     <motion.div
                                       key={notification.id}
                                       initial={{ opacity: 0, x: -20 }}
                                       animate={{ opacity: 1, x: 0 }}
-                                      className={`relative p-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer group ${
-                                        !notification.read ? config.bgColor : ''
-                                      }`}
+                                      className={`relative p-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer group ${!notification.read ? config.bgColor : ''
+                                        }`}
                                       onClick={() => handleNotificationClick(notification)}
                                     >
                                       <div className="flex gap-3">
@@ -516,8 +496,7 @@ export const Header = () => {
                                   );
                                 })}
                               </div>
-                              
-                              {/* Load More */}
+
                               {pagination.hasMore && (
                                 <div className="p-3 border-t border-slate-100 dark:border-slate-800">
                                   <button
@@ -533,7 +512,6 @@ export const Header = () => {
                           )}
                         </div>
 
-                        {/* Notification Footer */}
                         {notifications.length > 0 && (
                           <div className="p-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
                             <Link
@@ -550,7 +528,6 @@ export const Header = () => {
                   </AnimatePresence>
                 </div>
               )}
-             
 
               {/* PROFILE / AUTH BUTTONS */}
               {isLoading ? (
@@ -570,7 +547,7 @@ export const Header = () => {
                     <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isProfileMenuOpen ? "rotate-180" : ""}`} />
                   </button>
 
-                 <AnimatePresence>
+                  <AnimatePresence>
                     {isProfileMenuOpen && (
                       <motion.div
                         initial={{ opacity: 0, y: -10, scale: 0.95 }}
@@ -739,11 +716,10 @@ export const Header = () => {
                         key={item.name}
                         to={item.href}
                         onClick={() => setIsMobileMenuOpen(false)}
-                        className={`flex items-center gap-3 px-3 py-3 rounded-xl transition-all ${
-                          active
+                        className={`flex items-center gap-3 px-3 py-3 rounded-xl transition-all ${active
                             ? "bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400"
                             : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
-                        }`}
+                          }`}
                       >
                         <Icon className="w-5 h-5" />
                         <span className="font-medium">{item.name}</span>
