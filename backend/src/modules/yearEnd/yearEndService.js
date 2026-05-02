@@ -72,18 +72,38 @@ const generateYearSummary = async ({ year, actor }) => {
 
     await clearCacheKeys(cacheKeys);
 
-    // ✅ FETCH AFTER GENERATION
+    // ✅ FETCH SUMMARIES
     const summaries = await yearEndRepository.listYearSummaries(year);
+
+    // 🔥 ADD DETAILS (leaves + expenses)
+    const enrichedSummaries = await Promise.all(
+      summaries.map(async (summary) => {
+        const employeeId = summary.employeeId;
+
+        const [leaves, expenses] = await Promise.all([
+          yearEndRepository.getApprovedLeaves(employeeId, year),
+          yearEndRepository.getApprovedExpenses(employeeId, year),
+        ]);
+
+        return {
+          ...summary.toJSON(),
+          leaves,     // 👈 full leave records
+          expenses,   // 👈 full expense records
+        };
+      })
+    );
 
     return {
       success: true,
       statusCode: 200,
       message: 'Year end summaries generated successfully',
-      count: summaries.length,
-      data: summaries,
+      count: enrichedSummaries.length,
+      data: enrichedSummaries,
     };
 
   } catch (err) {
+    console.log(err);
+
     logger.error({
       event: 'GENERATE_YEAR_SUMMARY_FAILED',
       year,
