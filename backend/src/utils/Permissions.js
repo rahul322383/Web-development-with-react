@@ -39,10 +39,10 @@ const PERMISSIONS = {
     APPROVE_LEAVE: ['Admin', 'HR', 'Finance', 'Manager'],
     REJECT_LEAVE: ['Admin', 'HR', 'Finance', 'Manager'],
 
-        CREATE_COMPANY: ['Admin', 'HR'],
+    CREATE_COMPANY: ['Admin', 'HR', 'Manager', 'Finance', 'Employee'],
         LIST_COMPANIES: ['Admin', 'HR', 'Manager', 'Finance'],
         VIEW_COMPANY: ['Admin', 'HR', 'Manager', 'Finance', 'Employee'],
-        UPDATE_COMPANY: ['Admin', 'HR'],
+    UPDATE_COMPANY: ['Admin', 'HR', 'Manager', 'Finance', 'Employee'],
         DELETE_COMPANY: ['Admin'],
         REACTIVATE_COMPANY: ['Admin'],
 
@@ -55,10 +55,10 @@ const PERMISSIONS = {
         VIEW_COMPANY_STATS: ['Admin', 'HR', 'Manager', 'Finance'],
         VIEW_COMPANY_DASHBOARD: ['Admin', 'HR', 'Manager', 'Finance'],
 
-        VIEW_COMPANY_USERS: ['Admin', 'HR', 'Manager'],
-        ADD_COMPANY_USER: ['Admin', 'HR'],
-        REMOVE_COMPANY_USER: ['Admin', 'HR'],
-        UPDATE_USER_ROLE: ['Admin', 'HR'],
+    VIEW_COMPANY_USERS: ['Admin', 'HR', 'Manager', 'Finance', 'Employee'], 
+    ADD_COMPANY_USER: ['Admin', 'HR', 'Manager', 'Finance', 'Employee'],
+    REMOVE_COMPANY_USER: ['Admin', 'HR', 'Manager', 'Finance', 'Employee'],
+    UPDATE_USER: ['Admin', 'HR', 'Manager', 'Finance', 'Employee'],
 
         VIEW_SUBSCRIPTION: ['Admin', 'HR'],
         UPDATE_SUBSCRIPTION: ['Admin'],
@@ -99,12 +99,14 @@ const buildResponse = (success, message, statusCode = 200) => ({
 const assertPermission = (actor, permission) => {
     const roles = getRoles(actor);
     
+    
 
     if (roles.length === 0) {
         return { allowed: false, reason: 'NO_ROLES' };
     }
 
     const allowedRoles = PERMISSIONS[permission];
+  
 
     if (!allowedRoles) {
         return { allowed: false, reason: 'UNKNOWN_PERMISSION' };
@@ -120,6 +122,7 @@ const assertPermission = (actor, permission) => {
 
 const requirePermission = (permission) => (req, res, next) => {
     const result = assertPermission(req.user, permission);
+  
 
     if (!result.allowed) {
         return res.status(403).json({
