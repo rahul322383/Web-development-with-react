@@ -72,6 +72,7 @@ const normalizeUserPayload = (user) => ({
   email: user.email,
   fullName: `${user.firstName} ${user.lastName}`,
   primaryRole: user.role?.name ?? 'Employee',
+  company_id: user.company_id ?? user.companyId ?? null,
    
 });
 
@@ -189,84 +190,6 @@ const register = async (payload, req = null) => {
 
 
 
-// const register = async (payload, req = null) => {
-//   const { ip, userAgent } = extractRequestMeta(req);
-
-//   try {
-//     const existingUser = await authRepository.findUserByEmail(payload.email);
-//     if (existingUser) return { success: false, message: 'Email already registered', statusCode: 409 };
-
-//     if (payload.managerId) {
-//       const manager = await authRepository.findUserById(payload.managerId);
-//       if (!manager) return { success: false, message: 'Invalid managerId: User not found', statusCode: 400 };
-//       const managerRole = manager.role?.name;  // FIX: singular
-//       if (!managerRole || managerRole.toLowerCase() !== 'manager') {
-//         return { success: false, message: 'Selected managerId is not a valid manager', statusCode: 400 };
-//       }
-//     }
-
-//     let createdUser;
-//     try {
-//       createdUser = await sequelize.transaction(async (transaction) => {
-//         const passwordHash = await bcrypt.hash(payload.password, Number(env.BCRYPT_ROUNDS) || 10);
-
-//         // FIX: roleId must be resolved and stored directly on the user row
-//         const normalizedRole = payload.role
-//           ? payload.role.charAt(0).toUpperCase() + payload.role.slice(1).toLowerCase()
-//           : 'Employee';
-        
-//         const role = await authRepository.findRoleByName(normalizedRole, transaction);
-//         console.log('Role lookup result:', role, 'for name:', normalizedRole); // 👈
-//         if (!role) throw new Error('Invalid role provided');
-//         const user = await authRepository.createUser({
-//           employeeCode: payload.employeeCode,
-//           firstName: payload.firstName,
-//           lastName: payload.lastName,
-//           email: payload.email,
-//           passwordHash,
-//           role: payload.role,              // FIX: set roleId directly, no junction table
-//           managerId: payload.managerId ?? null,
-//           department: payload.department ?? null,
-//           baseSalary: payload.baseSalary ?? 0,
-//         }, transaction);
-
-//         return user;
-//       });
-//     } catch (err) {
-//       if (err.name === 'SequelizeUniqueConstraintError') {
-//         return { success: false, message: 'Email already registered', statusCode: 409 };
-//       }
-//       throw err;
-//     }
-
-//     sendNotification(createdUser.id, {
-//       event: 'USER_REGISTERED',
-//       role: payload.role,
-//       timestamp: new Date().toISOString(),
-//     });
-
-//     sendAuditLog(buildAuditLog('USER_REGISTRATION', createdUser.id, {
-//       email: payload.email,
-//       role: payload.role,
-//       managerId: payload.managerId ?? null,
-//       ip,
-//       userAgent,
-//     }));
-
-//     return toPublicResult(await issueTokensForUser(createdUser, req));
-
-//   } catch (error) {
-//     logger.error({
-//       event: 'REGISTER_FAILED',
-//       email: payload.email,
-//       ip,
-//       userAgent,
-//       error: error.message,
-//       stack: error.stack,
-//     });
-//     return { success: false, message: error.message || 'Registration failed', statusCode: error.statusCode || 500 };
-//   }
-// };
 
 const login = async ({ email, password }, req = null) => {
   const { ip, userAgent } = extractRequestMeta(req);
@@ -302,6 +225,7 @@ const login = async ({ email, password }, req = null) => {
     return toPublicResult(tokens);
 
   } catch (error) {
+  
     logger.error({
       event: 'LOGIN_FAILED',
       email,
@@ -460,6 +384,11 @@ const getCurrentUser = async (userId) => {
       primaryRole,
       isActive: u.isActive,
       department: u.department ?? null,
+      managerId: u.managerId ?? null,
+      baseSalary: u.baseSalary ?? null,
+      createdAt: u.createdAt,
+      updatedAt: u.updatedAt,
+      company_id: u.companyId?? null,
     };
 
     return {
