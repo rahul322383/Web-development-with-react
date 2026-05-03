@@ -42,8 +42,9 @@ const authenticate = async (req, res, next) => {
     req.user = {
       id: Number(payload.sub),
       email: payload.email,
-      role: payload.role,        
-      primaryRole: payload.role, 
+      role: payload.role,
+      primaryRole: payload.role,
+      companyId: payload.companyId, // ✅ ADD THIS LINE
       jti: payload.jti,
       exp: payload.exp
     };
