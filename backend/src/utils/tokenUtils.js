@@ -10,11 +10,13 @@ const buildAccessToken = (user) => {
       email: user.email,
       role: user.primaryRole,
       jti,
+      companyId: user.company_id,
       type: 'access'
     },
     env.JWT_ACCESS_SECRET,
     { expiresIn: env.JWT_ACCESS_EXPIRES_IN }
   );
+
 
   return { token, jti };
 };
@@ -26,6 +28,7 @@ const buildRefreshToken = (user) => {
       sub: user.id,
       tokenId,
       type: 'refresh'
+
     },
     env.JWT_REFRESH_SECRET,
     { expiresIn: env.JWT_REFRESH_EXPIRES_IN }
