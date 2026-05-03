@@ -593,10 +593,13 @@ const listCompanies = (query = {}, actor) =>
     if (!perm.allowed) return fail(perm.message, 403);
 
     const result = await companyRepository.listCompanies({
-      page: Number(query.page) || 1,
-      limit: Number(query.limit) || 20,
-      search: query.search || null,
-      isActive: query.isActive || null,
+      page: query.page,
+      limit: query.limit,
+      search: query.search,
+      isActive: query.isActive,
+      sortBy: query.sortBy,
+      order: query.order,
+      all: query.all, // 🔥 important
     });
 
     return ok(result);
