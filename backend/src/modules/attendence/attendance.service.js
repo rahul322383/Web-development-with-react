@@ -241,3 +241,257 @@ module.exports = {
   getOvertimeSummary,
   calcMetrics,
 };
+
+
+
+
+// 'use strict';
+
+// // src/modules/attendence/attendance.service.js
+// // ─────────────────────────────────────────────────────────────────────────────
+// // UPGRADED: checkIn and checkOut now resolve each employee's assigned shift
+// // dynamically via shiftService.getEmployeeShift() and use
+// // shiftService.calcMetricsWithShift() instead of the old hardcoded constants.
+// //
+// // BACKWARD COMPATIBLE: if no shift is assigned, getEmployeeShift() returns
+// // the same default values that were hardcoded before (09:00-18:00, grace 15).
+// // All other functions (adminRecord, getMyAttendance, etc.) are unchanged.
+// // ─────────────────────────────────────────────────────────────────────────────
+
+// const { Op } = require('sequelize');
+// const { Attendance, User } = require('../../database/initModels');
+// const { getEmployeeShift, calcMetricsWithShift } = require('../shift/shiftService');
+
+// // ─── helpers (kept identical to original) ────────────────────────────────────
+
+// const todayISO = () => new Date().toISOString().slice(0, 10);
+
+// const makeResponse = (msg, code = 400) => {
+//   const e = new Error(msg);
+//   e.statusCode = code;
+//   return e;
+// };
+
+// // ─── legacy fallback (used by adminRecord which doesn't need shift lookup) ───
+
+// const toMins = (t) => {
+//   const [h, m] = t.split(':').map(Number);
+//   return h * 60 + m;
+// };
+
+// const SHIFT_START_MINS = 9 * 60;
+// const SHIFT_END_MINS = 18 * 60;
+// const GRACE_MINS = 15;
+// const STANDARD_MINS = SHIFT_END_MINS - SHIFT_START_MINS;
+
+// // Original calcMetrics kept for adminRecord (which passes status directly)
+// const calcMetrics = (checkIn, checkOut) => {
+//   const cinM = toMins(checkIn);
+//   const coutM = toMins(checkOut);
+//   if (coutM <= cinM) throw makeResponse('Check-out time must be after check-in time.');
+//   const workedMinutes = coutM - cinM;
+//   const isLate = cinM > (SHIFT_START_MINS + GRACE_MINS);
+//   const lateMinutes = isLate ? cinM - SHIFT_START_MINS : 0;
+//   const overtimeMinutes = Math.max(0, workedMinutes - STANDARD_MINS);
+//   const hasOvertime = overtimeMinutes > 0;
+//   let status;
+//   if (workedMinutes < STANDARD_MINS / 2) status = 'half_day';
+//   else if (isLate) status = 'late';
+//   else status = 'present';
+//   return { workedMinutes, isLate, lateMinutes, overtimeMinutes, hasOvertime, status };
+// };
+
+// // ─── CHECK IN ────────────────────────────────────────────────────────────────
+
+// const checkIn = async ({ employeeId, checkInTime, ip }) => {
+//   if (!employeeId) throw makeResponse('employeeId is required.', 500);
+
+//   const date = todayISO();
+//   const existing = await Attendance.findOne({ where: { employeeId, date } });
+
+//   if (existing?.checkIn) throw makeResponse('Already checked in today.', 409);
+
+//   // ── Resolve this employee's shift for today ──
+//   const shift = await getEmployeeShift(employeeId, date);
+
+//   // calcMetricsWithShift returns { success, data } — unwrap
+//   const shiftStartM = toMins(shift.startTime ?? shift.data?.startTime ?? '09:00');
+//   const graceMins = shift.graceMins ?? shift.data?.graceMins ?? 15;
+//   const cinM = toMins(checkInTime);
+//   const isLate = cinM > (shiftStartM + graceMins);
+//   const lateMinutes = isLate ? cinM - shiftStartM : 0;
+
+//   const payload = {
+//     checkIn: checkInTime,
+//     checkInIp: ip || null,
+//     isLate,
+//     lateMinutes,
+//     status: isLate ? 'late' : 'present',
+//   };
+
+//   if (existing) {
+//     await existing.update(payload);
+//     return existing.reload();
+//   }
+
+//   return Attendance.create({ employeeId, date, ...payload });
+// };
+
+// // ─── CHECK OUT ───────────────────────────────────────────────────────────────
+
+// const checkOut = async ({ employeeId, checkOutTime, ip }) => {
+//   if (!employeeId) throw makeResponse('employeeId is required.', 500);
+
+//   const date = todayISO();
+//   const record = await Attendance.findOne({ where: { employeeId, date } });
+
+//   if (!record) throw makeResponse('No check-in record found for today.', 404);
+//   if (!record.checkIn) throw makeResponse('Cannot check out without checking in first.', 400);
+//   if (record.checkOut) throw makeResponse('Already checked out today.', 409);
+
+//   // ── Resolve shift and compute metrics ──
+//   const shift = await getEmployeeShift(employeeId, date);
+//   const shiftObj = shift.data ?? shift;   // getEmployeeShift returns { success, data } shape
+
+//   const metricsResult = calcMetricsWithShift(record.checkIn, checkOutTime, shiftObj);
+//   if (!metricsResult.success) throw makeResponse(metricsResult.message, 400);
+
+//   const metrics = metricsResult.data;
+
+//   await record.update({ checkOut: checkOutTime, checkOutIp: ip || null, ...metrics });
+//   return record.reload();
+// };
+
+// // ─── ADMIN MANUAL RECORD (unchanged — uses legacy calcMetrics) ───────────────
+
+// const adminRecord = async ({ employeeId, date, checkIn: ci, checkOut: co, status, notes, approvedBy }) => {
+//   const metrics = ci && co ? calcMetrics(ci, co) : {};
+//   const finalStatus = status || metrics.status || 'absent';
+
+//   const [record, created] = await Attendance.upsert(
+//     {
+//       employeeId,
+//       date,
+//       checkIn: ci || null,
+//       checkOut: co || null,
+//       notes: notes || null,
+//       approvedBy: approvedBy || null,
+//       status: finalStatus,
+//       ...metrics,
+//     },
+//     { returning: true }
+//   );
+
+//   return { record, created };
+// };
+
+// // ─── READ FUNCTIONS (all unchanged) ──────────────────────────────────────────
+
+// const getTodaySummary = async () => {
+//   const date = todayISO();
+//   const records = await Attendance.findAll({
+//     where: { date },
+//     include: [{ model: User, as: 'employee', attributes: ['id', 'first_name', 'last_name', 'email'] }],
+//   });
+//   const summary = { present: 0, late: 0, absent: 0, half_day: 0, on_leave: 0, holiday: 0 };
+//   records.forEach(r => { if (summary[r.status] !== undefined) summary[r.status]++; });
+//   return { date, summary, records };
+// };
+
+// const getMyAttendance = async ({ employeeId, startDate, endDate, page = 1, limit = 20 }) => {
+//   if (!employeeId) throw makeResponse('employeeId is required.', 500);
+//   const where = { employeeId };
+//   if (startDate || endDate) {
+//     where.date = {};
+//     if (startDate) where.date[Op.gte] = startDate;
+//     if (endDate) where.date[Op.lte] = endDate;
+//   }
+//   const offset = (Number(page) - 1) * Number(limit);
+//   const { count, rows } = await Attendance.findAndCountAll({
+//     where,
+//     order: [['date', 'DESC']],
+//     limit: Number(limit),
+//     offset,
+//   });
+//   const stats = {
+//     totalPresent: rows.filter(r => r.status === 'present').length,
+//     totalLate: rows.filter(r => r.status === 'late').length,
+//     totalAbsent: rows.filter(r => r.status === 'absent').length,
+//     totalOvertimeMinutes: rows.reduce((s, r) => s + (r.overtimeMinutes || 0), 0),
+//     totalWorkedMinutes: rows.reduce((s, r) => s + (r.workedMinutes || 0), 0),
+//   };
+//   return {
+//     meta: { count, page: Number(page), limit: Number(limit), totalPages: Math.ceil(count / limit) },
+//     stats,
+//     records: rows,
+//   };
+// };
+
+// const getTeamReport = async ({ startDate, endDate, employeeId, status, page = 1, limit = 50 }) => {
+//   const where = {};
+//   if (employeeId) where.employeeId = Number(employeeId);
+//   if (status) where.status = status;
+//   if (startDate || endDate) {
+//     where.date = {};
+//     if (startDate) where.date[Op.gte] = startDate;
+//     if (endDate) where.date[Op.lte] = endDate;
+//   }
+//   const offset = (Number(page) - 1) * Number(limit);
+//   const { count, rows } = await Attendance.findAndCountAll({
+//     where,
+//     include: [{ model: User, as: 'employee', attributes: ['id', 'first_name', 'last_name', 'email'] }],
+//     order: [['date', 'DESC']],
+//     limit: Number(limit),
+//     offset,
+//   });
+//   return {
+//     meta: { count, page: Number(page), limit: Number(limit), totalPages: Math.ceil(count / limit) },
+//     records: rows,
+//   };
+// };
+
+// const getOvertimeSummary = async ({ employeeId, month, year }) => {
+//   const mm = String(month).padStart(2, '0');
+//   const startDate = `${year}-${mm}-01`;
+//   const endDate = new Date(year, Number(month), 0).toISOString().slice(0, 10);
+//   const records = await Attendance.findAll({
+//     where: {
+//       employeeId: Number(employeeId),
+//       date: { [Op.between]: [startDate, endDate] },
+//       hasOvertime: true,
+//     },
+//   });
+//   const totalOvertimeMinutes = records.reduce((s, r) => s + (r.overtimeMinutes || 0), 0);
+//   return {
+//     employeeId: Number(employeeId),
+//     month: Number(month),
+//     year: Number(year),
+//     overtimeDays: records.length,
+//     totalOvertimeMinutes,
+//     totalOvertimeHours: +(totalOvertimeMinutes / 60).toFixed(2),
+//     records,
+//   };
+// };
+
+// const getById = async (id) => {
+//   const record = await Attendance.findByPk(id, {
+//     include: [
+//       { model: User, as: 'employee', attributes: ['id', 'first_name', 'last_name', 'email'] },
+//       { model: User, as: 'approver', attributes: ['id', 'first_name', 'last_name'] },
+//     ],
+//   });
+//   if (!record) throw makeResponse('Attendance record not found.', 404);
+//   return record;
+// };
+
+// module.exports = {
+//   checkIn,
+//   checkOut,
+//   adminRecord,
+//   getTodaySummary,
+//   getMyAttendance,
+//   getTeamReport,
+//   getById,
+//   getOvertimeSummary,
+//   calcMetrics,           // still exported for any direct callers
+// };
