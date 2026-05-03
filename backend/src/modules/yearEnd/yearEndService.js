@@ -102,7 +102,7 @@ const generateYearSummary = async ({ year, actor }) => {
     };
 
   } catch (err) {
-    console.log(err);
+   
 
     logger.error({
       event: 'GENERATE_YEAR_SUMMARY_FAILED',
