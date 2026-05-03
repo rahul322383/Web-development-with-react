@@ -1,7 +1,4 @@
-// src/components/payroll/PayrollCharts.jsx
-// ================================================
-// PRODUCTION-READY PAYROLL CHARTS (9.5/10)
-// ================================================
+
 import React, { memo } from 'react';
 import {
     LineChart,
@@ -17,9 +14,6 @@ import {
     Legend,
 } from 'recharts';
 
-// ================================================
-// CONSTANTS
-// ================================================
 const CHART_COLORS = {
     primary: '#3B82F6',   // Blue
     success: '#10B981',   // Green
