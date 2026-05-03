@@ -127,6 +127,8 @@ const defineNotification = require('../models/Notification');
 const defineSetting = require('../models/setting.model');
 const defineAttendance = require('../models/attendance.model');
 const defineCompany = require('../models/company.model');
+const defineShift = require('../models/shift.model');
+const defineShiftAssignment = require('../models/shiftAssignment.model');
 
 // public website models (ADD THIS FILE PATH)
 const {
@@ -164,6 +166,8 @@ const YearEndSummary = defineYearEndSummary(sequelize, DataTypes);
 const RefreshToken = defineRefreshToken(sequelize, DataTypes);
 const Notification = defineNotification(sequelize, DataTypes);
 const Setting = defineSetting(sequelize, DataTypes);
+const Shift = defineShift(sequelize, DataTypes);
+const ShiftAssignment = defineShiftAssignment(sequelize, DataTypes);
 
 // public models init
 const siteStat = SiteStat(sequelize, DataTypes);
@@ -233,6 +237,14 @@ Attendance.belongsTo(User, { foreignKey: 'approvedBy', as: 'approver' });
 Company.hasMany(User, { foreignKey: 'companyId', as: 'employees' });
 User.belongsTo(Company, { foreignKey: 'companyId', as: 'company' });
 
+ShiftAssignment.belongsTo(User, { foreignKey: 'employeeId', as: 'employee' });
+ShiftAssignment.belongsTo(Shift, { foreignKey: 'shiftId', as: 'shift' });
+ShiftAssignment.belongsTo(User, { foreignKey: 'assignedBy', as: 'assignor' });
+
+Shift.hasMany(ShiftAssignment, { foreignKey: 'shiftId', as: 'assignments' });
+
+
+
 
 module.exports = {
   sequelize,
@@ -253,6 +265,8 @@ module.exports = {
   RefreshToken,
   Notification,
   Setting,
+  Shift,
+  ShiftAssignment,
 
   // public
   SiteStat,
