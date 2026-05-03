@@ -1,6 +1,9 @@
 import api from './axios';
 
-// ─── Employee APIs ─────────────────────────
+
+// ─────────────────────────────────────────
+// 🟢 EMPLOYEE ATTENDANCE APIs
+// ─────────────────────────────────────────
 
 // ✅ Check-in
 export const checkIn = (payload) => {
@@ -18,7 +21,9 @@ export const getMyAttendance = (params) => {
 };
 
 
-// ─── Admin / HR / Manager APIs ─────────────
+// ─────────────────────────────────────────
+// 🔵 ADMIN / HR ATTENDANCE APIs
+// ─────────────────────────────────────────
 
 // 📊 Today summary
 export const getTodaySummary = () => {
@@ -43,4 +48,54 @@ export const adminRecord = (payload) => {
 // 🔍 Get attendance by ID
 export const getAttendanceById = (id) => {
     return api.get(`/attendance/${id}`);
+};
+
+
+// ─────────────────────────────────────────
+// 🟣 SHIFT MANAGEMENT APIs
+// ─────────────────────────────────────────
+
+// ➕ Create shift
+export const createShift = (payload) => {
+    return api.post('/shifts', payload);
+};
+
+// 📋 List all shifts
+export const getShifts = () => {
+    return api.get('/shifts');
+};
+
+// ✏️ Update shift
+export const updateShift = (id, payload) => {
+    return api.put(`/shifts/${id}`, payload);
+};
+
+// ❌ Delete shift
+export const deleteShift = (id) => {
+    return api.delete(`/shifts/${id}`);
+};
+
+
+// ─────────────────────────────────────────
+// 🟡 SHIFT ASSIGNMENT APIs
+// ─────────────────────────────────────────
+
+// 👤 Assign shift to employee
+export const assignShift = (payload) => {
+    return api.post('/shifts/assign', payload);
+};
+
+// 📜 Get employee shift history
+export const getEmployeeShiftHistory = (employeeId) => {
+    return api.get(`/shifts/history/${employeeId}`);
+};
+
+
+// ─────────────────────────────────────────
+// 🔴 SHIFT REPORT APIs
+// ─────────────────────────────────────────
+
+// 📊 Get shift report
+export const getShiftReport = (params) => {
+    return api.get('/shifts/report', { params });
 };
