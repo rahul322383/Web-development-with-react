@@ -356,27 +356,69 @@ const updateSubscription = async (id, { plan, expiresAt }, transaction = null) =
 // LISTING
 // ─────────────────────────────────────────────────────────────
 
+
+
+
 const listCompanies = async ({
   page = 1,
   limit = 20,
   search = null,
   isActive = null,
+  isVerified = null,
 } = {}) => {
   limit = Math.min(Number(limit) || 20, MAX_LIMIT);
   page = Math.max(Number(page) || 1, 1);
   const offset = (page - 1) * limit;
-  const where = {};
 
+  const where = {};
   if (isActive === 'true') where.isActive = true;
   if (isActive === 'false') where.isActive = false;
+  if(isVerified === 'true') where.is_verified = true;
+  if(isVerified === 'false') where.is_verified = false;
   if (search) where.name = { [Op.like]: `%${search}%` };
-
   const { count, rows } = await Company.findAndCountAll({
     where,
     limit,
     offset,
-    order: [['createdAt', 'DESC']],
-    attributes: ['id', 'name', 'slug', 'isActive', 'subscriptionPlan', 'createdAt'],
+    order: [['created_at', 'DESC']],
+    attributes: [
+      'id',
+      'name',
+      'slug',
+      'email',
+      'phone',
+      'website',
+      'industry',
+      'size',
+
+      'address_line1',
+      'address_line2',
+      'city',
+      'state',
+      'country',
+      'postal_code',
+
+      'logo_url',
+      'logo_public_id',
+
+      'working_hours_per_day',
+      'working_days_per_week',
+      'annual_leave_quota',
+
+      'timezone',
+      'currency',
+      'fiscal_year_start',
+
+      'isActive',
+      'is_verified',
+
+      'subscription_plan',
+      'subscription_expires_at',
+
+      'created_at',
+      'updated_at',
+      'deleted_at'
+    ],
   });
 
   return {
@@ -387,6 +429,39 @@ const listCompanies = async ({
     companies: rows,
   };
 };
+
+
+// const listCompanies = async ({
+//   page = 1,
+//   limit = 20,
+//   search = null,
+//   isActive = null,
+// } = {}) => {
+//   limit = Math.min(Number(limit) || 20, MAX_LIMIT);
+//   page = Math.max(Number(page) || 1, 1);
+//   const offset = (page - 1) * limit;
+//   const where = {};
+
+//   if (isActive === 'true') where.isActive = true;
+//   if (isActive === 'false') where.isActive = false;
+//   if (search) where.name = { [Op.like]: `%${search}%` };
+
+//   const { count, rows } = await Company.findAndCountAll({
+//     where,
+//     limit,
+//     offset,
+//     order: [['createdAt', 'DESC']],
+//     attributes: ['id', 'name', 'slug', 'isActive', 'subscriptionPlan', 'createdAt'],
+//   });
+
+//   return {
+//     total: count,
+//     page,
+//     limit,
+//     totalPages: Math.ceil(count / limit),
+//     companies: rows,
+//   };
+// };
 
 
 const getEmployees = async (companyId) => {
