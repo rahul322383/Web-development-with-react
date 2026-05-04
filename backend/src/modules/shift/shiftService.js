@@ -1,19 +1,13 @@
 
-'use strict';
-
 const { Op } = require('sequelize');
 const { Shift, ShiftAssignment, User } = require('../../database/initModels');
 const { assertPermission } = require('../../utils/Permissions');
 const { logAuditEvent } = require('../../utils/auditLogger');
 const logger = require('../../config/logger');
 
-// ─── helpers ───────────────────────────────────────────
+// ─── helpers ─────────────────────────────────────────────────────────────────
 
-const fail = (message, statusCode = 400) => ({
-    success: false,
-    message,
-    statusCode,
-});
+const fail = (message, statusCode = 400) => ({ success: false, message, statusCode });
 
 const checkPerm = (actor, perm) => {
     const r = assertPermission(actor, perm);
@@ -21,35 +15,37 @@ const checkPerm = (actor, perm) => {
     return null;
 };
 
-const getCompanyId = (actor) => {
-    const companyId = actor?.companyId;
-    if (!companyId) {
-        throw new Error('companyId missing in actor');
+
+const resolveCompanyId = (actor) =>
+    actor?.companyId ?? actor?.company_id ?? null;
+
+const requireCompanyId = (actor) => {
+    const id = resolveCompanyId(actor);
+    if (!id) {
+        return fail(
+            'Your session is missing companyId. Please log out and log in again.',
+            422
+        );
     }
-    return companyId;
+    return id;
 };
 
-// ─── SHIFT CRUD ───────────────────────────────────────
+// ─── SHIFT CRUD ───────────────────────────────────────────────────────────────
 
 const createShift = async ({ actor, data }) => {
     const denied = checkPerm(actor, 'MANAGE_SHIFTS');
     if (denied) return denied;
 
-    try {
-        const companyId = getCompanyId(actor);
+    const companyIdOrFail = requireCompanyId(actor);
+    if (typeof companyIdOrFail === 'object') return companyIdOrFail; // fail object
+    const companyId = companyIdOrFail;
 
-        const shift = await Shift.create({
-            ...data,
-            companyId,
-        });
+    try {
+        const shift = await Shift.create({ ...data, companyId });
 
         await logAuditEvent({
-            userId: actor.id,
-            moduleName: 'Shift',
-            actionType: 'CREATE',
-            oldData: null,
-            newData: shift,
-            ipAddress: actor.ip,
+            userId: actor.id, moduleName: 'Shift', actionType: 'CREATE',
+            oldData: null, newData: shift, ipAddress: actor.ip,
         });
 
         return { success: true, statusCode: 201, data: shift };
@@ -63,26 +59,20 @@ const updateShift = async ({ actor, shiftId, data }) => {
     const denied = checkPerm(actor, 'MANAGE_SHIFTS');
     if (denied) return denied;
 
+    const companyIdOrFail = requireCompanyId(actor);
+    if (typeof companyIdOrFail === 'object') return companyIdOrFail;
+    const companyId = companyIdOrFail;
+
     try {
-        const companyId = getCompanyId(actor);
-
-        const shift = await Shift.findOne({
-            where: { id: shiftId, companyId },
-        });
-
+        const shift = await Shift.findOne({ where: { id: shiftId, companyId } });
         if (!shift) return fail('Shift not found', 404);
 
         const old = shift.toJSON();
-
         await shift.update(data);
 
         await logAuditEvent({
-            userId: actor.id,
-            moduleName: 'Shift',
-            actionType: 'UPDATE',
-            oldData: old,
-            newData: shift,
-            ipAddress: actor.ip,
+            userId: actor.id, moduleName: 'Shift', actionType: 'UPDATE',
+            oldData: old, newData: shift, ipAddress: actor.ip,
         });
 
         return { success: true, data: shift };
@@ -96,28 +86,22 @@ const deleteShift = async ({ actor, shiftId }) => {
     const denied = checkPerm(actor, 'MANAGE_SHIFTS');
     if (denied) return denied;
 
+    const companyIdOrFail = requireCompanyId(actor);
+    if (typeof companyIdOrFail === 'object') return companyIdOrFail;
+    const companyId = companyIdOrFail;
+
     try {
-        const companyId = getCompanyId(actor);
-
-        const shift = await Shift.findOne({
-            where: { id: shiftId, companyId },
-        });
-
+        const shift = await Shift.findOne({ where: { id: shiftId, companyId } });
         if (!shift) return fail('Shift not found', 404);
 
-        const activeAssignments = await ShiftAssignment.count({
+        const active = await ShiftAssignment.count({
             where: { shiftId, companyId, isActive: true },
         });
-
-        if (activeAssignments > 0) {
-            return fail(
-                'Cannot delete shift with active employee assignments.',
-                409
-            );
+        if (active > 0) {
+            return fail('Cannot delete shift with active employee assignments. Reassign employees first.', 409);
         }
 
         await shift.destroy();
-
         return { success: true, message: 'Shift deleted' };
     } catch (err) {
         logger.error({ event: 'DELETE_SHIFT_FAILED', error: err.message });
@@ -129,9 +113,11 @@ const listShifts = async ({ actor }) => {
     const denied = checkPerm(actor, 'VIEW_SHIFTS');
     if (denied) return denied;
 
-    try {
-        const companyId = getCompanyId(actor);
+    const companyIdOrFail = requireCompanyId(actor);
+    if (typeof companyIdOrFail === 'object') return companyIdOrFail;
+    const companyId = companyIdOrFail;
 
+    try {
         const data = await Shift.findAll({
             where: { companyId, isActive: true },
             order: [['name', 'ASC']],
@@ -144,28 +130,21 @@ const listShifts = async ({ actor }) => {
     }
 };
 
-// ─── SHIFT ASSIGNMENT ─────────────────────────────────
+// ─── SHIFT ASSIGNMENT ─────────────────────────────────────────────────────────
 
 const assignShift = async ({ actor, data }) => {
     const denied = checkPerm(actor, 'ASSIGN_SHIFT');
     if (denied) return denied;
 
-    try {
-        const companyId = getCompanyId(actor);
+    const companyIdOrFail = requireCompanyId(actor);
+    if (typeof companyIdOrFail === 'object') return companyIdOrFail;
+    const companyId = companyIdOrFail;
 
-        // deactivate old assignment
+    try {
+        // Close any existing open assignment for this employee
         await ShiftAssignment.update(
-            {
-                isActive: false,
-                effectiveTo: new Date(data.effectiveFrom),
-            },
-            {
-                where: {
-                    employeeId: data.employeeId,
-                    companyId,
-                    isActive: true,
-                },
-            }
+            { isActive: false, effectiveTo: new Date(data.effectiveFrom) },
+            { where: { employeeId: data.employeeId, companyId, isActive: true } }
         );
 
         const assignment = await ShiftAssignment.create({
@@ -176,12 +155,8 @@ const assignShift = async ({ actor, data }) => {
         });
 
         await logAuditEvent({
-            userId: actor.id,
-            moduleName: 'ShiftAssignment',
-            actionType: 'CREATE',
-            oldData: null,
-            newData: assignment,
-            ipAddress: actor.ip,
+            userId: actor.id, moduleName: 'ShiftAssignment', actionType: 'CREATE',
+            oldData: null, newData: assignment, ipAddress: actor.ip,
         });
 
         return { success: true, statusCode: 201, data: assignment };
@@ -191,64 +166,59 @@ const assignShift = async ({ actor, data }) => {
     }
 };
 
-// ─── GET EMPLOYEE SHIFT ───────────────────────────────
-
-const getEmployeeShift = async ({ actor, employeeId, date }) => {
-    const companyId = getCompanyId(actor);
-
-    const assignment = await ShiftAssignment.findOne({
-        where: {
-            employeeId,
-            companyId,
-            isActive: true,
-            effectiveFrom: { [Op.lte]: date },
-            [Op.or]: [
-                { effectiveTo: null },
-                { effectiveTo: { [Op.gte]: date } },
-            ],
-        },
-        include: [{ model: Shift, as: 'shift' }],
-        order: [['effectiveFrom', 'DESC']],
-    });
-
-    if (!assignment?.shift) {
-        return {
-            startTime: '09:00',
-            endTime: '18:00',
-            graceMins: 15,
-            overtimeAfterMins: 0,
-            overtimeRateMultiplier: 1.5,
-            workDays: [1, 2, 3, 4, 5],
-            isNightShift: false,
-            isDefault: true,
-        };
-    }
-
-    return { ...assignment.shift.toJSON(), isDefault: false };
+const DEFAULT_SHIFT = {
+    startTime: '09:00',
+    endTime: '18:00',
+    graceMins: 15,
+    breakDurationMins: 0,
+    overtimeAfterMins: 0,
+    overtimeRateMultiplier: 1.5,
+    workDays: [1, 2, 3, 4, 5],
+    isNightShift: false,
+    isDefault: true,
 };
 
-// ─── SHIFT HISTORY ────────────────────────────────────
+const getEmployeeShift = async (employeeId, date) => {
+    try {
+        const assignment = await ShiftAssignment.findOne({
+            where: {
+                employeeId,
+                isActive: true,
+                effectiveFrom: { [Op.lte]: date },
+                [Op.or]: [
+                    { effectiveTo: null },
+                    { effectiveTo: { [Op.gte]: date } },
+                ],
+            },
+            include: [{ model: Shift, as: 'shift' }],
+            order: [['effectiveFrom', 'DESC']],
+        });
+
+        if (!assignment?.shift) return DEFAULT_SHIFT;
+
+        return { ...assignment.shift.toJSON(), isDefault: false };
+    } catch (err) {
+        logger.error({ event: 'GET_EMPLOYEE_SHIFT_FAILED', employeeId, error: err.message });
+        return DEFAULT_SHIFT;  // safe fallback — never crash a check-in/out
+    }
+};
+
+// ─── SHIFT HISTORY ────────────────────────────────────────────────────────────
 
 const getEmployeeShiftHistory = async ({ actor, employeeId }) => {
     const denied = checkPerm(actor, 'VIEW_SHIFTS');
     if (denied) return denied;
 
-    try {
-        const companyId = getCompanyId(actor);
+    const companyIdOrFail = requireCompanyId(actor);
+    if (typeof companyIdOrFail === 'object') return companyIdOrFail;
+    const companyId = companyIdOrFail;
 
+    try {
         const data = await ShiftAssignment.findAll({
             where: { employeeId, companyId },
             include: [
-                {
-                    model: Shift,
-                    as: 'shift',
-                    attributes: ['id', 'name', 'startTime', 'endTime'],
-                },
-                {
-                    model: User,
-                    as: 'assignor',
-                    attributes: ['id', 'firstName', 'lastName'],
-                },
+                { model: Shift, as: 'shift', attributes: ['id', 'name', 'startTime', 'endTime'] },
+                { model: User, as: 'assignor', attributes: ['id', 'firstName', 'lastName'] },
             ],
             order: [['effectiveFrom', 'DESC']],
         });
@@ -260,28 +230,24 @@ const getEmployeeShiftHistory = async ({ actor, employeeId }) => {
     }
 };
 
-// ─── SHIFT REPORT ─────────────────────────────────────
+// ─── SHIFT REPORT ─────────────────────────────────────────────────────────────
 
 const getShiftReport = async ({ actor }) => {
     const denied = checkPerm(actor, 'VIEW_SHIFT_REPORT');
     if (denied) return denied;
 
-    try {
-        const companyId = getCompanyId(actor);
+    const companyIdOrFail = requireCompanyId(actor);
+    if (typeof companyIdOrFail === 'object') return companyIdOrFail;
+    const companyId = companyIdOrFail;
 
+    try {
         const assignments = await ShiftAssignment.findAll({
             where: { isActive: true, companyId },
             include: [
                 {
                     model: User,
                     as: 'employee',
-                    attributes: [
-                        'id',
-                        'firstName',
-                        'lastName',
-                        'employeeCode',
-                        'department',
-                    ],
+                    attributes: ['id', 'firstName', 'lastName', 'employeeCode', 'department'],
                     where: { companyId },
                 },
                 {
@@ -300,6 +266,7 @@ const getShiftReport = async ({ actor }) => {
     }
 };
 
+// ─── METRICS ─────────────────────────────────────────────────────────────────
 
 const calcMetricsWithShift = (checkIn, checkOut, shift) => {
     const toMins = (t) => {
@@ -309,16 +276,17 @@ const calcMetricsWithShift = (checkIn, checkOut, shift) => {
 
     const cinM = toMins(checkIn);
     const coutM = toMins(checkOut);
-
-    const shiftStartM = toMins(shift.startTime);
-    const shiftEndM = toMins(shift.endTime);
+    const shiftStartM = toMins(shift.startTime ?? '09:00');
+    const shiftEndM = toMins(shift.endTime ?? '18:00');
+    const graceMins = shift.graceMins ?? 15;
+    const otAfter = shift.overtimeAfterMins ?? 0;
+    const otRate = shift.overtimeRateMultiplier ?? 1.5;
     const standardM = shiftEndM - shiftStartM;
 
     let workedMinutes = coutM - cinM;
 
-    if (shift.isNightShift && workedMinutes < 0) {
-        workedMinutes += 24 * 60;
-    }
+    // Any negative value means midnight was crossed (night shift)
+    if (workedMinutes < 0) workedMinutes += 24 * 60;
 
     if (workedMinutes <= 0) {
         throw Object.assign(
@@ -327,14 +295,9 @@ const calcMetricsWithShift = (checkIn, checkOut, shift) => {
         );
     }
 
-    const isLate = cinM > (shiftStartM + shift.graceMins);
+    const isLate = cinM > (shiftStartM + graceMins);
     const lateMinutes = isLate ? cinM - shiftStartM : 0;
-
-    const overtimeMinutes = Math.max(
-        0,
-        workedMinutes - standardM - (shift.overtimeAfterMins || 0)
-    );
-
+    const overtimeMinutes = Math.max(0, workedMinutes - standardM - otAfter);
     const hasOvertime = overtimeMinutes > 0;
 
     let status;
@@ -349,16 +312,12 @@ const calcMetricsWithShift = (checkIn, checkOut, shift) => {
         overtimeMinutes,
         hasOvertime,
         status,
-        overtimePay: hasOvertime
-            ? overtimeMinutes * shift.overtimeRateMultiplier
-            : 0,
+        overtimePay: hasOvertime ? overtimeMinutes * otRate : 0,
     };
 };
 
-
 module.exports = {
     createShift,
-    calcMetricsWithShift,
     updateShift,
     deleteShift,
     listShifts,
@@ -366,4 +325,5 @@ module.exports = {
     getEmployeeShift,
     getEmployeeShiftHistory,
     getShiftReport,
+    calcMetricsWithShift,
 };
