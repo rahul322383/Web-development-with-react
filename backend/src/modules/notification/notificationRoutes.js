@@ -4,15 +4,16 @@ const express = require('express');
 const router = express.Router();
 const authenticate = require('../../middleware/auth.middleware');
 const authorize = require('../../middleware/rbacMiddleware');
+const { apiLimiter, strictLimiter } = require('../../middleware/rateLimit.middleware');
 const notificationController = require('./notificationController');
 
 const ALL_ROLES = ['Employee', 'Manager', 'HR', 'Finance', 'Admin'];
 
-router.use(authenticate);
+router.use(authenticate, apiLimiter);
 
 router.get('/', authorize(...ALL_ROLES), notificationController.listMyNotifications);
 
-router.get('/unread-count', authorize(...ALL_ROLES), notificationController.getUnreadCount);
+router.get('/unread-count', authorize(...ALL_ROLES), strictLimiter, notificationController.getUnreadCount);
 
 router.get('/preferences', authorize(...ALL_ROLES), notificationController.getMyPreferences);
 
