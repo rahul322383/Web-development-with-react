@@ -1,20 +1,23 @@
+'use strict';
 
 const express = require('express');
 const requestLogger = require('./src/middleware/requestLogger');
-const sanitizeMiddleware = require('./src/middleware/sanitize.middleware'); // ✅ ADDED
+const sanitizeMiddleware = require('./src/middleware/sanitize.middleware');
 const errorMiddleware = require('./src/middleware/error.middleware');
 const { helmetMiddleware, corsMiddleware, globalLimiter } = require('./src/config/security');
 const env = require('./src/config/env');
 
 const healthRoutes = require('./src/routes/healthRoutes');
 const v1Routes = require('./src/routes/v1.routes');
-const AppError = require('./src/utils/AppError');
 
 // Swagger
 const swaggerUi = require('swagger-ui-express');
 const swaggerJsdoc = require('swagger-jsdoc');
 
 const app = express();
+
+/* 🔥 IMPORTANT FOR RATE LIMITER BEHIND PROXY */
+app.set('trust proxy', 1);
 
 /* -------------------- SWAGGER CONFIG -------------------- */
 
@@ -39,16 +42,21 @@ const swaggerSpec = swaggerJsdoc(swaggerOptions);
 
 /* -------------------- MIDDLEWARE -------------------- */
 
+// Security first
 app.use(helmetMiddleware);
 app.use(corsMiddleware);
-app.use(globalLimiter);
 
+// Apply rate limiter only to API routes
+app.use(env.API_PREFIX, globalLimiter);
+
+// Body parsers
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// 🔥 ADD THIS
+// Sanitize inputs
 app.use(sanitizeMiddleware);
 
+// Logger
 app.use(requestLogger);
 
 /* -------------------- API DOCS -------------------- */
@@ -74,6 +82,7 @@ app.use((req, res) => {
     ],
   });
 });
+
 /* -------------------- ERROR HANDLER -------------------- */
 
 app.use(errorMiddleware);
