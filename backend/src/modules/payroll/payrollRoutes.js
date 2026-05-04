@@ -6,51 +6,60 @@ const authenticate = require('../../middleware/auth.middleware');
 const authorize = require('../../middleware/rbacMiddleware');
 const ctrl = require('./payrollController');
 const validate = require('../../middleware/validate.middleware');
+const { analyticsLimiter, strictLimiter } = require('../../config/security');
+
 router.use(authenticate);
 
-// ─── Employee routes ──────────────────────────────────────────────────────────
+router.get(
+    '/my/history',
+    analyticsLimiter,
+    ctrl.getMyPayrollHistory
+);
 
-// My payroll history
-router.get('/my/history', ctrl.getMyPayrollHistory);
+router.get(
+    '/ytd',
+    analyticsLimiter,
+    ctrl.getYTDSummary
+);
 
-// My YTD summary (year-to-date)
-router.get('/ytd', ctrl.getYTDSummary);
+router.get(
+    '/:payrollId/payslip',
+    analyticsLimiter,
+    ctrl.downloadPayslip
+);
 
-// Download my payslip PDF
-router.get('/:payrollId/payslip', ctrl.downloadPayslip);
+router.get(
+    '/:payrollId/breakdown',
+    analyticsLimiter,
+    ctrl.getSalaryBreakdown
+);
 
-// Full breakdown of one payroll record
-router.get('/:payrollId/breakdown', ctrl.getSalaryBreakdown);
-
-// ─── HR / Admin routes ────────────────────────────────────────────────────────
-
-// Monthly team summary
 router.get(
     '/monthly-summary',
+    analyticsLimiter,
     authorize('Admin', 'HR', 'Finance', 'Manager'),
-    ctrl.getMonthlyPayrollSummary,
+    ctrl.getMonthlyPayrollSummary
 );
 
-// Employee's full payroll history (HR viewing any employee)
 router.get(
     '/employee/:employeeId',
+    analyticsLimiter,
     authorize('Admin', 'HR', 'Finance', 'Manager'),
-    ctrl.getPayrollByEmployee,
+    ctrl.getPayrollByEmployee
 );
 
-// Process payroll for all active employees
 router.post(
     '/process',
+    strictLimiter,
     authorize('Admin', 'HR', 'Finance', 'Manager'),
-    ctrl.processPayroll,
+    ctrl.processPayroll
 );
 
-// Lock a payroll record
 router.patch(
     '/lock',
+    strictLimiter,
     authorize('Admin', 'HR', 'Finance', 'Manager'),
-    ctrl.lockPayroll,
+    ctrl.lockPayroll
 );
 
 module.exports = router;
-
