@@ -45,7 +45,7 @@ const buildAudit = (event, userId, meta = {}) => ({
   event, userId, metadata: meta, timestamp: new Date().toISOString(),
 });
 
-// ✅ EXTRACTED — reusable company access guard
+
 const assertCompanyAccess = (actor, companyId) => {
   if (actor.companyId && Number(actor.companyId) !== Number(companyId)) {
     const err = new Error('Access denied to this company');
