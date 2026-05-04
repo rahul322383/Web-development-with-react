@@ -1,12 +1,19 @@
 'use strict';
 
-const express    = require('express');
-const router     = express.Router();
+const express = require('express');
+const router = express.Router();
 
 const authenticate = require('../../middleware/auth.middleware');
 const authorize = require('../../middleware/rbacMiddleware');
 
+const {
+  apiLimiter,
+  heavyLimiter,
+  adminLimiter,
+} = require('../../middleware/rateLimit.middleware');
+
 const ctrl = require('./attendance.controller');
+
 const {
   validateCheckIn,
   validateCheckOut,
@@ -16,67 +23,57 @@ const {
   validateOvertimeSummary,
 } = require('./attendance.validation');
 
-// All attendance routes require a valid JWT
+// auth required for all routes
 router.use(authenticate);
 
-// ─── Employee routes ──────────────────────────────────────────────────────────
-// Any authenticated user can check in/out and view their own records
+// ─── Employee (light + frequent usage) ─────────────────────────
+router.post('/checkin', apiLimiter, validateCheckIn, ctrl.checkIn);
 
-router.post(
-  '/checkin',
-  validateCheckIn,
-  ctrl.checkIn,
-);
+router.patch('/checkout', apiLimiter, validateCheckOut, ctrl.checkOut);
 
-router.patch(
-  '/checkout',
-  validateCheckOut,
-  ctrl.checkOut,
-);
+router.get('/my', apiLimiter, validateMyAttendance, ctrl.getMyAttendance);
 
-router.get(
-  '/my',
-  validateMyAttendance,
-  ctrl.getMyAttendance,
-);
-
-// ─── HR / Admin / Manager routes ─────────────────────────────────────────────
-
+// ─── Manager / HR / Admin (medium traffic) ────────────────────
 router.get(
   '/today',
+  apiLimiter,
   authorize('admin', 'hr', 'manager'),
   ctrl.getTodaySummary,
 );
 
+// heavy reporting → stricter limiter
 router.get(
   '/report',
+  heavyLimiter,
   authorize('admin', 'hr', 'manager'),
   validateTeamReport,
   ctrl.getTeamReport,
 );
 
+// overtime = heavy query
 router.get(
   '/overtime-summary',
+  heavyLimiter,
   authorize('admin', 'hr'),
   validateOvertimeSummary,
   ctrl.getOvertimeSummary,
 );
 
+// admin manual entry (sensitive)
 router.post(
   '/admin',
+  adminLimiter,
   authorize('admin', 'hr'),
   validateAdminRecord,
   ctrl.adminRecord,
 );
 
-// Parameterised last to avoid swallowing named routes above
+// ─── Must be LAST (param route trap fix) ───────────────────────
 router.get(
   '/:id',
+  apiLimiter,
   authorize('admin', 'hr', 'manager'),
   ctrl.getById,
 );
 
 module.exports = router;
-
-// ─── Register in your main app.js / server.js ────────────────────────────────
-
