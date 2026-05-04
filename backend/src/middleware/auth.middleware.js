@@ -44,10 +44,11 @@ const authenticate = async (req, res, next) => {
       email: payload.email,
       role: payload.role,
       primaryRole: payload.role,
-      companyId: payload.companyId, // ✅ ADD THIS LINE
+      companyId: payload.companyId,
       jti: payload.jti,
       exp: payload.exp
     };
+   
   
 
     next();
