@@ -1,101 +1,94 @@
 'use strict';
 
-// leaveRoutes.js
-// ─────────────────────────────────────────────────────────────
-// BUG FIX: Route ordering
-//
-// Express matches routes in registration order. Previously:
-//   GET  /:id           ← registered first
-//   PATCH /cancel/:id   ← "cancel" matched as :id param, never reached
-//
-// Fix: all specific named paths must be registered BEFORE /:id
-// ─────────────────────────────────────────────────────────────
-
 const express = require('express');
 const authenticate = require('../../middleware/auth.middleware');
 const authorize = require('../../middleware/rbacMiddleware');
 const validate = require('../../middleware/validate.middleware');
+const { apiLimiter, writeLimiter, strictLimiter } = require('../../middleware/rateLimit.middleware');
 const ctrl = require('./leaveController');
 const { applyLeaveSchema, managerDecisionSchema } = require('./leaveValidation');
 
 const router = express.Router();
 
-router.use(authenticate);
+router.use(authenticate, apiLimiter);
 
-// ── Collection routes (no :id param) ─────────────────────────
 router.post(
     '/',
+    writeLimiter,
     authorize('Employee', 'Manager', 'HR', 'Finance', 'Admin'),
     validate(applyLeaveSchema),
-    ctrl.applyLeave,
+    ctrl.applyLeave
 );
 
 router.get(
     '/my',
+    strictLimiter,
     authorize('Employee', 'Manager', 'HR', 'Finance', 'Admin'),
-    ctrl.listMyLeaves,
+    ctrl.listMyLeaves
 );
 
 router.get(
     '/balance',
+    strictLimiter,
     authorize('Employee', 'Manager', 'HR', 'Finance', 'Admin'),
-    ctrl.getLeaveBalance,
+    ctrl.getLeaveBalance
 );
 
 router.get(
     '/pending-manager',
+    strictLimiter,
     authorize('Manager', 'Admin', 'HR'),
-    ctrl.listPendingLeaves,
+    ctrl.listPendingLeaves
 );
 
 router.get(
     '/team',
+    strictLimiter,
     authorize('Manager', 'Admin', 'HR'),
-    ctrl.listTeamLeaves,
+    ctrl.listTeamLeaves
 );
 
 router.get(
     '/dashboard-summary',
+    strictLimiter,
     authorize('Employee', 'Manager', 'HR', 'Finance', 'Admin'),
-    ctrl.getDashboardSummary,
+    ctrl.getDashboardSummary
 );
 
 router.get(
     '/stats',
+    strictLimiter,
     authorize('Admin', 'HR', 'Manager'),
-    ctrl.getLeaveStats,
+    ctrl.getLeaveStats
 );
 
 router.post(
     '/reset-balances',
+    writeLimiter,
     authorize('Admin'),
-    ctrl.resetLeaveBalances,
+    ctrl.resetLeaveBalances
 );
-
-// ── Item routes (:id param) ───────────────────────────────────
-// IMPORTANT: these must come AFTER all named-segment routes above.
 
 router.patch(
     '/:id/review',
+    writeLimiter,
     authorize('Manager', 'Admin', 'HR'),
     validate(managerDecisionSchema),
-    ctrl.reviewLeave,
+    ctrl.reviewLeave
 );
 
-// FIX: was PATCH /cancel/:id — shadowed by GET /:id.
-// Changed to PATCH /:id/cancel so the pattern is consistent
-// and won't be swallowed by the /:id GET handler.
 router.patch(
     '/:id/cancel',
+    writeLimiter,
     authorize('Employee', 'Manager', 'HR', 'Finance', 'Admin'),
-    ctrl.cancelLeave,
+    ctrl.cancelLeave
 );
 
-// Generic single-record getter — MUST be last among /:id routes
 router.get(
     '/:id',
+    strictLimiter,
     authorize('Employee', 'Manager', 'HR', 'Finance', 'Admin'),
-    ctrl.getLeaveById,
+    ctrl.getLeaveById
 );
 
 module.exports = router;
