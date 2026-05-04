@@ -55,7 +55,10 @@ exports.deleteShift = async (req, res) => {
 exports.listShifts = async (req, res) => {
     const result = await shiftService.listShifts({
         actor: req.user,
+        company_id: req.user.companyId,
+
     });
+
 
     return handleResponse(res, result);
 };
