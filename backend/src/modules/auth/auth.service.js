@@ -9,6 +9,13 @@ const { buildAccessToken, buildRefreshToken, verifyRefreshToken } = require('../
 const authRepository = require('./authRepository');
 const { sendNotification, sendAuditLog } = require('../../config/socket');
 const { User, Role } = require('../../database/initModels');
+const { autoCheckIn } = require('../automation/autoAttendance.service');
+const { autoCheckOut } = require('../automation/autoAttendance.service');
+
+const { assignShiftOnRegister } = require('../automation/shiftAssignment.service');
+const { ensureLeaveBalance } = require('../automation/leaveBalance.service');
+
+
 
 const toExpiryDate = (duration) => {
   const match = /^(\d+)([mhd])$/.exec(duration);
@@ -71,10 +78,121 @@ const normalizeUserPayload = (user) => ({
   id: user.id,
   email: user.email,
   fullName: `${user.firstName} ${user.lastName}`,
-  primaryRole: user.role?.name ?? 'Employee',
-  company_id: user.company_id ?? user.companyId ?? null,
-   
+  primaryRole: user.role?.name || 'Employee',
+  companyId: user.companyId || null, // ✅ ALWAYS camelCase
 });
+
+
+
+// const register = async (payload, req = null) => {
+//   const { ip, userAgent } = extractRequestMeta(req);
+
+//   try {
+//     // ✅ check existing user
+//     const existingUser = await authRepository.findUserByEmail(payload.email);
+//     if (existingUser) {
+//       return { success: false, message: 'Email already registered', statusCode: 409 };
+//     }
+
+//     // ✅ validate manager
+//     if (payload.managerId) {
+//       const manager = await authRepository.findUserById(payload.managerId);
+//       if (!manager) {
+//         return { success: false, message: 'Invalid managerId: User not found', statusCode: 400 };
+//       }
+
+//       const managerRole = manager.role?.name;
+//       if (!managerRole || managerRole.toLowerCase() !== 'manager') {
+//         return { success: false, message: 'Selected managerId is not a valid manager', statusCode: 400 };
+//       }
+//     }
+
+//     let createdUser;
+
+//     createdUser = await sequelize.transaction(async (transaction) => {
+//       // 🔒 hash password
+//       const passwordHash = await bcrypt.hash(payload.password, Number(env.BCRYPT_ROUNDS) || 10);
+
+//       // ✅ normalize role (case-insensitive)
+//       const normalizedRole = payload.role
+//         ? payload.role.trim().toLowerCase()
+//         : 'employee';
+
+//       // 🔍 find role (case-insensitive query)
+//       let role = await Role.findOne({
+//         where: sequelize.where(
+//           sequelize.fn('LOWER', sequelize.col('name')),
+//           normalizedRole
+//         ),
+//         transaction
+//       });
+
+//       // 🔥 AUTO CREATE ROLE IF NOT EXISTS
+//       if (!role) {
+//         const formattedName =
+//           normalizedRole.charAt(0).toUpperCase() + normalizedRole.slice(1);
+
+//         role = await Role.create({ name: formattedName }, { transaction });
+//       }
+
+      
+
+//       // 🆔 generate employee code
+//       const employeeCode = payload.employeeCode || `EMP${Date.now()}`;
+
+//       // ✅ create user (IMPORTANT FIX HERE)
+//       const user = await authRepository.createUser({
+//         employeeCode,
+//         firstName: payload.firstName,
+//         lastName: payload.lastName,
+//         email: payload.email,
+//         passwordHash,
+//         roleId: role.id, // ✅ FIXED
+//         managerId: payload.managerId ?? null,
+//         department: payload.department ?? null,
+//         baseSalary: payload.baseSalary ?? 0,
+//       }, transaction);
+
+//       return user;
+//     });
+
+//     // 🔔 notification
+//     sendNotification(createdUser.id, {
+//       event: 'USER_REGISTERED',
+//       role: payload.role,
+//       timestamp: new Date().toISOString(),
+//     });
+
+//     // 📝 audit log
+//     sendAuditLog(buildAuditLog('USER_REGISTRATION', createdUser.id, {
+//       email: payload.email,
+//       role: payload.role,
+//       managerId: payload.managerId ?? null,
+//       ip,
+//       userAgent,
+//     }));
+
+//     // 🎯 return user + tokens
+//     return toPublicResult(await issueTokensForUser(createdUser, req));
+
+//   } catch (error) {
+//     logger.error({
+//       event: 'REGISTER_FAILED',
+//       email: payload.email,
+//       ip,
+//       userAgent,
+//       error: error.message,
+//       stack: error.stack,
+//     });
+
+//     return {
+//       success: false,
+//       message: error.message || 'Registration failed',
+//       statusCode: error.statusCode || 500
+//     };
+//   }
+// };
+
 
 
 
@@ -83,7 +201,6 @@ const register = async (payload, req = null) => {
   const { ip, userAgent } = extractRequestMeta(req);
 
   try {
-    // ✅ check existing user
     const existingUser = await authRepository.findUserByEmail(payload.email);
     if (existingUser) {
       return { success: false, message: 'Email already registered', statusCode: 409 };
@@ -92,29 +209,30 @@ const register = async (payload, req = null) => {
     // ✅ validate manager
     if (payload.managerId) {
       const manager = await authRepository.findUserById(payload.managerId);
-      if (!manager) {
-        return { success: false, message: 'Invalid managerId: User not found', statusCode: 400 };
-      }
-
-      const managerRole = manager.role?.name;
-      if (!managerRole || managerRole.toLowerCase() !== 'manager') {
-        return { success: false, message: 'Selected managerId is not a valid manager', statusCode: 400 };
+      if (!manager || manager.role?.name.toLowerCase() !== 'manager') {
+        return { success: false, message: 'Invalid managerId', statusCode: 400 };
       }
     }
 
     let createdUser;
 
-    createdUser = await sequelize.transaction(async (transaction) => {
-      // 🔒 hash password
-      const passwordHash = await bcrypt.hash(payload.password, Number(env.BCRYPT_ROUNDS) || 10);
+    await sequelize.transaction(async (transaction) => {
 
-      // ✅ normalize role (case-insensitive)
-      const normalizedRole = payload.role
-        ? payload.role.trim().toLowerCase()
-        : 'employee';
+      const passwordHash = await bcrypt.hash(
+        payload.password,
+        Number(env.BCRYPT_ROUNDS) || 10
+      );
 
-      // 🔍 find role (case-insensitive query)
-      let role = await Role.findOne({
+      const normalizedRole = payload.role?.trim().toLowerCase() || 'employee';
+
+      // ✅ restrict roles (SECURITY FIX)
+      const allowedRoles = ['employee', 'manager', 'hr', 'admin'];
+
+      if (!allowedRoles.includes(normalizedRole)) {
+        throw new Error('Invalid role');
+      }
+
+      const role = await Role.findOne({
         where: sequelize.where(
           sequelize.fn('LOWER', sequelize.col('name')),
           normalizedRole
@@ -122,33 +240,22 @@ const register = async (payload, req = null) => {
         transaction
       });
 
-      // 🔥 AUTO CREATE ROLE IF NOT EXISTS
-      if (!role) {
-        const formattedName =
-          normalizedRole.charAt(0).toUpperCase() + normalizedRole.slice(1);
+      if (!role) throw new Error('Role not configured');
 
-        role = await Role.create({ name: formattedName }, { transaction });
-      }
-
-      
-
-      // 🆔 generate employee code
       const employeeCode = payload.employeeCode || `EMP${Date.now()}`;
 
-      // ✅ create user (IMPORTANT FIX HERE)
-      const user = await authRepository.createUser({
+      createdUser = await authRepository.createUser({
         employeeCode,
         firstName: payload.firstName,
         lastName: payload.lastName,
         email: payload.email,
         passwordHash,
-        roleId: role.id, // ✅ FIXED
+        roleId: role.id,
         managerId: payload.managerId ?? null,
         department: payload.department ?? null,
         baseSalary: payload.baseSalary ?? 0,
+        companyId: payload.companyId, // ✅ IMPORTANT
       }, transaction);
-
-      return user;
     });
 
     // 🔔 notification
@@ -167,7 +274,13 @@ const register = async (payload, req = null) => {
       userAgent,
     }));
 
-    // 🎯 return user + tokens
+    // ✅ SAFE AUTOMATION (AFTER SUCCESS)
+    assignShiftOnRegister(createdUser.id, payload.department)
+      .catch(err => logger.error({ event: 'SHIFT_ASSIGN_FAILED', error: err.message }));
+
+    ensureLeaveBalance(createdUser.id, new Date().getFullYear())
+      .catch(err => logger.error({ event: 'LEAVE_INIT_FAILED', error: err.message }));
+
     return toPublicResult(await issueTokensForUser(createdUser, req));
 
   } catch (error) {
@@ -177,7 +290,6 @@ const register = async (payload, req = null) => {
       ip,
       userAgent,
       error: error.message,
-      stack: error.stack,
     });
 
     return {
@@ -194,50 +306,87 @@ const register = async (payload, req = null) => {
 const login = async ({ email, password }, req = null) => {
   const { ip, userAgent } = extractRequestMeta(req);
 
-  const emitEvent = (event, userId, meta) => {
-    sendAuditLog(buildAuditLog(event, userId, { ...meta }));
-  };
-
   try {
     const user = await authRepository.findUserByEmail(email);
-    
 
-    if (!user) return { success: false, message: 'Invalid credentials', statusCode: 401 };
-
-    if (!user.isActive) {
-      emitEvent('LOGIN_FAILED', user.id, { email, ip, userAgent, reason: 'inactive' });
+    if (!user || !user.isActive) {
       return { success: false, message: 'Invalid credentials', statusCode: 401 };
     }
-
-    if (!user.passwordHash) throw new Error('Password hash missing in DB');
 
     const isMatch = await bcrypt.compare(password, user.passwordHash);
 
     if (!isMatch) {
-      emitEvent('LOGIN_FAILED', user.id, { email, ip, userAgent, reason: 'wrong_password' });
       return { success: false, message: 'Invalid credentials', statusCode: 401 };
     }
 
     const tokens = await issueTokensForUser(user, req);
 
-    emitEvent('LOGIN_SUCCESS', user.id, { email, ip, userAgent });
+    sendAuditLog(buildAuditLog('LOGIN_SUCCESS', user.id, { ip, userAgent }));
+
+    // 🔥 NON BLOCKING AUTO CHECKIN
+    autoCheckIn({ userId: user.id, ip }).catch(() => { });
 
     return toPublicResult(tokens);
 
   } catch (error) {
-  
     logger.error({
       event: 'LOGIN_FAILED',
       email,
-      ip,
-      userAgent,
       error: error.message,
-      stack: error.stack,
-      requestId: req?.requestId,
     });
+
     return { success: false, message: 'Login failed', statusCode: 500 };
   }
 };
+
+
+// const login = async ({ email, password }, req = null) => {
+//   const { ip, userAgent } = extractRequestMeta(req);
+
+//   const emitEvent = (event, userId, meta) => {
+//     sendAuditLog(buildAuditLog(event, userId, { ...meta }));
+//   };
+
+//   try {
+//     const user = await authRepository.findUserByEmail(email);
+    
+
+//     if (!user) return { success: false, message: 'Invalid credentials', statusCode: 401 };
+
+//     if (!user.isActive) {
+//       emitEvent('LOGIN_FAILED', user.id, { email, ip, userAgent, reason: 'inactive' });
+//       return { success: false, message: 'Invalid credentials', statusCode: 401 };
+//     }
+
+//     if (!user.passwordHash) throw new Error('Password hash missing in DB');
+
+//     const isMatch = await bcrypt.compare(password, user.passwordHash);
+
+//     if (!isMatch) {
+//       emitEvent('LOGIN_FAILED', user.id, { email, ip, userAgent, reason: 'wrong_password' });
+//       return { success: false, message: 'Invalid credentials', statusCode: 401 };
+//     }
+
+//     const tokens = await issueTokensForUser(user, req);
+
+//     emitEvent('LOGIN_SUCCESS', user.id, { email, ip, userAgent });
+
+//     return toPublicResult(tokens);
+
+//   } catch (error) {
+  
+//     logger.error({
+//       event: 'LOGIN_FAILED',
+//       email,
+//       ip,
+//       userAgent,
+//       error: error.message,
+//       stack: error.stack,
+//       requestId: req?.requestId,
+//     });
+//     return { success: false, message: 'Login failed', statusCode: 500 };
+//   }
+// };
 
 const refreshSession = async (rawRefreshToken, req = null) => {
   const { ip, userAgent } = extractRequestMeta(req);
@@ -328,25 +477,70 @@ const refreshSession = async (rawRefreshToken, req = null) => {
   return toPublicResult(newTokens);
 };
 
+// const logout = async ({ refreshToken }, req = null) => {
+//   const { ip, userAgent } = extractRequestMeta(req);
+
+//   if (refreshToken) {
+//     try {
+//       const payload = verifyRefreshToken(refreshToken);
+//       await authRepository.revokeRefreshToken({ tokenId: payload.tokenId });
+//       sendNotification(payload.sub, { event: 'LOGOUT_SUCCESS', timestamp: new Date().toISOString() });
+//       sendAuditLog(buildAuditLog('USER_LOGOUT', payload.sub, { ip, userAgent }));
+//     } catch (err) {
+//       logger.error({ event: 'LOGOUT_REVOCATION_FAILED', error: err.message, requestId: req?.requestId });
+//     }
+//   }
+
+//   return { success: true, message: 'Logged out successfully' };
+// };
+
+
+
+
 const logout = async ({ refreshToken }, req = null) => {
   const { ip, userAgent } = extractRequestMeta(req);
 
-  if (refreshToken) {
-    try {
-      const payload = verifyRefreshToken(refreshToken);
-      await authRepository.revokeRefreshToken({ tokenId: payload.tokenId });
-      sendNotification(payload.sub, { event: 'LOGOUT_SUCCESS', timestamp: new Date().toISOString() });
-      sendAuditLog(buildAuditLog('USER_LOGOUT', payload.sub, { ip, userAgent }));
-    } catch (err) {
-      logger.error({ event: 'LOGOUT_REVOCATION_FAILED', error: err.message, requestId: req?.requestId });
-    }
+  if (!refreshToken) {
+    return { success: true, message: 'Logged out successfully' };
+  }
+
+  try {
+    const payload = verifyRefreshToken(refreshToken);
+
+    // ✅ revoke token first
+    await authRepository.revokeRefreshToken({ tokenId: payload.tokenId });
+
+    sendNotification(payload.sub, {
+      event: 'LOGOUT_SUCCESS',
+      timestamp: new Date().toISOString(),
+    });
+
+    sendAuditLog(
+      buildAuditLog('USER_LOGOUT', payload.sub, { ip, userAgent })
+    );
+
+    // ✅ AUTO CHECK-OUT (SAFE + NON-BLOCKING)
+    autoCheckOut({
+      userId: payload.sub,
+      ip,
+    }).catch((err) => {
+      logger.error({
+        event: 'AUTO_CHECKOUT_FAILED',
+        userId: payload.sub,
+        error: err.message,
+      });
+    });
+
+  } catch (err) {
+    logger.error({
+      event: 'LOGOUT_FAILED',
+      error: err.message,
+      requestId: req?.requestId,
+    });
   }
 
   return { success: true, message: 'Logged out successfully' };
 };
-
-
-
 
 const getCurrentUser = async (userId) => {
   try {
