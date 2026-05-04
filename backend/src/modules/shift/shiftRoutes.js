@@ -10,6 +10,9 @@ const authorize = require('../../middleware/rbacMiddleware');
 const shiftCtrl = require('./shift.controller');
 const validate = require('../../middleware/validate.middleware');
 
+// 🔥 ADD LIMITERS
+const { analyticsLimiter, strictLimiter } = require('../../config/security');
+
 // ✅ Use shared validation
 const {
     shiftSchema,
@@ -19,33 +22,35 @@ const {
 
 router.use(authenticate);
 
-
-
 // ── SHIFT CONFIG ROUTES ───────────────────────────────
 
 router.post(
     '/',
-    authorize('Admin', 'HR','Manager', 'Finance', 'Employee'),
+    strictLimiter, // 🔥 create shift = sensitive
+    authorize('Admin', 'HR', 'Manager', 'Finance', 'Employee'),
     validate(shiftSchema),
     shiftCtrl.createShift
 );
 
 router.get(
     '/',
-    authorize('Admin', 'HR', 'Manager', 'Employee'),
+    analyticsLimiter, // 🔥 frequent listing
+    authorize('Admin', 'HR', 'Manager', 'Finance', 'Employee'),
     shiftCtrl.listShifts
 );
 
 router.put(
     '/:id',
-    authorize('Admin', 'HR'),
+    strictLimiter, // 🔥 update shift = sensitive
+    authorize('Admin', 'HR', 'Manager', 'Finance', 'Employee'),
     validate(shiftSchema),
     shiftCtrl.updateShift
 );
 
 router.delete(
     '/:id',
-    authorize('Admin', 'HR'),
+    strictLimiter, // 🔥 destructive action
+    authorize('Admin', 'HR', 'Manager', 'Finance', 'Employee'),
     shiftCtrl.deleteShift
 );
 
@@ -53,14 +58,16 @@ router.delete(
 
 router.post(
     '/assign',
-    authorize('Admin', 'HR', 'Manager'),
+    strictLimiter, // 🔥 assignment changes data heavily
+    authorize('Admin', 'HR', 'Manager', 'Finance', 'Employee'),
     validate(assignShiftSchema),
     shiftCtrl.assignShift
 );
 
 router.get(
-    '/employee/:employeeId/history',
-    authorize('Admin', 'HR', 'Manager'),
+    '/history/:employeeId',
+    analyticsLimiter, // 🔥 read-heavy endpoint
+    authorize('Admin', 'HR', 'Manager', 'Finance', 'Employee'),
     shiftCtrl.getEmployeeShiftHistory
 );
 
@@ -68,7 +75,8 @@ router.get(
 
 router.get(
     '/report',
-    authorize('Admin', 'HR', 'Manager'),
+    analyticsLimiter, // 🔥 report queries are heavy
+    authorize('Admin', 'HR', 'Manager', 'Finance', 'Employee'),
     validate(shiftReportQuerySchema, 'query'),
     shiftCtrl.getShiftReport
 );
