@@ -1,16 +1,13 @@
-
 'use strict';
-const { requirePermission } = require('../../utils/Permissions'); 
-
 
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 
-const validate = require('../../middleware/validate.middleware');
 const authenticate = require('../../middleware/auth.middleware');
-const authorize = require('../../middleware/rbacMiddleware');
-
+const validate = require('../../middleware/validate.middleware');
+const { apiLimiter, writeLimiter, strictLimiter } = require('../../middleware/rateLimit.middleware');
+const { requirePermission } = require('../../utils/Permissions');
 
 const {
   createCompanySchema,
@@ -19,16 +16,26 @@ const {
 } = require('./companyValidation');
 
 const {
-  createCompany, getCompany, updateCompany,
-  deactivateCompany, reactivateCompany, listCompanies,
-  uploadLogo, deleteLogo,
-  getSettings, updateSettings,
-  getStats, getDashboard,
-  getCompanyUsers, addUser, removeUser, updateUserRole,
-  updateSubscription, getSubscriptionStatus,
+  createCompany,
+  getCompany,
+  updateCompany,
+  deactivateCompany,
+  reactivateCompany,
+  listCompanies,
+  uploadLogo,
+  deleteLogo,
+  getSettings,
+  updateSettings,
+  getStats,
+  getDashboard,
+  getCompanyUsers,
+  addUser,
+  removeUser,
+  updateUserRole,
+  updateSubscription,
+  getSubscriptionStatus,
   sendNotification,
 } = require('./companyController');
-
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -39,117 +46,49 @@ const upload = multer({
     cb(new Error('Only JPEG, PNG, WEBP or SVG images are allowed'));
   },
 });
-router.use(authenticate);
 
-// ── Collection ────────────────────────────────────────────────
+router.use(authenticate, apiLimiter);
+
 router.route('/')
-  .get(
-    requirePermission('LIST_COMPANIES'),
-    listCompanies
-  )
-  .post(
-    requirePermission('CREATE_COMPANY'),
-    validate(createCompanySchema),
-    createCompany
-  );
+  .get(strictLimiter, requirePermission('LIST_COMPANIES'), listCompanies)
+  .post(writeLimiter, requirePermission('CREATE_COMPANY'), validate(createCompanySchema), createCompany);
 
-// ── Single company ────────────────────────────────────────────
 router.route('/:id')
-  .get(
-    requirePermission('VIEW_COMPANY'),
-    getCompany
-  )
-  .patch(
-    requirePermission('UPDATE_COMPANY'),
-    validate(updateCompanySchema),
-    updateCompany
-  )
-  .delete(
-    requirePermission('DELETE_COMPANY'),
-    deactivateCompany
-  );
+  .get(strictLimiter, requirePermission('VIEW_COMPANY'), getCompany)
+  .patch(writeLimiter, requirePermission('UPDATE_COMPANY'), validate(updateCompanySchema), updateCompany)
+  .delete(writeLimiter, requirePermission('DELETE_COMPANY'), deactivateCompany);
 
-// ── Reactivate ────────────────────────────────────────────────
 router.patch(
   '/:id/reactivate',
+  writeLimiter,
   requirePermission('REACTIVATE_COMPANY'),
   reactivateCompany
 );
 
-// ── Logo ──────────────────────────────────────────────────────
 router.route('/:id/logo')
-  .post(
-    requirePermission('UPLOAD_COMPANY_LOGO'),
-    upload.single('logo'),
-    uploadLogo
-  )
-  .delete(
-    requirePermission('DELETE_COMPANY_LOGO'),
-    deleteLogo
-  );
+  .post(writeLimiter, requirePermission('UPLOAD_COMPANY_LOGO'), upload.single('logo'), uploadLogo)
+  .delete(writeLimiter, requirePermission('DELETE_COMPANY_LOGO'), deleteLogo);
 
-// ── Settings ──────────────────────────────────────────────────
 router.route('/:id/settings')
-  .get(
-    requirePermission('VIEW_COMPANY_SETTINGS'),
-    getSettings
-  )
-  .patch(
-    requirePermission('UPDATE_COMPANY_SETTINGS'),
-    validate(updateSettingsSchema),
-    updateSettings
-  );
+  .get(strictLimiter, requirePermission('VIEW_COMPANY_SETTINGS'), getSettings)
+  .patch(writeLimiter, requirePermission('UPDATE_COMPANY_SETTINGS'), validate(updateSettingsSchema), updateSettings);
 
-// ── Stats + Dashboard ─────────────────────────────────────────
-router.get(
-  '/:id/stats',
-  requirePermission('VIEW_COMPANY_STATS'),
-  getStats
-);
+router.get('/:id/stats', strictLimiter, requirePermission('VIEW_COMPANY_STATS'), getStats);
 
-router.get(
-  '/:id/dashboard',
-  requirePermission('VIEW_COMPANY_DASHBOARD'),
-  getDashboard
-);
+router.get('/:id/dashboard', strictLimiter, requirePermission('VIEW_COMPANY_DASHBOARD'), getDashboard);
 
-// ── Users ─────────────────────────────────────────────────────
 router.route('/:id/users')
-  .get(
-    requirePermission('VIEW_COMPANY_USERS'),
-    getCompanyUsers
-  )
-  .post(
-    requirePermission('ADD_COMPANY_USER'),
-    addUser
-  );
+  .get(strictLimiter, requirePermission('VIEW_COMPANY_USERS'), getCompanyUsers)
+  .post(writeLimiter, requirePermission('ADD_COMPANY_USER'), addUser);
 
 router.route('/:id/users/:userId')
-  .delete(
-    requirePermission('REMOVE_COMPANY_USER'),
-    removeUser
-  )
-  .patch(
-    requirePermission('UPDATE_USER_ROLE'),
-    updateUserRole
-  );
+  .delete(writeLimiter, requirePermission('REMOVE_COMPANY_USER'), removeUser)
+  .patch(writeLimiter, requirePermission('UPDATE_USER_ROLE'), updateUserRole);
 
-// ── Subscription ──────────────────────────────────────────────
 router.route('/:id/subscription')
-  .get(
-    requirePermission('VIEW_SUBSCRIPTION'),
-    getSubscriptionStatus
-  )
-  .patch(
-    requirePermission('UPDATE_SUBSCRIPTION'),
-    updateSubscription
-  );
+  .get(strictLimiter, requirePermission('VIEW_SUBSCRIPTION'), getSubscriptionStatus)
+  .patch(writeLimiter, requirePermission('UPDATE_SUBSCRIPTION'), updateSubscription);
 
-// ── Notifications ─────────────────────────────────────────────
-router.post(
-  '/:id/notify',
-  requirePermission('SEND_COMPANY_NOTIFICATION'),
-  sendNotification
-);
+router.post('/:id/notify', writeLimiter, requirePermission('SEND_COMPANY_NOTIFICATION'), sendNotification);
 
 module.exports = router;
