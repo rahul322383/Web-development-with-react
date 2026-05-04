@@ -16,8 +16,11 @@ const checkIn = async (req, res) => {
     const employeeId = getEmployeeId(req, res);
     if (!employeeId) return;
 
+    const companyId = req.user.companyId; // ✅ GET FROM JWT
+
     const record = await attendanceService.checkIn({
       employeeId,
+      companyId, // ✅ PASS IT
       checkInTime: req.body.checkInTime,
       ip: req.ip,
     });
@@ -29,8 +32,12 @@ const checkIn = async (req, res) => {
         : 'Checked in successfully.',
       data: record,
     });
+
   } catch (err) {
-    return res.status(err.statusCode || 500).json({ success: false, message: err.message });
+    return res.status(err.statusCode || 500).json({
+      success: false,
+      message: err.message
+    });
   }
 };
 
