@@ -97,6 +97,11 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       field: 'check_out_ip',
     },
+    companyId: {
+      type: DataTypes.BIGINT,
+      allowNull: false,
+      field: 'company_id',
+    },
 
     approvedBy: {
       type: DataTypes.BIGINT.UNSIGNED,
@@ -126,18 +131,7 @@ module.exports = (sequelize, DataTypes) => {
     ],
   });
 
-  // 🔥 Associations (VERY IMPORTANT)
-  Attendance.associate = (models) => {
-    Attendance.belongsTo(models.User, {
-      foreignKey: 'employee_id',
-      as: 'employee',
-    });
-
-    Attendance.belongsTo(models.User, {
-      foreignKey: 'approved_by',
-      as: 'approver',
-    });
-  };
+ 
 
   return Attendance;
 };
