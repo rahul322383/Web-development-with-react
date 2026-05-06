@@ -18,6 +18,7 @@ const buildAccessToken = (user) => {
   );
 
 
+
   return { token, jti };
 };
 
