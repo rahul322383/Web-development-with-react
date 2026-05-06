@@ -119,8 +119,8 @@ const PERMISSIONS = {
     // ── NEW: Shift Management ────────────────────────────────────────────────
     VIEW_SHIFTS: ['Admin', 'HR', 'Manager', 'Employee', 'Finance'],
     MANAGE_SHIFTS: ['Admin', 'HR', 'Manager', 'Employee', 'Finance'],
-    ASSIGN_SHIFT: ['Admin', 'HR', 'Manager'],
-    VIEW_SHIFT_REPORT: ['Admin', 'HR', 'Manager'],
+    ASSIGN_SHIFT: ['Admin', 'HR', 'Manager', 'Employee', 'Finance'],
+    VIEW_SHIFT_REPORT: ['Admin', 'HR', 'Manager', 'Employee', 'Finance'],
 
     // ── NEW: Tax / Generated Documents ───────────────────────────────────────
     GENERATE_FORM16: ['Admin', 'HR', 'Finance'],
