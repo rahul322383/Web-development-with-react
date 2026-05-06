@@ -1,25 +1,18 @@
 // Dashboard.jsx
-import React, { useEffect, useState, useMemo, useCallback } from "react";
+import React, {
+  useEffect,
+  useState,
+  useMemo,
+  useCallback,
+  useRef,
+  memo,
+} from "react";
 import { motion } from "framer-motion";
 import {
-  Users,
-  Calendar,
-  Receipt,
-  DollarSign,
-  TrendingUp,
-  Clock,
-  HelpCircle,
-  RefreshCw,
-  Download,
-  CalendarDays,
-  ChevronRight,
-  UserPlus,
-  Briefcase,
-  Activity,
-  AlertCircle,
-  CheckCircle,
-  XCircle,
-  Clock3
+  Users, Calendar, Receipt, DollarSign, TrendingUp, Clock,
+  HelpCircle, RefreshCw, Download, CalendarDays, ChevronRight,
+  UserPlus, Briefcase, Activity, AlertCircle, CheckCircle,
+  XCircle, Clock3,
 } from "lucide-react";
 import { userApi } from "../api/userApi";
 import { toast } from "sonner";
@@ -27,160 +20,275 @@ import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { StatCard } from "../components/ui/StatCardSkeleton";
 
-// ========== Chart component (unchanged) ==========
-const DashboardChart = ({ type = "bar", data, loading, height = 300 }) => {
-  const canvasRef = React.useRef(null);
+/* ----------------------------- Constants ----------------------------- */
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+const CURRENCY_FORMATTER = new Intl.NumberFormat("en-IN", {
+  style: "currency",
+  currency: "INR",
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0,
+});
+const NUMBER_FORMATTER = new Intl.NumberFormat("en-IN");
+
+const formatCurrency = (n) => CURRENCY_FORMATTER.format(Number(n) || 0);
+const formatNumber = (n) => NUMBER_FORMATTER.format(Number(n) || 0);
+
+/* ----------------------------- Chart ----------------------------- */
+const DashboardChart = memo(({ type = "bar", data, loading, height = 300 }) => {
+  const canvasRef = useRef(null);
+  const rafRef = useRef(null);
 
   useEffect(() => {
-    if (!canvasRef.current || loading || !data || !data.labels) return;
+    if (loading || !data?.labels?.length || !canvasRef.current) return;
 
     const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext("2d");
     const container = canvas.parentElement;
+    if (!container) return;
 
-    canvas.width = container.clientWidth;
-    canvas.height = height;
+    const draw = () => {
+      const dpr = window.devicePixelRatio || 1;
+      const cssWidth = container.clientWidth;
+      const cssHeight = height;
 
-    const drawChart = () => {
-      const width = canvas.width;
-      const chartHeight = canvas.height - 60;
+      // High-DPI aware sizing
+      canvas.width = cssWidth * dpr;
+      canvas.height = cssHeight * dpr;
+      canvas.style.width = `${cssWidth}px`;
+      canvas.style.height = `${cssHeight}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
       const padding = { top: 20, right: 20, bottom: 40, left: 60 };
+      const chartHeight = cssHeight - 60;
+      const dataset = data.datasets[0];
+      const values = dataset.data || [];
+      const maxValue = Math.max(...values, 1);
 
-      ctx.clearRect(0, 0, width, canvas.height);
+      ctx.clearRect(0, 0, cssWidth, cssHeight);
 
       // Grid
-      ctx.strokeStyle = '#e2e8f0';
+      ctx.strokeStyle = "#e2e8f0";
       ctx.lineWidth = 0.5;
       for (let i = 0; i <= 5; i++) {
         const y = padding.top + (chartHeight / 5) * i;
         ctx.beginPath();
         ctx.moveTo(padding.left, y);
-        ctx.lineTo(width - padding.right, y);
+        ctx.lineTo(cssWidth - padding.right, y);
         ctx.stroke();
       }
 
-      const maxValue = Math.max(...data.datasets[0].data, 1);
-      const barWidth = (width - padding.left - padding.right) / data.labels.length * 0.7;
-      const barSpacing = (width - padding.left - padding.right) / data.labels.length * 0.3;
+      const chartW = cssWidth - padding.left - padding.right;
 
       if (type === "bar") {
-        data.datasets[0].data.forEach((value, index) => {
-          const x = padding.left + (index * (barWidth + barSpacing));
+        const slot = chartW / values.length;
+        const barWidth = slot * 0.7;
+        const barSpacing = slot * 0.3;
+
+        ctx.font = "10px Inter, sans-serif";
+        ctx.textAlign = "center";
+
+        values.forEach((value, i) => {
+          const x = padding.left + i * (barWidth + barSpacing);
           const barHeight = (value / maxValue) * chartHeight;
           const y = padding.top + chartHeight - barHeight;
 
           const gradient = ctx.createLinearGradient(x, y, x + barWidth, y + barHeight);
-          gradient.addColorStop(0, data.datasets[0].backgroundColor);
-          gradient.addColorStop(1, `${data.datasets[0].backgroundColor}cc`);
-
+          gradient.addColorStop(0, dataset.backgroundColor);
+          gradient.addColorStop(1, `${dataset.backgroundColor}cc`);
           ctx.fillStyle = gradient;
           ctx.fillRect(x, y, barWidth, barHeight);
 
-          ctx.fillStyle = '#64748b';
-          ctx.font = '10px Inter, sans-serif';
-          ctx.textAlign = 'center';
+          ctx.fillStyle = "#64748b";
           ctx.fillText(value, x + barWidth / 2, y - 5);
         });
       } else if (type === "line") {
+        const denom = Math.max(1, values.length - 1);
+        const points = values.map((v, i) => ({
+          x: padding.left + (i * chartW) / denom,
+          y: padding.top + chartHeight - (v / maxValue) * chartHeight,
+        }));
+
         ctx.beginPath();
-        ctx.strokeStyle = data.datasets[0].borderColor;
+        ctx.strokeStyle = dataset.borderColor;
         ctx.lineWidth = 2;
-
-        data.datasets[0].data.forEach((value, index) => {
-          const x = padding.left + (index * (width - padding.left - padding.right) / (data.labels.length - 1 || 1));
-          const y = padding.top + chartHeight - (value / maxValue) * chartHeight;
-
-          if (index === 0) {
-            ctx.moveTo(x, y);
-          } else {
-            ctx.lineTo(x, y);
-          }
-        });
+        points.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
         ctx.stroke();
 
-        data.datasets[0].data.forEach((value, index) => {
-          const x = padding.left + (index * (width - padding.left - padding.right) / (data.labels.length - 1 || 1));
-          const y = padding.top + chartHeight - (value / maxValue) * chartHeight;
-
+        points.forEach((p) => {
           ctx.beginPath();
-          ctx.arc(x, y, 4, 0, 2 * Math.PI);
-          ctx.fillStyle = data.datasets[0].borderColor;
+          ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+          ctx.fillStyle = dataset.borderColor;
           ctx.fill();
-          ctx.strokeStyle = '#fff';
+          ctx.strokeStyle = "#fff";
           ctx.lineWidth = 2;
           ctx.stroke();
         });
       }
 
-      ctx.fillStyle = '#64748b';
-      ctx.font = '11px Inter, sans-serif';
-      ctx.textAlign = 'center';
-      data.labels.forEach((label, index) => {
-        const x = padding.left + (index * (width - padding.left - padding.right) / (data.labels.length - 1 || 1));
-        ctx.fillText(label, x, canvas.height - 15);
+      // Labels
+      ctx.fillStyle = "#64748b";
+      ctx.font = "11px Inter, sans-serif";
+      ctx.textAlign = "center";
+      const labelDenom = Math.max(1, data.labels.length - 1);
+      data.labels.forEach((label, i) => {
+        const x = padding.left + (i * chartW) / labelDenom;
+        ctx.fillText(label, x, cssHeight - 15);
       });
     };
 
-    drawChart();
-
-    const handleResize = () => {
-      canvas.width = container.clientWidth;
-      drawChart();
+    const scheduleDraw = () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(draw);
     };
 
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    scheduleDraw();
+
+    // ResizeObserver is more efficient than window resize
+    const ro = new ResizeObserver(scheduleDraw);
+    ro.observe(container);
+
+    return () => {
+      ro.disconnect();
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
   }, [data, loading, height, type]);
 
   if (loading) {
     return (
-      <div className="w-full animate-pulse">
-        <div className="h-[300px] bg-slate-200 dark:bg-slate-700 rounded-lg"></div>
+      <div className="w-full animate-pulse" aria-busy="true">
+        <div className="h-[300px] bg-slate-200 dark:bg-slate-700 rounded-lg" />
       </div>
     );
   }
 
   return (
     <div className="w-full">
-      <canvas ref={canvasRef} style={{ width: '100%', height: `${height}px` }} />
+      <canvas ref={canvasRef} role="img" aria-label="Chart" />
     </div>
   );
-};
+});
+DashboardChart.displayName = "DashboardChart";
 
-// ========== Loading spinner ==========
-const LoadingSpinner = ({ size = 'default', text = 'Loading...' }) => {
-  const sizeClasses = {
-    small: 'h-8 w-8',
-    default: 'h-12 w-12',
-    large: 'h-16 w-16'
-  };
+/* ----------------------------- Spinner ----------------------------- */
+const LoadingSpinner = memo(({ size = "default", text = "Loading..." }) => {
+  const sizeClass =
+    size === "small" ? "h-8 w-8" : size === "large" ? "h-16 w-16" : "h-12 w-12";
 
   return (
     <div className="flex justify-center items-center min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
       <div className="text-center">
-        <div className={`animate-spin rounded-full ${sizeClasses[size]} border-b-2 border-blue-600 dark:border-blue-400 mx-auto`}></div>
+        <div
+          className={`animate-spin rounded-full ${sizeClass} border-b-2 border-blue-600 dark:border-blue-400 mx-auto`}
+        />
         <p className="mt-4 text-gray-600 dark:text-gray-400">{text}</p>
       </div>
     </div>
   );
+});
+LoadingSpinner.displayName = "LoadingSpinner";
+
+/* ----------------------------- Helpers ----------------------------- */
+// Robustly unwrap any axios/double-wrapped API shape
+const unwrap = (resp) => {
+  let d = resp?.data ?? resp;
+  // peel up to 3 layers
+  for (let i = 0; i < 3; i++) {
+    if (d && typeof d === "object" && "data" in d && !("summary" in d)) {
+      d = d.data;
+    } else break;
+  }
+  return d;
 };
 
-// ========== MAIN DASHBOARD ==========
+const isSameMonth = (date, m, y) => {
+  const d = new Date(date);
+  return d.getMonth() === m && d.getFullYear() === y;
+};
+
+/* ----------------------------- Sub-components ----------------------------- */
+const ActivityItem = memo(({ activity }) => {
+  const Icon = activity.icon;
+  return (
+    <div className="flex items-start gap-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
+      <Icon className="h-4 w-4 text-indigo-600 mt-0.5" />
+      <div className="flex-1">
+        <p className="text-sm font-medium text-slate-900 dark:text-white">
+          {activity.description}
+        </p>
+        <p className="text-xs text-slate-500 mt-1">{activity.time}</p>
+      </div>
+    </div>
+  );
+});
+ActivityItem.displayName = "ActivityItem";
+
+const QuickStatRow = memo(({ icon: Icon, color, label, value }) => (
+  <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
+    <div className="flex items-center gap-2">
+      <Icon className={`h-4 w-4 ${color}`} />
+      <span className="text-sm text-slate-600 dark:text-slate-400">{label}</span>
+    </div>
+    <span className="font-semibold text-slate-900 dark:text-white">{value}</span>
+  </div>
+));
+QuickStatRow.displayName = "QuickStatRow";
+
+const PendingLeaveRow = memo(({ leave }) => (
+  <tr className="border-b border-slate-200 dark:border-slate-700 last:border-0">
+    <td className="py-3 px-4">
+      <p className="text-sm font-medium text-slate-900 dark:text-white">
+        {leave.employeeName || "Unknown"}
+      </p>
+      <p className="text-xs text-slate-500">{leave.employeeEmail}</p>
+    </td>
+    <td className="py-3 px-4">
+      <p className="text-sm text-slate-600 dark:text-slate-400">
+        {new Date(leave.startDate).toLocaleDateString()} -{" "}
+        {new Date(leave.endDate).toLocaleDateString()}
+      </p>
+    </td>
+    <td className="py-3 px-4">
+      <p className="text-sm text-slate-600 dark:text-slate-400 capitalize">
+        {leave.reason?.replace(/-/g, " ") || "N/A"}
+      </p>
+    </td>
+    <td className="py-3 px-4">
+      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
+        Pending
+      </span>
+    </td>
+  </tr>
+));
+PendingLeaveRow.displayName = "PendingLeaveRow";
+
+/* ----------------------------- Main Dashboard ----------------------------- */
 export const Dashboard = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [dashboardData, setDashboardData] = useState(null);
-  const [selectedPeriod, setSelectedPeriod] = useState('month');
+  const [selectedPeriod, setSelectedPeriod] = useState("month");
 
-  const fetchDashboardData = useCallback(async () => {
+  const abortRef = useRef(null);
+
+  const fetchDashboardData = useCallback(async (isRefresh = false) => {
+    // Cancel any in-flight request
+    abortRef.current?.abort?.();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     try {
-      setLoading(true);
-      const response = await userApi.getDashboardSummary();
+      if (!isRefresh) setLoading(true);
+      const response = await userApi.getDashboardSummary({
+        signal: controller.signal,
+      });
 
-      // 🔥 Handle double-wrapped API: response.data.data.data
-      const innerData = response?.data?.data || response?.data || response;
+      if (controller.signal.aborted) return;
+
+      const innerData = unwrap(response);
 
       if (innerData?.summary) {
         setDashboardData(innerData);
@@ -188,176 +296,181 @@ export const Dashboard = () => {
         throw new Error("Invalid response structure");
       }
     } catch (error) {
+      if (error?.name === "AbortError" || controller.signal.aborted) return;
+      console.error("Dashboard fetch error:", error);
       toast.error("Failed to load dashboard data");
       setDashboardData(null);
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (!controller.signal.aborted) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, []);
 
   useEffect(() => {
     fetchDashboardData();
+    return () => abortRef.current?.abort?.();
   }, [fetchDashboardData]);
 
-  const handleRefresh = async () => {
+  const handleRefresh = useCallback(() => {
     setRefreshing(true);
-    await fetchDashboardData();
-  };
+    fetchDashboardData(true);
+  }, [fetchDashboardData]);
 
+  /* ------- Single-pass data processing for performance ------- */
   const processedData = useMemo(() => {
     if (!dashboardData) return null;
 
-    // Destructure with safe defaults
     const {
       summary = {},
-      charts = null,           // backend sends null, we'll ignore it
+      charts = null,
       users = {},
       leaves = {},
-      expenses = {}
+      expenses = {},
     } = dashboardData;
 
-    const userList = users?.data || [];
-    const activeEmployees = userList.filter(u => u.isActive).length;
-    const departments = [...new Set(userList.map(u => u.department).filter(Boolean))];
+    const userList = Array.isArray(users?.data) ? users.data : [];
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
 
-    const currentMonth = new Date().getMonth();
-    const currentYear = new Date().getFullYear();
+    // Single pass over users
+    let activeEmployees = 0;
+    let newHiresThisMonth = 0;
+    const departmentMap = new Map(); // dept -> { employeeCount, totalSalary }
 
-    const newHiresThisMonth = userList.filter(u => {
-      const created = new Date(u.createdAt);
-      return created.getMonth() === currentMonth && created.getFullYear() === currentYear;
-    }).length;
+    for (const u of userList) {
+      if (u.isActive) activeEmployees++;
+      if (u.createdAt && isSameMonth(u.createdAt, currentMonth, currentYear)) {
+        newHiresThisMonth++;
+      }
+      if (u.department) {
+        const entry = departmentMap.get(u.department) || {
+          employeeCount: 0,
+          totalSalary: 0,
+        };
+        entry.employeeCount++;
+        entry.totalSalary += parseFloat(u.baseSalary || 0);
+        departmentMap.set(u.department, entry);
+      }
+    }
 
-    const departmentStats = departments.map(dept => ({
-      name: dept,
-      employeeCount: userList.filter(u => u.department === dept).length,
-      totalSalary: userList
-        .filter(u => u.department === dept)
-        .reduce((sum, u) => sum + parseFloat(u.baseSalary || 0), 0)
-    }));
+    const departmentStats = Array.from(departmentMap.entries()).map(
+      ([name, v]) => ({ name, ...v })
+    );
 
-    const totalLeaveRequests =
-      (summary?.leaves?.approved || 0) +
-      (summary?.leaves?.pending || 0) +
-      (summary?.leaves?.rejected || 0);
+    const approvedLeaves = summary?.leaves?.approved || 0;
+    const pendingLeaves = summary?.leaves?.pending || 0;
+    const rejectedLeaves = summary?.leaves?.rejected || 0;
+    const totalLeaveRequests = approvedLeaves + pendingLeaves + rejectedLeaves;
+    const totalUsers = summary?.totalUsers || 0;
 
-    const attendanceRate = summary?.totalUsers > 0
-      ? Math.min(100, Math.max(0, Math.round(100 - (totalLeaveRequests / summary.totalUsers) * 5)))
-      : 100;
+    const attendanceRate =
+      totalUsers > 0
+        ? Math.min(
+          100,
+          Math.max(0, Math.round(100 - (totalLeaveRequests / totalUsers) * 5))
+        )
+        : 100;
 
-    // Build recent activities from real data
+    // Recent activities (limited slices)
     const recentActivities = [];
 
-    userList.slice(0, 3).forEach(u => {
+    for (let i = 0; i < Math.min(3, userList.length); i++) {
+      const u = userList[i];
       recentActivities.push({
         type: "hire",
         description: `${u.firstName} ${u.lastName} joined ${u.department}`,
         time: new Date(u.createdAt).toLocaleDateString(),
-        icon: UserPlus
+        sortKey: new Date(u.createdAt).getTime(),
+        icon: UserPlus,
       });
-    });
+    }
 
-    // Use leaves.pending (from leaves.segmented.pending)
-    const pendingLeavesList = leaves?.segmented?.pending || leaves?.pending || [];
-    pendingLeavesList.slice(0, 2).forEach(l => {
+    const pendingLeavesList =
+      leaves?.segmented?.pending || leaves?.pending || [];
+
+    for (let i = 0; i < Math.min(2, pendingLeavesList.length); i++) {
+      const l = pendingLeavesList[i];
       recentActivities.push({
         type: "leave",
         description: `${l.employeeName || "Employee"} requested leave`,
         time: new Date(l.startDate).toLocaleDateString(),
-        icon: Calendar
+        sortKey: new Date(l.startDate).getTime(),
+        icon: Calendar,
       });
-    });
+    }
 
-    // Expenses: expenses.data is the array
-    (expenses?.data || []).slice(0, 2).forEach(e => {
+    const expenseList = Array.isArray(expenses?.data) ? expenses.data : [];
+    for (let i = 0; i < Math.min(2, expenseList.length); i++) {
+      const e = expenseList[i];
       recentActivities.push({
         type: "expense",
         description: `${e.employeeName} submitted expense of ₹${e.amount}`,
         time: new Date(e.createdAt).toLocaleDateString(),
-        icon: Receipt
+        sortKey: new Date(e.createdAt).getTime(),
+        icon: Receipt,
       });
-    });
+    }
 
-    recentActivities.sort((a, b) => new Date(b.time) - new Date(a.time));
+    recentActivities.sort((a, b) => b.sortKey - a.sortKey);
 
-    // ---------- CHART DATA (built from real data, not backend's null charts) ----------
-    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-    // Leave chart: if backend ever sends charts.leaves use it, else fallback to zeros (or you could count per month from leaves)
     const leaveChartData = {
-      labels: months,
+      labels: MONTHS,
       datasets: [
         {
           label: "Leave Requests",
-          data: charts?.leaves || Array(12).fill(0),
+          data: charts?.leaves || new Array(12).fill(0),
           backgroundColor: "#4F46E5",
-          borderColor: "#4F46E5"
-        }
-      ]
+          borderColor: "#4F46E5",
+        },
+      ],
     };
 
     const departmentChartData = {
-      labels: departmentStats.map(d => d.name),
+      labels: departmentStats.map((d) => d.name),
       datasets: [
         {
           label: "Employees",
-          data: departmentStats.map(d => d.employeeCount),
+          data: departmentStats.map((d) => d.employeeCount),
           backgroundColor: "#8B5CF6",
-          borderColor: "#8B5CF6"
-        }
-      ]
+          borderColor: "#8B5CF6",
+        },
+      ],
     };
 
-    // ---------- MAPPED SUMMARY (fix field names) ----------
     return {
       summary: {
-        totalEmployees: summary?.totalUsers || 0,            // 👈 backend sent totalUsers
+        totalEmployees: totalUsers,
         activeEmployees,
-        pendingLeaves: summary?.leaves?.pending || 0,
-        approvedLeaves: summary?.leaves?.approved || 0,
-        rejectedLeaves: summary?.leaves?.rejected || 0,
+        pendingLeaves,
+        approvedLeaves,
+        rejectedLeaves,
         newLeaves: summary?.newLeaves || 0,
         expensesClaimed: summary?.finance?.expensesClaimed || 0,
         salaryPaid: summary?.finance?.salaryPaid || 0,
-        departments: departments.length,
+        departments: departmentStats.length,
         newHiresThisMonth,
-        attendanceRate
+        attendanceRate,
       },
-      charts: {
-        leaves: leaveChartData,
-        departments: departmentChartData
-      },
+      charts: { leaves: leaveChartData, departments: departmentChartData },
       recentActivities: recentActivities.slice(0, 5),
       departmentStats,
       pendingLeaves: pendingLeavesList,
-      users: userList
+      users: userList,
     };
   }, [dashboardData]);
 
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0
-    }).format(amount);
-  };
-
-  const formatNumber = (num) => {
-    return new Intl.NumberFormat('en-IN').format(num);
-  };
-
   const quickStats = useMemo(() => {
     if (!processedData) return [];
-
     const { summary } = processedData;
     return [
       {
         title: "Total Employees",
         value: formatNumber(summary.totalEmployees),
         icon: Users,
-        trend: summary.newHiresThisMonth > 0 ? 'up' : 'neutral',
+        trend: summary.newHiresThisMonth > 0 ? "up" : "neutral",
         trendValue: summary.newHiresThisMonth > 0 ? `+${summary.newHiresThisMonth}` : null,
         color: "indigo",
         subtext: `${summary.newHiresThisMonth} new this month`,
@@ -367,7 +480,7 @@ export const Dashboard = () => {
         title: "Pending Leaves",
         value: formatNumber(summary.pendingLeaves),
         icon: Calendar,
-        trend: summary.newLeaves > 0 ? 'up' : 'neutral',
+        trend: summary.newLeaves > 0 ? "up" : "neutral",
         trendValue: summary.newLeaves > 0 ? `+${summary.newLeaves}` : null,
         color: "amber",
         subtext: `${summary.approvedLeaves} approved`,
@@ -377,7 +490,7 @@ export const Dashboard = () => {
         title: "Expenses Claimed",
         value: formatCurrency(summary.expensesClaimed),
         icon: Receipt,
-        trend: 'neutral',
+        trend: "neutral",
         trendValue: null,
         color: "rose",
         subtext: "Total claimed expenses",
@@ -387,14 +500,27 @@ export const Dashboard = () => {
         title: "Salary Paid",
         value: formatCurrency(summary.salaryPaid),
         icon: DollarSign,
-        trend: 'neutral',
+        trend: "neutral",
         trendValue: null,
         color: "emerald",
         subtext: "Total salary disbursed",
         path: "/payroll",
-      }
+      },
     ];
   }, [processedData]);
+
+  const todayString = useMemo(
+    () =>
+      new Date().toLocaleDateString("en-IN", {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      }),
+    []
+  );
+
+  const userFirstName =
+    user?.firstName || user?.name?.split(" ")?.[0] || "User";
 
   if (loading && !dashboardData) {
     return <LoadingSpinner text="Loading dashboard..." />;
@@ -405,8 +531,12 @@ export const Dashboard = () => {
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 flex items-center justify-center">
         <div className="text-center">
           <AlertCircle className="h-16 w-16 text-slate-400 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-2">No Data Available</h2>
-          <p className="text-slate-600 dark:text-slate-400 mb-4">Unable to load dashboard data</p>
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-2">
+            No Data Available
+          </h2>
+          <p className="text-slate-600 dark:text-slate-400 mb-4">
+            Unable to load dashboard data
+          </p>
           <button
             onClick={handleRefresh}
             className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
@@ -418,12 +548,12 @@ export const Dashboard = () => {
     );
   }
 
-  // ========== RENDER (exactly your original JSX, now powered by fixed data) ==========
+  const { summary, charts, recentActivities, pendingLeaves } = processedData;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
-
-        {/* Header Section */}
+        {/* Header */}
         <div className="mb-8">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
             <div>
@@ -431,9 +561,11 @@ export const Dashboard = () => {
                 Dashboard
               </h1>
               <p className="text-slate-600 dark:text-slate-400">
-                Welcome back, <span className="font-semibold text-indigo-600 dark:text-indigo-400">
-                  {user?.firstName || user?.name?.split(' ')[0] || "User"}
-                </span>! Here's what's happening with your organization.
+                Welcome back,{" "}
+                <span className="font-semibold text-indigo-600 dark:text-indigo-400">
+                  {userFirstName}
+                </span>
+                ! Here's what's happening with your organization.
               </p>
             </div>
 
@@ -442,6 +574,7 @@ export const Dashboard = () => {
                 value={selectedPeriod}
                 onChange={(e) => setSelectedPeriod(e.target.value)}
                 className="px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-600 dark:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                aria-label="Time period"
               >
                 <option value="week">This Week</option>
                 <option value="month">This Month</option>
@@ -454,8 +587,8 @@ export const Dashboard = () => {
                 disabled={refreshing}
                 className="inline-flex items-center justify-center px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
               >
-                <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
-                {refreshing ? 'Refreshing...' : 'Refresh'}
+                <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
+                {refreshing ? "Refreshing..." : "Refresh"}
               </button>
 
               <button className="inline-flex items-center justify-center px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg text-sm font-medium hover:shadow-lg hover:shadow-indigo-500/25 transition-all">
@@ -467,7 +600,7 @@ export const Dashboard = () => {
 
           <div className="mt-4 flex items-center gap-2 text-sm text-slate-500">
             <CalendarDays className="w-4 h-4" />
-            <span>{new Date().toLocaleDateString('en-IN', { month: 'long', day: 'numeric', year: 'numeric' })}</span>
+            <span>{todayString}</span>
             <span className="mx-2">•</span>
             <span>Last updated: Just now</span>
           </div>
@@ -489,9 +622,8 @@ export const Dashboard = () => {
           ))}
         </div>
 
-        {/* Charts Section */}
+        {/* Charts */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 mb-8">
-          {/* Leave Requests Chart */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -504,21 +636,15 @@ export const Dashboard = () => {
                 Monthly Leave Requests
               </h3>
               <button
-                onClick={() => navigate('/leave')}
+                onClick={() => navigate("/leave")}
                 className="text-sm text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
               >
                 Details <ChevronRight className="w-4 h-4" />
               </button>
             </div>
-            <DashboardChart
-              type="bar"
-              data={processedData.charts.leaves}
-              loading={loading}
-              height={300}
-            />
+            <DashboardChart type="bar" data={charts.leaves} loading={loading} height={300} />
           </motion.div>
 
-          {/* Department Distribution Chart */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -531,24 +657,18 @@ export const Dashboard = () => {
                 Employees by Department
               </h3>
               <button
-                onClick={() => navigate('/department-dashboard')}
+                onClick={() => navigate("/department-dashboard")}
                 className="text-sm text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
               >
                 Details <ChevronRight className="w-4 h-4" />
               </button>
             </div>
-            <DashboardChart
-              type="bar"
-              data={processedData.charts.departments}
-              loading={loading}
-              height={300}
-            />
+            <DashboardChart type="bar" data={charts.departments} loading={loading} height={300} />
           </motion.div>
         </div>
 
-        {/* Bottom Grid */}
+        {/* Bottom grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
-
           {/* Recent Activities */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -568,18 +688,8 @@ export const Dashboard = () => {
             </div>
 
             <div className="space-y-3">
-              {processedData.recentActivities.length > 0 ? (
-                processedData.recentActivities.map((activity, index) => (
-                  <div key={index} className="flex items-start gap-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
-                    <activity.icon className="h-4 w-4 text-indigo-600 mt-0.5" />
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-slate-900 dark:text-white">
-                        {activity.description}
-                      </p>
-                      <p className="text-xs text-slate-500 mt-1">{activity.time}</p>
-                    </div>
-                  </div>
-                ))
+              {recentActivities.length > 0 ? (
+                recentActivities.map((a, i) => <ActivityItem key={i} activity={a} />)
               ) : (
                 <p className="text-sm text-slate-500 text-center py-8">No recent activities</p>
               )}
@@ -605,55 +715,36 @@ export const Dashboard = () => {
             </div>
 
             <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
-                <div className="flex items-center gap-2">
-                  <UserPlus className="h-4 w-4 text-emerald-600" />
-                  <span className="text-sm text-slate-600 dark:text-slate-400">New Hires (This Month)</span>
-                </div>
-                <span className="font-semibold text-slate-900 dark:text-white">
-                  {formatNumber(processedData.summary.newHiresThisMonth)}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
-                <div className="flex items-center gap-2">
-                  <Briefcase className="h-4 w-4 text-indigo-600" />
-                  <span className="text-sm text-slate-600 dark:text-slate-400">Active Departments</span>
-                </div>
-                <span className="font-semibold text-slate-900 dark:text-white">
-                  {formatNumber(processedData.summary.departments)}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
-                <div className="flex items-center gap-2">
-                  <Activity className="h-4 w-4 text-purple-600" />
-                  <span className="text-sm text-slate-600 dark:text-slate-400">Attendance Rate</span>
-                </div>
-                <span className="font-semibold text-slate-900 dark:text-white">
-                  {processedData.summary.attendanceRate}%
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
-                <div className="flex items-center gap-2">
-                  <CheckCircle className="h-4 w-4 text-emerald-600" />
-                  <span className="text-sm text-slate-600 dark:text-slate-400">Active Employees</span>
-                </div>
-                <span className="font-semibold text-slate-900 dark:text-white">
-                  {formatNumber(processedData.summary.activeEmployees)}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
-                <div className="flex items-center gap-2">
-                  <XCircle className="h-4 w-4 text-rose-600" />
-                  <span className="text-sm text-slate-600 dark:text-slate-400">Rejected Leaves</span>
-                </div>
-                <span className="font-semibold text-slate-900 dark:text-white">
-                  {formatNumber(processedData.summary.rejectedLeaves)}
-                </span>
-              </div>
+              <QuickStatRow
+                icon={UserPlus}
+                color="text-emerald-600"
+                label="New Hires (This Month)"
+                value={formatNumber(summary.newHiresThisMonth)}
+              />
+              <QuickStatRow
+                icon={Briefcase}
+                color="text-indigo-600"
+                label="Active Departments"
+                value={formatNumber(summary.departments)}
+              />
+              <QuickStatRow
+                icon={Activity}
+                color="text-purple-600"
+                label="Attendance Rate"
+                value={`${summary.attendanceRate}%`}
+              />
+              <QuickStatRow
+                icon={CheckCircle}
+                color="text-emerald-600"
+                label="Active Employees"
+                value={formatNumber(summary.activeEmployees)}
+              />
+              <QuickStatRow
+                icon={XCircle}
+                color="text-rose-600"
+                label="Rejected Leaves"
+                value={formatNumber(summary.rejectedLeaves)}
+              />
             </div>
           </motion.div>
 
@@ -679,7 +770,6 @@ export const Dashboard = () => {
               <button className="w-full bg-white text-indigo-600 px-4 py-3 rounded-lg text-sm font-medium hover:bg-indigo-50 transition-all">
                 View Documentation
               </button>
-
               <button className="w-full bg-indigo-500/20 text-white px-4 py-3 rounded-lg text-sm font-medium hover:bg-indigo-500/30 transition-all backdrop-blur border border-indigo-300/30">
                 Contact Support
               </button>
@@ -694,8 +784,8 @@ export const Dashboard = () => {
           </motion.div>
         </div>
 
-        {/* Pending Leaves Section */}
-        {processedData.pendingLeaves.length > 0 && (
+        {/* Pending Leaves */}
+        {pendingLeaves.length > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -708,7 +798,7 @@ export const Dashboard = () => {
                 Pending Leave Requests
               </h3>
               <button
-                onClick={() => navigate('/pending-leave')}
+                onClick={() => navigate("/pending-leave")}
                 className="text-sm text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
               >
                 View All <ChevronRight className="w-4 h-4" />
@@ -726,30 +816,8 @@ export const Dashboard = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {processedData.pendingLeaves.slice(0, 5).map((leave) => (
-                    <tr key={leave.id} className="border-b border-slate-200 dark:border-slate-700 last:border-0">
-                      <td className="py-3 px-4">
-                        <p className="text-sm font-medium text-slate-900 dark:text-white">
-                          {leave.employeeName || 'Unknown'}
-                        </p>
-                        <p className="text-xs text-slate-500">{leave.employeeEmail}</p>
-                      </td>
-                      <td className="py-3 px-4">
-                        <p className="text-sm text-slate-600 dark:text-slate-400">
-                          {new Date(leave.startDate).toLocaleDateString()} - {new Date(leave.endDate).toLocaleDateString()}
-                        </p>
-                      </td>
-                      <td className="py-3 px-4">
-                        <p className="text-sm text-slate-600 dark:text-slate-400 capitalize">
-                          {leave.reason?.replace(/-/g, ' ') || 'N/A'}
-                        </p>
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
-                          Pending
-                        </span>
-                      </td>
-                    </tr>
+                  {pendingLeaves.slice(0, 5).map((leave) => (
+                    <PendingLeaveRow key={leave.id} leave={leave} />
                   ))}
                 </tbody>
               </table>
