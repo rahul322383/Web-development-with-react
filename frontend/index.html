@@ -7,9 +7,19 @@
     <meta name="description" content="Human Resource Management System" />
     <title>HRMS - Employee Management</title>
 
+    <!-- 🚀 Preconnect for faster font loading -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet">
+
+    <!-- ⚡ Optimized font loading (with display swap) -->
+    <!-- <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    /> -->
+
+    <!-- 🚀 Preload main script (helps faster start) -->
+    <link rel="modulepreload" href="/src/main.jsx">
+
   </head>
 
   <body>
@@ -17,8 +27,7 @@
 
     <div id="root"></div>
 
-    <!-- VERY IMPORTANT -->
+    <!-- ⚡ Main App Script -->
     <script type="module" src="/src/main.jsx"></script>
-
   </body>
 </html>
