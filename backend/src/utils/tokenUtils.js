@@ -10,7 +10,7 @@ const buildAccessToken = (user) => {
       email: user.email,
       role: user.primaryRole,
       jti,
-      companyId: user.company_id,
+      companyId: user.companyId,
       type: 'access'
     },
     env.JWT_ACCESS_SECRET,
