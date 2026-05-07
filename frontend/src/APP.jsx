@@ -14,7 +14,7 @@ import { useAuth } from "./context/AuthContext";
 import AiChat from "./ai/AiChat"; 
 
 // Auth Pages
-import { Login } from "./pages/Login";
+import  Login  from "./pages/Login";
 import Register from "./pages/Register";
 
 // Dashboard Pages
