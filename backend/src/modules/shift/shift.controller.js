@@ -58,8 +58,6 @@ exports.listShifts = async (req, res) => {
         company_id: req.user.companyId,
 
     });
-
-
     return handleResponse(res, result);
 };
 
