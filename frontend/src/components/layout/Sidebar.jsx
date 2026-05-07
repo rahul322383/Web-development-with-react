@@ -1,11 +1,39 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
-  LayoutDashboard, Users, Calendar, Receipt, Bell, LogOut, Home,
-  Info, Sparkles, CreditCard, PlayCircle, BookOpen, Briefcase,
-  Shield, Scale, Lock, HelpCircle, LogIn, UserPlus, Settings,
-  User, ClipboardList, BarChart, MessageSquare, ChevronLeft,
-  ChevronRight, Clock, Building2, FileText, X, IndianRupee, BarChart3,
+  LayoutDashboard,
+  Users,
+  Calendar,
+  Receipt,
+  DollarSign,
+  Bell,
+  LogOut,
+  Home,
+  Info,
+  Sparkles,
+  CreditCard,
+  PlayCircle,
+  BookOpen,
+  Briefcase,
+  Shield,
+  Scale,
+  Lock,
+  HelpCircle,
+  LogIn,
+  UserPlus,
+  Settings,
+  User,
+  ClipboardList,
+  BarChart,
+  MessageSquare,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Building2,
+  FileText,
+  X,
+  IndianRupee,
+  BarChart3,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -78,7 +106,6 @@ const ROLE_BADGE_COLORS = {
   [ROLES.FINANCE]: 'from-amber-500 to-orange-500',
 };
 
-// Ordered by priority — first match wins for display
 const ROLE_PRIORITY = [ROLES.ADMIN, ROLES.MANAGER, ROLES.HR, ROLES.FINANCE, ROLES.EMPLOYEE];
 
 const DEPARTMENT_EXTRA_NAV = {
@@ -92,18 +119,14 @@ const SIDEBAR_WIDTH = {
   mobile: 'w-[85%] max-w-xs',
 };
 
-const SIDEBAR_THEME = {
-  dark: 'bg-gray-900/80 backdrop-blur-2xl border-gray-800/80 shadow-2xl',
-  light: 'bg-white/70 backdrop-blur-2xl border-slate-200/60 shadow-2xl',
-};
-
 // ========================
-// Helpers
+// Helper functions
 // ========================
 function buildAuthNavigation(userRoles, department) {
   const extras = DEPARTMENT_EXTRA_NAV[department] ?? [];
-  return [...BASE_NAVIGATION, ...extras].filter(
-    item => item.showForAll || item.roles?.some(r => userRoles.includes(r))
+  const safeRoles = userRoles || [];
+  return [...BASE_NAVIGATION, ...extras].filter(item =>
+    item.showForAll || (item.roles || []).some(role => safeRoles.includes(role))
   );
 }
 
@@ -115,54 +138,18 @@ function getBadgeCount(item, pendingCount, meta) {
   return 0;
 }
 
-// Exact match for '/', prefix match for everything else
 function isRouteActive(currentPath, href) {
   if (href === '/') return currentPath === '/';
-  return currentPath === href || currentPath.startsWith(`${href}/`);
-}
-
-function deriveUserDisplayData(user, meta) {
-  const rawName =
-    user?.firstName && user?.lastName
-      ? `${user.firstName} ${user.lastName}`
-      : user?.fullName ?? meta?.name ?? 'User';
-
-  const initials =
-    rawName === 'User'
-      ? 'U'
-      : rawName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-
-  const roles = user?.roles?.length
-    ? user.roles
-    : [user?.primaryRole ?? meta?.role ?? ROLES.EMPLOYEE];
-
-  const primaryRole = ROLE_PRIORITY.find(r => roles.includes(r)) ?? roles[0] ?? ROLES.EMPLOYEE;
-
-  const isActive =
-    typeof user?.isActive === 'boolean'
-      ? user.isActive
-      : typeof meta?.isActive === 'boolean'
-        ? meta.isActive
-        : true;
-
-  return {
-    displayName: rawName,
-    initials,
-    roles,
-    primaryRole,
-    email: user?.email ?? meta?.email ?? '',
-    department: user?.department ?? meta?.department ?? '',
-    isActive,
-    roleBadgeColor: ROLE_BADGE_COLORS[primaryRole] ?? 'from-gray-500 to-slate-500',
-  };
+  return currentPath === href || currentPath.startsWith(href + '/');
 }
 
 // ========================
 // Sub-components
 // ========================
-const NavItem = React.memo(({ item, isCollapsed, pendingCount, meta, isDark, onNavClick, locationPath }) => {
+const NavItem = ({ item, isCollapsed, pendingCount, meta, theme, onNavClick, locationPath }) => {
   const active = isRouteActive(locationPath, item.href);
   const badgeCount = getBadgeCount(item, pendingCount, meta);
+  const isDark = theme === 'dark';
 
   const activeClasses = isDark
     ? 'bg-indigo-900/60 backdrop-blur-sm text-indigo-300 border-l-4 border-indigo-500 shadow-lg'
@@ -190,7 +177,6 @@ const NavItem = React.memo(({ item, isCollapsed, pendingCount, meta, isDark, onN
         className={`h-5 w-5 flex-shrink-0 transition-transform duration-300 group-hover:scale-110 ${active ? (isDark ? 'text-indigo-400' : 'text-indigo-600') : ''
           }`}
       />
-
       {!isCollapsed && (
         <>
           <span className="flex-1 truncate">{item.name}</span>
@@ -201,7 +187,6 @@ const NavItem = React.memo(({ item, isCollapsed, pendingCount, meta, isDark, onN
           )}
         </>
       )}
-
       {isCollapsed && badgeCount > 0 && (
         <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[8px] font-bold text-white shadow">
           {badgeCount > 9 ? '9+' : badgeCount}
@@ -209,69 +194,68 @@ const NavItem = React.memo(({ item, isCollapsed, pendingCount, meta, isDark, onN
       )}
     </Link>
   );
-});
-NavItem.displayName = 'NavItem';
+};
 
-const UserSection = React.memo(({ userDisplayData, isCollapsed, isDark, user, meta, onLogout }) => (
-  <div className="border-t border-white/20 dark:border-gray-700 p-4 backdrop-blur-md bg-white/60 dark:bg-gray-900/70">
-    {/* Avatar + info row */}
-    <div className={`flex ${isCollapsed ? 'justify-center' : 'space-x-3'} mb-4`}>
-      <div className="relative flex-shrink-0">
-        <div className="h-10 w-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg ring-2 ring-offset-2 ring-indigo-500/40 ring-offset-transparent">
-          <span className="text-white font-semibold text-sm">{userDisplayData.initials}</span>
-        </div>
-        {userDisplayData.isActive && (
-          <div className="absolute -bottom-1 -right-1 h-3 w-3 rounded-full bg-green-500 border-2 border-white dark:border-gray-800 shadow" />
-        )}
-      </div>
+const UserSection = ({ userDisplayData, isCollapsed, theme, user, meta, onLogout }) => {
+  const isDark = theme === 'dark';
 
-      {!isCollapsed && (
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold truncate">{userDisplayData.displayName}</p>
-          <div className="flex flex-wrap items-center gap-1.5 mt-1">
-            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium text-white bg-gradient-to-r ${userDisplayData.roleBadgeColor}`}>
-              {userDisplayData.primaryRole}
-            </span>
-            {userDisplayData.department && (
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-200/80 dark:bg-gray-700/70">
-                {userDisplayData.department}
-              </span>
-            )}
+  return (
+    <div className="border-t border-white/20 dark:border-gray-700 p-4 backdrop-blur-md bg-white/60 dark:bg-gray-900/70">
+      <div className={`flex ${isCollapsed ? 'justify-center' : 'space-x-3'} mb-4`}>
+        <div className="relative flex-shrink-0 group">
+          <div className="h-10 w-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg ring-2 ring-offset-2 ring-indigo-500/40 ring-offset-transparent">
+            <span className="text-white font-semibold text-sm">{userDisplayData.initials}</span>
           </div>
-          {userDisplayData.email && (
-            <p className="text-xs truncate mt-1 text-slate-500 dark:text-gray-400">{userDisplayData.email}</p>
+          {userDisplayData.isActive && (
+            <div className="absolute -bottom-1 -right-1 h-3 w-3 rounded-full bg-green-500 border-2 border-white dark:border-gray-800 shadow" />
           )}
         </div>
-      )}
-    </div>
-
-    {/* Meta info strip */}
-    {!isCollapsed && (user?.id || meta) && (
-      <div className="mb-3 p-3 rounded-lg bg-white/50 dark:bg-black/20 backdrop-blur-sm text-xs">
-        <div className="flex justify-between">
-          <span><span className="font-medium">ID: </span>{user?.id ?? 'N/A'}</span>
-          <span>
-            <span className="font-medium">Status: </span>
-            <span className={userDisplayData.isActive ? 'text-green-500' : 'text-red-500'}>
-              {userDisplayData.isActive ? 'Active' : 'Inactive'}
-            </span>
-          </span>
-        </div>
+        {!isCollapsed && (
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold truncate">{userDisplayData.displayName}</p>
+            <div className="flex flex-wrap items-center gap-1.5 mt-1">
+              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium text-white bg-gradient-to-r ${userDisplayData.roleBadgeColor}`}>
+                {userDisplayData.primaryRole}
+              </span>
+              {userDisplayData.department && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-200/80 dark:bg-gray-700/70">
+                  {userDisplayData.department}
+                </span>
+              )}
+            </div>
+            {userDisplayData.email && (
+              <p className="text-xs truncate mt-1 text-slate-500 dark:text-gray-400">{userDisplayData.email}</p>
+            )}
+          </div>
+        )}
       </div>
-    )}
+      {!isCollapsed && (user?.id || meta) && (
+        <div className="mb-3 p-3 rounded-lg bg-white/50 dark:bg-black/20 backdrop-blur-sm">
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <div><span className="font-medium">ID</span> {user?.id ?? 'N/A'}</div>
+            <div>
+              <span className="font-medium">Status</span>{' '}
+              <span className={userDisplayData.isActive ? 'text-green-500' : 'text-red-500'}>
+                {userDisplayData.isActive ? 'Active' : 'Inactive'}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+      <button
+        onClick={onLogout}
+        className="w-full flex items-center justify-center space-x-2 rounded-xl px-3 py-2.5 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50/70 dark:hover:bg-red-900/20 border border-red-200/60 dark:border-red-800/50 transition-all duration-200"
+      >
+        <LogOut className="h-4 w-4" />
+        {!isCollapsed && <span>Logout</span>}
+      </button>
+    </div>
+  );
+};
 
-    <button
-      onClick={onLogout}
-      className="w-full flex items-center justify-center space-x-2 rounded-xl px-3 py-2.5 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50/70 dark:hover:bg-red-900/20 border border-red-200/60 dark:border-red-800/50 transition-all duration-200"
-    >
-      <LogOut className="h-4 w-4" />
-      {!isCollapsed && <span>Logout</span>}
-    </button>
-  </div>
-));
-UserSection.displayName = 'UserSection';
+const PublicFooter = ({ isCollapsed, theme, onNavClick }) => {
+  const isDark = theme === 'dark';
 
-const PublicFooter = React.memo(({ isCollapsed, onNavClick }) => {
   if (isCollapsed) {
     return (
       <div className="border-t border-white/20 dark:border-gray-700 p-4 backdrop-blur-md bg-white/60 dark:bg-gray-900/70">
@@ -309,7 +293,6 @@ const PublicFooter = React.memo(({ isCollapsed, onNavClick }) => {
           </div>
         ))}
       </div>
-
       <div className="space-y-2">
         <Link
           to="/login"
@@ -330,8 +313,7 @@ const PublicFooter = React.memo(({ isCollapsed, onNavClick }) => {
       </div>
     </div>
   );
-});
-PublicFooter.displayName = 'PublicFooter';
+};
 
 // ========================
 // Main Sidebar Component
@@ -342,11 +324,9 @@ export const Sidebar = ({ isOpen, onClose, pendingCount = 0, onCollapseChange })
   const { user, meta, logout, isAuthenticated, isLoading } = useAuth();
   const { theme } = useTheme();
 
-  const isDark = theme === 'dark';
-
-  // Persisted collapse state
-  const [isCollapsed, setIsCollapsed] = useState(
-    () => localStorage.getItem('sidebar-collapsed') === 'true'
+  // Collapse state (persisted)
+  const [isCollapsed, setIsCollapsed] = useState(() =>
+    localStorage.getItem('sidebar-collapsed') === 'true'
   );
 
   const toggleCollapse = useCallback(() => {
@@ -362,24 +342,66 @@ export const Sidebar = ({ isOpen, onClose, pendingCount = 0, onCollapseChange })
   }, [isCollapsed, onCollapseChange]);
 
   const handleNavClick = useCallback(() => {
-    if (window.innerWidth < 1024) onClose?.();
+    if (window.innerWidth < 1024 && onClose) onClose();
   }, [onClose]);
 
-  // Derived user display data — recomputed only when user/meta change
-  const userDisplayData = useMemo(() => deriveUserDisplayData(user, meta), [user, meta]);
+  // ========================
+  // User display data
+  // ========================
+  const userDisplayData = useMemo(() => {
+    let displayName = 'User';
+    if (user?.firstName && user?.lastName) displayName = `${user.firstName} ${user.lastName}`;
+    else if (user?.fullName) displayName = user.fullName;
+    else if (meta?.name) displayName = meta.name;
 
-  // Navigation — stable reference while loading, switches once auth resolves
-  const prevNavRef = useRef(PUBLIC_NAVIGATION);
+    const initials = displayName === 'User' ? 'U' : displayName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+    const roles = (user?.roles?.length)
+      ? user.roles
+      : [user?.primaryRole || meta?.role || ROLES.EMPLOYEE];
+    const primaryRole = ROLE_PRIORITY.find(r => roles.includes(r)) || roles[0] || ROLES.EMPLOYEE;
+    const email = user?.email || meta?.email || '';
+    const department = user?.department || meta?.department || '';
+    const isActive = typeof user?.isActive === 'boolean' ? user.isActive : (typeof meta?.isActive === 'boolean' ? meta.isActive : true);
+    const roleBadgeColor = ROLE_BADGE_COLORS[primaryRole] ?? 'from-gray-500 to-slate-500';
+
+    return { displayName, initials, roles, primaryRole, email, department, isActive, roleBadgeColor };
+  }, [user, meta]);
+
+  const roles = userDisplayData.roles;
+  const department = userDisplayData.department;
+
+  // ========================
+  // Navigation (with anti‑flicker ref)
+  // ========================
+  const lastNavigationRef = useRef(null);
   const navigation = useMemo(() => {
-    if (isLoading || isAuthenticated === null) return prevNavRef.current;
-    const nav = isAuthenticated
-      ? buildAuthNavigation(userDisplayData.roles, userDisplayData.department)
-      : PUBLIC_NAVIGATION;
-    prevNavRef.current = nav;
-    return nav;
-  }, [isAuthenticated, isLoading, userDisplayData.roles, userDisplayData.department]);
 
-  const handleLogout = useCallback(async () => {
+    if (isLoading || isAuthenticated === null) {
+      return lastNavigationRef.current || PUBLIC_NAVIGATION;
+    }
+    const nav = isAuthenticated
+      ? buildAuthNavigation(roles, department)
+      : PUBLIC_NAVIGATION;
+    lastNavigationRef.current = nav;
+    return nav;
+  }, [isAuthenticated, isLoading, roles, department]);
+
+  // ========================
+  // Theme-based classes
+  // ========================
+  const themeClasses = useMemo(() => {
+    const isDark = theme === 'dark';
+    return {
+      sidebar: isDark
+        ? 'bg-gray-900/80 backdrop-blur-2xl border-gray-800/80 shadow-2xl'
+        : 'bg-white/70 backdrop-blur-2xl border-slate-200/60 shadow-2xl',
+    };
+  }, [theme]);
+
+  // ========================
+  // Logout handler
+  // ========================
+  const handleLogout = async () => {
     try {
       await logout();
       toast.success('Logged out successfully');
@@ -387,15 +409,13 @@ export const Sidebar = ({ isOpen, onClose, pendingCount = 0, onCollapseChange })
       toast.error('Logout failed, but you have been signed out locally');
     } finally {
       navigate('/', { replace: true });
-      onClose?.();
+      if (onClose) onClose();
     }
-  }, [logout, navigate, onClose]);
-
-  const sidebarThemeClass = isDark ? SIDEBAR_THEME.dark : SIDEBAR_THEME.light;
+  };
 
   return (
     <>
-      {/* Mobile backdrop */}
+      {/* Mobile overlay */}
       {isOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm lg:hidden transition-opacity duration-300"
@@ -410,16 +430,19 @@ export const Sidebar = ({ isOpen, onClose, pendingCount = 0, onCollapseChange })
           ${isOpen ? 'translate-x-0' : '-translate-x-full'}
           lg:translate-x-0
           ${isCollapsed ? SIDEBAR_WIDTH.collapsed : `${SIDEBAR_WIDTH.mobile} lg:${SIDEBAR_WIDTH.expanded}`}
-          ${sidebarThemeClass}
+          ${themeClasses.sidebar}
           overflow-hidden
         `}
       >
         <div className="flex h-full flex-col">
-          {/* Collapse toggle — desktop only */}
+          {/* Collapse toggle (desktop only) */}
           <button
             onClick={toggleCollapse}
+            onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && toggleCollapse()}
             aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            tabIndex={0}
             className="absolute top-4 right-3 z-50 p-1.5 rounded-full bg-white/80 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700 shadow-md hover:shadow-lg transition-all hidden lg:flex items-center justify-center backdrop-blur-sm"
+            title={isCollapsed ? 'Expand' : 'Collapse'}
           >
             {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
           </button>
@@ -427,31 +450,27 @@ export const Sidebar = ({ isOpen, onClose, pendingCount = 0, onCollapseChange })
           {/* Mobile close button */}
           <button
             onClick={onClose}
-            aria-label="Close sidebar"
             className="absolute right-2 top-2 p-1.5 rounded-lg bg-white/80 dark:bg-gray-800/80 lg:hidden backdrop-blur-sm z-50"
+            aria-label="Close sidebar"
           >
             <X className="h-5 w-5" />
           </button>
 
           {/* Navigation */}
-          <nav
-            role="navigation"
-            aria-label="Main navigation"
-            className="flex-1 space-y-1 px-3 py-4 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600"
-          >
-            {isLoading && prevNavRef.current === PUBLIC_NAVIGATION ? (
+          <nav role="navigation" className="flex-1 space-y-1 px-3 py-4 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600">
+            {isLoading && !lastNavigationRef.current ? (
               <div className="flex items-center justify-center py-8">
                 <div className="animate-spin rounded-full h-8 w-8 border-2 border-indigo-500 border-t-transparent" />
               </div>
             ) : (
               navigation.map(item => (
                 <NavItem
-                  key={item.href}
+                  key={item.name}
                   item={item}
                   isCollapsed={isCollapsed}
                   pendingCount={pendingCount}
                   meta={meta}
-                  isDark={isDark}
+                  theme={theme}
                   onNavClick={handleNavClick}
                   locationPath={location.pathname}
                 />
@@ -459,12 +478,12 @@ export const Sidebar = ({ isOpen, onClose, pendingCount = 0, onCollapseChange })
             )}
           </nav>
 
-          {/* Footer: authenticated or public */}
+          {/* User section / Public footer */}
           {isAuthenticated ? (
             <UserSection
               userDisplayData={userDisplayData}
               isCollapsed={isCollapsed}
-              isDark={isDark}
+              theme={theme}
               user={user}
               meta={meta}
               onLogout={handleLogout}
@@ -472,6 +491,7 @@ export const Sidebar = ({ isOpen, onClose, pendingCount = 0, onCollapseChange })
           ) : (
             <PublicFooter
               isCollapsed={isCollapsed}
+              theme={theme}
               onNavClick={handleNavClick}
             />
           )}
