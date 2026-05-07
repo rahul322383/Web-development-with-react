@@ -1,6 +1,3 @@
-
-
-
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate, Link } from 'react-router-dom';
@@ -16,7 +13,6 @@ import {
   Users,
   ChevronLeft,
   Building2,
-  Hash,
   Shield,
   AlertCircle,
   ArrowRight,
@@ -51,10 +47,10 @@ const InputField = ({
         {Icon && (
           <div className="absolute left-3 top-1/2 -translate-y-1/2 z-10">
             <Icon className={`w-5 h-5 transition-colors duration-200 ${error && touched
-                ? 'text-rose-500'
-                : isFocused
-                  ? 'text-indigo-600 dark:text-indigo-400'
-                  : 'text-slate-400'
+              ? 'text-rose-500'
+              : isFocused
+                ? 'text-indigo-600 dark:text-indigo-400'
+                : 'text-slate-400'
               }`} />
           </div>
         )}
@@ -78,6 +74,7 @@ const InputField = ({
             transition-all duration-200
           `}
           placeholder={label}
+          autoComplete="off"
           {...props}
         />
 
@@ -229,13 +226,11 @@ const Register = () => {
       case 'department':
         return !value ? 'Department is required' : '';
       case 'baseSalary':
-        // Optional field, but if provided must be valid number
         if (value && (isNaN(value) || parseFloat(value) <= 0)) {
           return 'Salary must be a positive number';
         }
         return '';
       case 'managerId':
-        // Optional field, but if provided must be valid number
         if (value && isNaN(value)) return 'Manager ID must be a number';
         return '';
       default:
@@ -245,13 +240,11 @@ const Register = () => {
 
   const validateForm = () => {
     const newErrors = {};
-    // Required fields (baseSalary is NOT required)
     const requiredFields = ['employeeCode', 'firstName', 'lastName', 'email', 'password', 'role', 'department'];
     requiredFields.forEach(key => {
       const error = validateField(key, formData[key]);
       if (error) newErrors[key] = error;
     });
-    // Validate optional fields if they have values
     if (formData.baseSalary) {
       const error = validateField('baseSalary', formData.baseSalary);
       if (error) newErrors.baseSalary = error;
@@ -280,7 +273,6 @@ const Register = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // Mark required fields as touched
     const allTouched = {};
     const requiredFields = ['employeeCode', 'firstName', 'lastName', 'email', 'password', 'role', 'department'];
     requiredFields.forEach(key => { allTouched[key] = true; });
@@ -297,7 +289,6 @@ const Register = () => {
     setLoading(true);
 
     try {
-      // Build payload exactly as backend expects
       const submitData = {
         employeeCode: formData.employeeCode,
         firstName: formData.firstName,
@@ -308,12 +299,10 @@ const Register = () => {
         department: formData.department
       };
 
-      // Add baseSalary only if provided (parse as float)
       if (formData.baseSalary) {
         submitData.baseSalary = parseFloat(formData.baseSalary);
       }
 
-      // Add managerId only if role is Employee and value provided
       if (formData.role === 'Employee' && formData.managerId) {
         submitData.managerId = parseInt(formData.managerId, 10);
       }
@@ -321,7 +310,7 @@ const Register = () => {
       const result = await register(submitData);
 
       if (result.success) {
-        // Success toast already shown in register function
+        toast.success('Registration successful! Redirecting...');
         setTimeout(() => navigate('/dashboard'), 1000);
       }
     } catch (error) {
@@ -386,7 +375,7 @@ const Register = () => {
             </div>
 
             {/* Form */}
-            <form onSubmit={handleSubmit} className="p-8">
+            <form onSubmit={handleSubmit} className="p-8" autoComplete="off">
               {/* Personal Information */}
               <div className="mb-8">
                 <h2 className="text-sm font-semibold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider mb-4 flex items-center gap-2">
@@ -401,10 +390,10 @@ const Register = () => {
                     value={formData.employeeCode}
                     onChange={handleChange}
                     onBlur={handleBlur}
-                    icon={Hash}
                     error={errors.employeeCode}
                     touched={touched.employeeCode}
                     required
+                    autoComplete="off"
                   />
 
                   <InputField
@@ -459,6 +448,7 @@ const Register = () => {
                       showPassword={showPassword}
                       onTogglePassword={() => setShowPassword(!showPassword)}
                       required
+                      autoComplete="new-password"
                     />
                     <PasswordStrength password={formData.password} />
                   </div>
@@ -483,6 +473,7 @@ const Register = () => {
                       onChange={handleChange}
                       onBlur={handleBlur}
                       className="w-full px-4 py-3.5 pl-10 bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:border-indigo-600 dark:focus:border-indigo-400 focus:ring-4 focus:ring-indigo-500/10 transition-all appearance-none cursor-pointer text-slate-900 dark:text-white"
+                      autoComplete="off"
                     >
                       <option value="">Select Role</option>
                       {roles.map(role => (
@@ -510,6 +501,7 @@ const Register = () => {
                       onChange={handleChange}
                       onBlur={handleBlur}
                       className="w-full px-4 py-3.5 pl-10 bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:border-indigo-600 dark:focus:border-indigo-400 focus:ring-4 focus:ring-indigo-500/10 transition-all appearance-none cursor-pointer text-slate-900 dark:text-white"
+                      autoComplete="off"
                     >
                       <option value="">Select Department</option>
                       {departments.map(dept => (
@@ -595,7 +587,6 @@ const Register = () => {
                   </Link>
                 </p>
 
-                {/* Legal Links */}
                 <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-slate-500">
                   <Link to="/privacy" className="hover:text-indigo-600 transition-colors flex items-center gap-1">
                     <Shield className="w-3 h-3" />
