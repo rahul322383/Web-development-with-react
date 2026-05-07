@@ -270,8 +270,29 @@ Notification.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 // ⚙️ Settings
 User.hasMany(Setting, { foreignKey: 'userId', as: 'settings' });
 Setting.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+// 🕒 Shift System
 
-// 🕒 Shift system (FIXED CLEAN)
+Company.hasMany(Shift, {
+  foreignKey: 'companyId',
+  as: 'shifts',
+});
+
+Shift.belongsTo(Company, {
+  foreignKey: 'companyId',
+  as: 'company',
+});
+
+Company.hasMany(ShiftAssignment, {
+  foreignKey: 'companyId',
+  as: 'shiftAssignments',
+});
+
+ShiftAssignment.belongsTo(Company, {
+  foreignKey: 'companyId',
+  as: 'company',
+});
+
+// User ↔ Shift
 User.belongsTo(Shift, {
   foreignKey: 'shiftId',
   as: 'shift',
@@ -282,19 +303,15 @@ Shift.hasMany(User, {
   as: 'employees',
 });
 
+// Shift Assignments
+User.hasMany(ShiftAssignment, {
+  foreignKey: 'employeeId',
+  as: 'shiftAssignments',
+});
+
 ShiftAssignment.belongsTo(User, {
   foreignKey: 'employeeId',
   as: 'employee',
-});
-
-ShiftAssignment.belongsTo(Shift, {
-  foreignKey: 'shiftId',
-  as: 'shift',
-});
-
-ShiftAssignment.belongsTo(User, {
-  foreignKey: 'assignedBy',
-  as: 'assignor',
 });
 
 Shift.hasMany(ShiftAssignment, {
@@ -302,6 +319,20 @@ Shift.hasMany(ShiftAssignment, {
   as: 'assignments',
 });
 
+ShiftAssignment.belongsTo(Shift, {
+  foreignKey: 'shiftId',
+  as: 'shift',
+});
+
+User.hasMany(ShiftAssignment, {
+  foreignKey: 'assignedBy',
+  as: 'assignedShifts',
+});
+
+ShiftAssignment.belongsTo(User, {
+  foreignKey: 'assignedBy',
+  as: 'assignor',
+});
 // ======================
 // 🔥 EXPORT
 // ======================
