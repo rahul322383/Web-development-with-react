@@ -111,7 +111,7 @@ function AppRoutes() {
           <Route
             path="/company"
             element={
-              <ProtectedRoute roles={['Admin', 'HR']}>
+              <ProtectedRoute roles={['Admin', 'HR', 'Manager', 'Finance', 'Employee' ]}>
                 <CompanyPage />
               </ProtectedRoute>
             }
