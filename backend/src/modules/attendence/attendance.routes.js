@@ -4,7 +4,10 @@ const express = require('express');
 const router = express.Router();
 
 const authenticate = require('../../middleware/auth.middleware');
-const authorize = require('../../middleware/rbacMiddleware');
+
+const {
+  requirePermission,
+} = require('../../utils/permissions');
 
 const {
   apiLimiter,
@@ -23,56 +26,83 @@ const {
   validateOvertimeSummary,
 } = require('./attendance.validation');
 
-// auth required for all routes
 router.use(authenticate);
 
-// ─── Employee (light + frequent usage) ─────────────────────────
-router.post('/checkin', apiLimiter, validateCheckIn, ctrl.checkIn);
+// ─────────────────────────────────────────────
+// Employee
+// ─────────────────────────────────────────────
 
-router.patch('/checkout', apiLimiter, validateCheckOut, ctrl.checkOut);
+router.post(
+  '/checkin',
+  apiLimiter,
+  requirePermission('CHECKIN_ATTENDANCE'),
+  validateCheckIn,
+  ctrl.checkIn,
+);
 
-router.get('/my', apiLimiter, validateMyAttendance, ctrl.getMyAttendance);
+router.patch(
+  '/checkout',
+  apiLimiter,
+  requirePermission('CHECKOUT_ATTENDANCE'),
+  validateCheckOut,
+  ctrl.checkOut,
+);
 
-// ─── Manager / HR / Admin (medium traffic) ────────────────────
+router.get(
+  '/my',
+  apiLimiter,
+  requirePermission('VIEW_ATTENDANCE'),
+  validateMyAttendance,
+  ctrl.getMyAttendance,
+);
+
+// ─────────────────────────────────────────────
+// Team / Management
+// ─────────────────────────────────────────────
+
 router.get(
   '/today',
   apiLimiter,
-  authorize('admin', 'hr', 'manager'),
+  requirePermission('VIEW_TEAM_ATTENDANCE'),
   ctrl.getTodaySummary,
 );
 
-// heavy reporting → stricter limiter
 router.get(
   '/report',
   heavyLimiter,
-  authorize('admin', 'hr', 'manager'),
+  requirePermission('VIEW_ATTENDANCE_REPORT'),
   validateTeamReport,
   ctrl.getTeamReport,
 );
 
-// overtime = heavy query
 router.get(
   '/overtime-summary',
   heavyLimiter,
-  authorize('admin', 'hr'),
+  requirePermission('VIEW_OVERTIME_SUMMARY'),
   validateOvertimeSummary,
   ctrl.getOvertimeSummary,
 );
 
-// admin manual entry (sensitive)
+// ─────────────────────────────────────────────
+// Admin Manual Entry
+// ─────────────────────────────────────────────
+
 router.post(
   '/admin',
   adminLimiter,
-  authorize('admin', 'hr'),
+  requirePermission('MANAGE_ATTENDANCE'),
   validateAdminRecord,
   ctrl.adminRecord,
 );
 
-// ─── Must be LAST (param route trap fix) ───────────────────────
+// ─────────────────────────────────────────────
+// Must be LAST
+// ─────────────────────────────────────────────
+
 router.get(
   '/:id',
   apiLimiter,
-  authorize('admin', 'hr', 'manager'),
+  requirePermission('VIEW_TEAM_ATTENDANCE'),
   ctrl.getById,
 );
 
