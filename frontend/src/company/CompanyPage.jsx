@@ -750,7 +750,7 @@
 'use strict';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import companyApi from '../api/companyApi';
-import { authApi } from '../api/authApi';
+import { useAuth } from '../context/AuthContext';   // 👈 adjust path as needed
 
 /* ------------------------------------------------------------------ */
 /*  HELPERS                                                            */
@@ -1428,7 +1428,8 @@ const CompanyDetail = ({ company: initial, onBack, onUpdated, toast }) => {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center gap-2 text-sm text-slate-400 dark:text-slate-500">
-        {onBack && <button onClick={onBack} className="hover:text-violet-600 transition-colors font-medium">← Back to Companies</button>}
+        <button onClick={onBack} className="hover:text-violet-600 transition-colors font-medium">← All Companies</button>
+        <span>/</span>
         <span className="text-slate-700 dark:text-slate-200 font-medium">{company.name}</span>
       </div>
       <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl w-fit">
@@ -1451,171 +1452,130 @@ const CompanyDetail = ({ company: initial, onBack, onUpdated, toast }) => {
 };
 
 /* ------------------------------------------------------------------ */
-/*  ADMIN COMPANY LIST                                                 */
+/*  ADMIN: ALL COMPANIES LIST                                          */
 /* ------------------------------------------------------------------ */
-const AdminView = ({ toast, currentUser }) => {
+const AllCompanies = ({ onSelectCompany, toast }) => {
   const [companies, setCompanies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [page, setPage] = useState(1);
-  const [meta, setMeta] = useState({});
-  const [selectedCompany, setSelectedCompany] = useState(null);
-  const [createOpen, setCreateOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [meta, setMeta] = useState({ total: 0, totalPages: 1 });
 
-  // Debounce search
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(search), 400);
-    return () => clearTimeout(timer);
-  }, [search]);
-
-  const fetchCompanies = useCallback(async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await companyApi.getAll({ page, search: debouncedSearch || undefined, limit: 12 });
-      setCompanies(res.data.companies || []);
+      const res = await companyApi.list({ search, page, limit: 12 });   // 👈 make sure this endpoint exists
+      setCompanies(res.data.companies || res.data || []);
       setMeta({ total: res.data.total, totalPages: res.data.totalPages });
     } catch (e) {
       toast(extractError(e), 'error');
     } finally {
       setLoading(false);
     }
-  }, [page, debouncedSearch, toast]);
+  }, [search, page, toast]);
 
-  useEffect(() => { fetchCompanies(); }, [fetchCompanies]);
+  useEffect(() => { load(); }, [load]);
 
-  const handleCreate = async (data) => {
-    setSaving(true);
-    try {
-      await companyApi.create(data);
-      toast('Company created');
-      setCreateOpen(false);
-      fetchCompanies();
-    } catch (e) {
-      toast(extractError(e), 'error');
-    } finally {
-      setSaving(false);
-    }
+  const handleSearch = (e) => {
+    setSearch(e.target.value);
+    setPage(1);
   };
-
-  const handleDelete = async (companyId) => {
-    try {
-      await companyApi.delete(companyId);
-      toast('Company deleted');
-      fetchCompanies();
-    } catch (e) {
-      toast(extractError(e), 'error');
-    }
-  };
-
-  const handleCompanyUpdated = (updated) => {
-    setCompanies(prev => prev.map(c => c.id === updated.id ? updated : c));
-    if (selectedCompany?.id === updated.id) {
-      setSelectedCompany(updated);
-    }
-  };
-
-  if (selectedCompany) {
-    return (
-      <CompanyDetail
-        company={selectedCompany}
-        onBack={() => setSelectedCompany(null)}
-        onUpdated={handleCompanyUpdated}
-        toast={toast}
-      />
-    );
-  }
 
   return (
-    <>
-      <div className="flex flex-col gap-6">
-        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Companies</h1>
-          <div className="flex items-center gap-3 w-full sm:w-auto">
-            <input
-              value={search}
-              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-              placeholder="Search companies…"
-              className="flex-1 sm:w-60 px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 placeholder:text-slate-300 dark:placeholder:text-slate-500 dark:text-slate-100"
-            />
-            <Btn onClick={() => setCreateOpen(true)}>＋ New Company</Btn>
-          </div>
-        </div>
-
-        {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {Array(6).fill(0).map((_, i) => <SkeletonCard key={i} />)}
-          </div>
-        ) : companies.length === 0 ? (
-          <Empty text="No companies found" />
-        ) : (
-          <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {companies.map(comp => (
-                <div
-                  key={comp.id}
-                  onClick={() => setSelectedCompany(comp)}
-                  className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-5 hover:shadow-lg transition-all cursor-pointer group"
-                >
-                  <div className="flex items-center gap-3 mb-3">
-                    <Avatar name={comp.name} size={40} />
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-slate-800 dark:text-slate-100 truncate">{comp.name}</h3>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <ActiveBadge active={comp.isActive} />
-                        <PlanBadge plan={comp.subscriptionPlan} />
-                      </div>
-                    </div>
-                  </div>
-                  {comp.industry && (
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">{comp.industry}</p>
-                  )}
-                  <div className="flex items-center justify-between text-xs text-slate-400 dark:text-slate-500">
-                    <span>{[comp.city, comp.country].filter(Boolean).join(', ') || '—'}</span>
-                    <span>{comp.size || '—'}</span>
-                  </div>
-                  <div className="flex justify-end mt-3 pt-3 border-t border-slate-50 dark:border-slate-700 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ id: comp.id, name: comp.name }); }}
-                      className="text-xs text-red-500 hover:text-red-700 font-medium"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {meta.totalPages > 1 && (
-              <div className="flex items-center justify-between px-4 py-3 border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800">
-                <span className="text-xs text-slate-400 dark:text-slate-500">Total: {fmt(meta.total)} companies</span>
-                <div className="flex gap-2">
-                  <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="px-3 py-1 text-xs rounded-lg border border-slate-200 dark:border-slate-600 disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-600 dark:text-slate-300">← Prev</button>
-                  <span className="px-3 py-1 text-xs text-slate-500 dark:text-slate-400">Page {page} / {meta.totalPages}</span>
-                  <button disabled={page >= meta.totalPages} onClick={() => setPage(p => p + 1)} className="px-3 py-1 text-xs rounded-lg border border-slate-200 dark:border-slate-600 disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-600 dark:text-slate-300">Next →</button>
-                </div>
-              </div>
-            )}
-          </>
-        )}
+    <div className="flex flex-col gap-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">All Companies</h2>
+        <Btn onClick={() => onSelectCompany({})} icon="＋">New Company</Btn>
+      </div>
+      <div className="flex items-center gap-3">
+        <input
+          value={search}
+          onChange={handleSearch}
+          placeholder="Search companies…"
+          className="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 placeholder:text-slate-300 dark:placeholder:text-slate-500 dark:text-slate-100"
+        />
       </div>
 
-      {/* Create modal */}
-      <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Create New Company" wide>
-        <CompanyForm onSubmit={handleCreate} loading={saving} errors={{}} />
-      </Modal>
+      {loading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {Array(6).fill(0).map((_, i) => <SkeletonCard key={i} />)}
+        </div>
+      ) : companies.length === 0 ? (
+        <Empty text="No companies found" />
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {companies.map(c => (
+            <button
+              key={c.id}
+              onClick={() => onSelectCompany(c)}
+              className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-5 text-left hover:shadow-md transition-shadow cursor-pointer"
+            >
+              <div className="flex items-center gap-3 mb-3">
+                <Avatar name={c.name} size={36} />
+                <div>
+                  <h3 className="font-semibold text-slate-800 dark:text-slate-100">{c.name}</h3>
+                  <p className="text-xs text-slate-400 dark:text-slate-500">{c.industry || 'No industry'} · {c.size || 'Unknown size'}</p>
+                </div>
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                <ActiveBadge active={c.isActive} />
+                <PlanBadge plan={c.subscriptionPlan} />
+              </div>
+              {c.slug && <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">/{c.slug}</p>}
+            </button>
+          ))}
+        </div>
+      )}
 
-      {/* Delete confirmation */}
-      <ConfirmModal
-        open={!!deleteConfirm}
-        onClose={() => setDeleteConfirm(null)}
-        message={`Delete company "${deleteConfirm?.name}"? This action cannot be undone.`}
-        onConfirm={() => { if (deleteConfirm) handleDelete(deleteConfirm.id); setDeleteConfirm(null); }}
-      />
-    </>
+      {meta.totalPages > 1 && (
+        <div className="flex items-center justify-center gap-4 mt-4">
+          <button
+            disabled={page <= 1}
+            onClick={() => setPage(p => p - 1)}
+            className="px-4 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-600 disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-700 dark:text-slate-300"
+          >
+            ← Prev
+          </button>
+          <span className="text-sm text-slate-500 dark:text-slate-400">
+            Page {page} / {meta.totalPages}
+          </span>
+          <button
+            disabled={page >= meta.totalPages}
+            onClick={() => setPage(p => p + 1)}
+            className="px-4 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-600 disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-700 dark:text-slate-300"
+          >
+            Next →
+          </button>
+        </div>
+      )}
+    </div>
   );
+};
+
+/* ------------------------------------------------------------------ */
+/*  USER OWN COMPANY VIEW                                              */
+/* ------------------------------------------------------------------ */
+const UserCompanyView = ({ companyId, toast }) => {
+  const [company, setCompany] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await companyApi.get(companyId);
+        setCompany(res.data.company || res.data);
+      } catch (e) {
+        toast(extractError(e), 'error');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [companyId, toast]);
+
+  if (loading) return <Spinner />;
+  if (!company) return <Empty text="Company not found" />;
+
+  return <CompanyDetail company={company} onUpdated={setCompany} toast={toast} />;
 };
 
 /* ------------------------------------------------------------------ */
@@ -1623,30 +1583,11 @@ const AdminView = ({ toast, currentUser }) => {
 /* ------------------------------------------------------------------ */
 export default function CompanyManagement() {
   const { toast, Toast } = useToast();
-  const [currentUser, setCurrentUser] = useState(null);
-  const [company, setCompany] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
+  const [selectedCompany, setSelectedCompany] = useState(null); // for admin drill-down
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const userRes = await authApi.getMe();
-        const user = userRes.data?.user || userRes.data;
-        setCurrentUser(user);
-        // If user is not admin, fetch their assigned company
-        if (user?.role?.name !== 'admin' && user?.company_id) {
-          const compRes = await companyApi.get(user.company_id);
-          setCompany(compRes.data.company || compRes.data);
-        }
-      } catch (e) {
-        toast(extractError(e), 'error');
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []); // eslint-disable-line
-
-  if (loading) {
+  // Waiting for auth context to resolve
+  if (authLoading) {
     return (
       <div className="min-h-screen bg-white dark:bg-slate-900 flex items-center justify-center">
         <Spinner />
@@ -1654,17 +1595,34 @@ export default function CompanyManagement() {
     );
   }
 
-  const isAdmin = currentUser?.role?.name === 'admin';
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
+        <Empty text="Please log in to access company management." />
+      </div>
+    );
+  }
+
+  const isAdmin = user?.primaryRole === 'Admin';
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 font-sans transition-colors">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 font-sans transition-colors pt-16">
       <Toast />
       {isAdmin ? (
-        <AdminView toast={toast} currentUser={currentUser} />
-      ) : company ? (
-        <CompanyDetail company={company} onUpdated={setCompany} toast={toast} />
+        selectedCompany ? (
+          <CompanyDetail
+            company={selectedCompany}
+            onBack={() => setSelectedCompany(null)}
+            onUpdated={(updated) => setSelectedCompany(updated)}
+            toast={toast}
+          />
+        ) : (
+          <AllCompanies onSelectCompany={setSelectedCompany} toast={toast} />
+        )
+      ) : user?.companyId ? (
+        <UserCompanyView companyId={user.companyId} toast={toast} />
       ) : (
-        <Empty text="No company found for your account" />
+        <Empty text="No company associated with your account" />
       )}
     </div>
   );
