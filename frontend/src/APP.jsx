@@ -9,7 +9,7 @@ import Layout from "./components/layout/layout";
 import { ProtectedRoute } from "./routes/ProtectedRoute";
 import { PublicRoute } from "./routes/PublicRoute";
 import { useAuth } from "./context/AuthContext";
-
+import PayrollRouter from "./routes/PayrollRouter";
 // ── AI Chat Widget ──────────────────────────────────────────
 import AiChat from "./ai/AiChat"; 
 
@@ -121,15 +121,14 @@ function AppRoutes() {
             <ProtectedRoute><DepartmentDashboard /></ProtectedRoute>
           } />
 
-          <Route path="/payroll" element={
-            <ProtectedRoute>
-              {["Admin", "HR", "Finance", 'Manager'].includes(user?.role?.toLowerCase())
-                ? <AdminPayroll />
-                : <EmployeePayroll />
-              }
-            </ProtectedRoute>
-          } />
-
+          <Route
+            path="/payroll"
+            element={
+              <ProtectedRoute>
+                <PayrollRouter />
+              </ProtectedRoute>
+            }
+          />
           <Route path="/attendance" element={
             <ProtectedRoute><AttendancePage /></ProtectedRoute>
           } />
