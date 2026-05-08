@@ -1,29 +1,73 @@
 'use strict';
 
 const express = require('express');
+
 const router = express.Router();
 
 const authenticate = require('../../middleware/auth.middleware');
-const authorize = require('../../middleware/rbacMiddleware');
+
+const {
+    requirePermission,
+} = require('../../utils/permissions');
+
 const auditController = require('./auditController');
 
-const { adminLimiter, apiLimiter } = require('../../middleware/rateLimit.middleware');
+const {
+    adminLimiter,
+    apiLimiter,
+} = require('../../middleware/rateLimit.middleware');
 
 router.use(authenticate);
 router.use(apiLimiter);
 
-// collection filters (IMPORTANT: must come BEFORE /:id)
-router.get('/', auditController.getAuditLogs);
-router.get('/stats', auditController.getAuditStats);
-router.get('/export', auditController.exportAuditLogs);
-router.get('/user/:userId', auditController.getAuditLogsByUser);
-router.get('/module/:moduleName', auditController.getAuditLogsByModule);
+router.get(
+    '/',
+    requirePermission('VIEW_AUDIT_LOGS'),
+    auditController.getAuditLogs
+);
 
-// single record (keep LAST)
-router.get('/:id', auditController.getAuditLogById);
+router.get(
+    '/stats',
+    requirePermission('VIEW_AUDIT_STATS'),
+    auditController.getAuditStats
+);
 
-// write operations (strict limiter)
-router.post('/', adminLimiter, authorize('Admin'), auditController.createAuditLog);
-router.delete('/cleanup', adminLimiter, authorize('Admin'), auditController.deleteOldAuditLogs);
+router.get(
+    '/export',
+    requirePermission('EXPORT_AUDIT_LOGS'),
+    auditController.exportAuditLogs
+);
+
+router.get(
+    '/user/:userId',
+    requirePermission('VIEW_USER_AUDIT'),
+    auditController.getAuditLogsByUser
+);
+
+router.get(
+    '/module/:moduleName',
+    requirePermission('VIEW_MODULE_AUDIT'),
+    auditController.getAuditLogsByModule
+);
+
+router.get(
+    '/:id',
+    requirePermission('VIEW_AUDIT_LOGS'),
+    auditController.getAuditLogById
+);
+
+router.post(
+    '/',
+    adminLimiter,
+    requirePermission('CREATE_AUDIT_LOG'),
+    auditController.createAuditLog
+);
+
+router.delete(
+    '/cleanup',
+    adminLimiter,
+    requirePermission('DELETE_AUDIT_LOGS'),
+    auditController.deleteOldAuditLogs
+);
 
 module.exports = router;
