@@ -1,10 +1,81 @@
+
+
+// // import React, { useState, useEffect } from 'react';
+// // import { Sidebar } from "./Sidebar";
+// // import { Menu } from 'lucide-react';
+// // import { useLocation, Outlet } from "react-router-dom";
+// // import { Footer } from "./Footer";
+// // import { Header } from "./Header";
+// // import { useTheme } from "../../context/ThemeContext";
+// // import { useAuth } from "../../context/AuthContext"; // 👈 for pendingCount
+
+// // const Layout = () => {
+// //   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+// //   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(
+// //     () => localStorage.getItem('sidebar-collapsed') === 'true'
+// //   );
+// //   const location = useLocation();
+// //   const { theme } = useTheme();
+// //   const { meta } = useAuth(); // adjust if pending count comes from a different source
+
+// //   // Example: read pending leaves count from meta (adjust key to match your API)
+// //   const pendingCount = meta?.pendingLeaves ?? 0;
+
+// //   useEffect(() => {
+// //     setIsSidebarOpen(false);
+// //   }, [location]);
+
+// //   useEffect(() => {
+// //     document.body.style.overflow = isSidebarOpen ? "hidden" : "auto";
+// //   }, [isSidebarOpen]);
+
+// //   return (
+// //     <div className={`min-h-screen ${theme === 'dark' ? 'bg-gray-950' : 'bg-slate-50'}`}>
+// //       <button
+// //         aria-label="Open menu"
+// //         onClick={() => setIsSidebarOpen(true)}
+// //         className={`fixed top-4 left-4 z-40 lg:hidden p-2 rounded-lg shadow-md ${theme === 'dark'
+// //           ? 'bg-gray-800 hover:bg-gray-700 text-gray-300'
+// //           : 'bg-white hover:bg-slate-50 text-slate-600'
+// //           }`}
+// //       >
+// //         <Menu className="h-5 w-5" />
+// //       </button>
+
+// //       <Sidebar
+// //         isOpen={isSidebarOpen}
+// //         onClose={() => setIsSidebarOpen(false)}
+// //         onCollapseChange={setIsSidebarCollapsed}
+// //         pendingCount={pendingCount}
+// //       />
+
+// //       {/* ml-0 ensures full width on mobile, then responsive left margin on lg+ */}
+// //       <main
+// //         className={`
+// //           min-h-screen transition-all duration-300
+// //           ml-0
+// //           ${isSidebarCollapsed ? 'lg:ml-20' : 'lg:ml-72'}
+// //         `}
+// //       >
+// //         <div className="container mx-auto px-4 py-8">
+// //           <Header />
+// //           <Outlet />
+// //           <Footer />
+// //         </div>
+// //       </main>
+// //     </div>
+// //   );
+// // };
+
+// // export default Layout;
 // import React, { useState, useEffect } from 'react';
-// import { Sidebar } from "./Sidebar";
+// import { Sidebar } from './Sidebar';
 // import { Menu } from 'lucide-react';
-// import { useLocation, Outlet } from "react-router-dom";
-// import { Footer } from "./Footer";
-// import { Header } from "./Header";
-// import { useTheme } from "../../context/ThemeContext";
+// import { useLocation, Outlet } from 'react-router-dom';
+// import { Footer } from './Footer';
+// import { Header } from './Header';
+// import { useTheme } from '../../context/ThemeContext';
+// import { useAuth } from '../../context/AuthContext';
 
 // const Layout = () => {
 //   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -13,37 +84,55 @@
 //   );
 //   const location = useLocation();
 //   const { theme } = useTheme();
+//   const { meta } = useAuth();
 
+//   // Read pending leaves count (adjust property name to match your API)
+//   const pendingCount = meta?.pendingLeaves ?? 0;
+
+//   // Close sidebar on route change
 //   useEffect(() => {
 //     setIsSidebarOpen(false);
 //   }, [location]);
 
+//   // Prevent body scroll when mobile sidebar is open
 //   useEffect(() => {
-//     document.body.style.overflow = isSidebarOpen ? "hidden" : "auto";
+//     document.body.style.overflow = isSidebarOpen ? 'hidden' : 'auto';
 //   }, [isSidebarOpen]);
 
 //   return (
 //     <div className={`min-h-screen ${theme === 'dark' ? 'bg-gray-950' : 'bg-slate-50'}`}>
+//       {/* Hamburger button – only on mobile, anchored to the left */}
 //       <button
-//         aria-label="Open menu"
+//         aria-label="Open navigation menu"
 //         onClick={() => setIsSidebarOpen(true)}
-//         className={`fixed top-4 left-4 z-40 lg:hidden p-2 rounded-lg shadow-md ${theme === 'dark'
-//             ? 'bg-gray-800 hover:bg-gray-700 text-gray-300'
-//             : 'bg-white hover:bg-slate-50 text-slate-600'
-//           }`}
+//         className={`
+//           fixed top-18 left-4 z-50 lg:hidden p-2 rounded-lg shadow-md
+//           transition-colors duration-200
+//           ${theme === 'dark'
+//             ? 'bg-gray-800 hover:bg-gray-700 text-gray-200'
+//             : 'bg-white hover:bg-slate-100 text-slate-700'
+//           }
+//         `}
 //       >
 //         <Menu className="h-5 w-5" />
 //       </button>
 
+//       {/* Sidebar – slides from left on mobile, permanent on desktop */}
 //       <Sidebar
 //         isOpen={isSidebarOpen}
 //         onClose={() => setIsSidebarOpen(false)}
 //         onCollapseChange={setIsSidebarCollapsed}
+//         pendingCount={pendingCount}
 //       />
 
+//       {/* Main content – shifts based on sidebar state on desktop, always full width on mobile */}
 //       <main
-//         className={`min-h-screen transition-all duration-300 ${isSidebarCollapsed ? 'lg:ml-20' : 'lg:ml-72'
-//           }`}
+//         className={`
+//           min-h-screen transition-all duration-300
+//           ml-0
+//           ${isSidebarCollapsed ? 'lg:ml-20' : 'lg:ml-72'}
+//           pt-20 lg:pt-0 // extra padding top for mobile to clear the hamburger
+//         `}
 //       >
 //         <div className="container mx-auto px-4 py-8">
 //           <Header />
@@ -56,15 +145,14 @@
 // };
 
 // export default Layout;
-
 import React, { useState, useEffect } from 'react';
-import { Sidebar } from "./Sidebar";
+import { Sidebar } from './Sidebar';
 import { Menu } from 'lucide-react';
-import { useLocation, Outlet } from "react-router-dom";
-import { Footer } from "./Footer";
-import { Header } from "./Header";
-import { useTheme } from "../../context/ThemeContext";
-import { useAuth } from "../../context/AuthContext"; // 👈 for pendingCount
+import { useLocation, Outlet } from 'react-router-dom';
+import { Footer } from './Footer';
+import { Header } from './Header';
+import { useTheme } from '../../context/ThemeContext';
+import { useAuth } from '../../context/AuthContext';
 
 const Layout = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -73,32 +161,42 @@ const Layout = () => {
   );
   const location = useLocation();
   const { theme } = useTheme();
-  const { meta } = useAuth(); // adjust if pending count comes from a different source
+  const { meta } = useAuth();
 
-  // Example: read pending leaves count from meta (adjust key to match your API)
   const pendingCount = meta?.pendingLeaves ?? 0;
 
+  // Close sidebar on route change (mobile)
   useEffect(() => {
     setIsSidebarOpen(false);
   }, [location]);
 
+  // Prevent body scroll when mobile sidebar is open
   useEffect(() => {
-    document.body.style.overflow = isSidebarOpen ? "hidden" : "auto";
+    document.body.style.overflow = isSidebarOpen ? 'hidden' : '';
+    return () => { document.body.style.overflow = ''; };
   }, [isSidebarOpen]);
 
   return (
     <div className={`min-h-screen ${theme === 'dark' ? 'bg-gray-950' : 'bg-slate-50'}`}>
+
+      {/* Hamburger — mobile only, hidden when sidebar is open */}
       <button
-        aria-label="Open menu"
+        aria-label="Open navigation menu"
         onClick={() => setIsSidebarOpen(true)}
-        className={`fixed top-4 left-4 z-40 lg:hidden p-2 rounded-lg shadow-md ${theme === 'dark'
-          ? 'bg-gray-800 hover:bg-gray-700 text-gray-300'
-          : 'bg-white hover:bg-slate-50 text-slate-600'
-          }`}
+        className={`
+          fixed top-[4.5rem] left-4 z-50 lg:hidden p-2 rounded-lg shadow-md
+          transition-all duration-200
+          ${isSidebarOpen ? 'opacity-0 pointer-events-none' : 'opacity-100 pointer-events-auto'}
+          ${theme === 'dark'
+            ? 'bg-gray-800 hover:bg-gray-700 text-gray-200'
+            : 'bg-white hover:bg-slate-100 text-slate-700'
+          }
+        `}
       >
         <Menu className="h-5 w-5" />
       </button>
 
+      {/* Sidebar */}
       <Sidebar
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
@@ -106,12 +204,13 @@ const Layout = () => {
         pendingCount={pendingCount}
       />
 
-      {/* ml-0 ensures full width on mobile, then responsive left margin on lg+ */}
+      {/* Main content */}
       <main
         className={`
           min-h-screen transition-all duration-300
-          ml-0
+          ml-0 pt-20
           ${isSidebarCollapsed ? 'lg:ml-20' : 'lg:ml-72'}
+          lg:pt-0
         `}
       >
         <div className="container mx-auto px-4 py-8">
@@ -120,6 +219,7 @@ const Layout = () => {
           <Footer />
         </div>
       </main>
+
     </div>
   );
 };
