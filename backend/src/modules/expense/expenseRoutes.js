@@ -2,10 +2,20 @@
 
 const express = require('express');
 const multer = require('multer');
+
 const authenticate = require('../../middleware/auth.middleware');
-const authorize = require('../../middleware/rbacMiddleware');
 const validate = require('../../middleware/validate.middleware');
-const { apiLimiter, writeLimiter, strictLimiter } = require('../../middleware/rateLimit.middleware');
+
+const {
+  requirePermission,
+} = require('../../utils/permissions');
+
+const {
+  apiLimiter,
+  writeLimiter,
+  strictLimiter,
+} = require('../../middleware/rateLimit.middleware');
+
 const expenseController = require('./expenseController');
 
 const {
@@ -14,7 +24,9 @@ const {
   financeReviewSchema,
 } = require('./expenseValidation');
 
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({
+  storage: multer.memoryStorage(),
+});
 
 const router = express.Router();
 
@@ -23,7 +35,7 @@ router.use(authenticate, apiLimiter);
 router.post(
   '/',
   writeLimiter,
-  authorize('Employee', 'Manager', 'HR', 'Finance', 'Admin'),
+  requirePermission('SUBMIT_EXPENSE'),
   upload.single('receipt'),
   validate(submitExpenseSchema),
   expenseController.submitExpense
@@ -32,28 +44,28 @@ router.post(
 router.get(
   '/my',
   strictLimiter,
-  authorize('Employee', 'Manager', 'HR', 'Finance', 'Admin'),
+  requirePermission('LIST_MY_EXPENSES'),
   expenseController.listMyExpenses
 );
 
 router.get(
   '/pending-manager',
   strictLimiter,
-  authorize('Manager', 'Admin', 'HR', 'Finance'),
+  requirePermission('LIST_PENDING_MANAGER'),
   expenseController.listPendingManager
 );
 
 router.get(
   '/pending-finance',
   strictLimiter,
-  authorize('Finance', 'Admin', 'HR', 'Manager'),
+  requirePermission('LIST_PENDING_FINANCE'),
   expenseController.listPendingFinance
 );
 
 router.patch(
   '/:id/manager-review',
   writeLimiter,
-  authorize('Manager', 'Admin', 'HR'),
+  requirePermission('REVIEW_EXPENSE'),
   validate(managerReviewSchema),
   expenseController.managerReviewExpense
 );
@@ -61,7 +73,7 @@ router.patch(
 router.patch(
   '/:id/finance-review',
   writeLimiter,
-  authorize('Finance', 'Admin', 'Manager'),
+  requirePermission('FINANCE_REVIEW'),
   validate(financeReviewSchema),
   expenseController.financeReviewExpense
 );
