@@ -1,82 +1,80 @@
 'use strict';
 
-// src/modules/attendence/shiftRoutes.js
-
 const express = require('express');
+
 const router = express.Router();
 
 const authenticate = require('../../middleware/auth.middleware');
-const authorize = require('../../middleware/rbacMiddleware');
-const shiftCtrl = require('./shift.controller');
 const validate = require('../../middleware/validate.middleware');
 
-// 🔥 ADD LIMITERS
-const { analyticsLimiter, strictLimiter } = require('../../config/security');
+const {
+    requirePermission,
+} = require('../../utils/permissions');
 
-// ✅ Use shared validation
+const shiftCtrl = require('./shift.controller');
+
+const {
+    analyticsLimiter,
+    strictLimiter,
+} = require('../../config/security');
+
 const {
     shiftSchema,
     assignShiftSchema,
-    shiftReportQuerySchema
+    shiftReportQuerySchema,
 } = require('./shift.validation');
 
 router.use(authenticate);
 
-// ── SHIFT CONFIG ROUTES ───────────────────────────────
-
 router.post(
     '/',
-    strictLimiter, // 🔥 create shift = sensitive
-    authorize('Admin', 'HR', 'Manager', 'Finance', 'Employee'),
+    strictLimiter,
+    requirePermission('MANAGE_SHIFTS'),
     validate(shiftSchema),
     shiftCtrl.createShift
 );
 
 router.get(
     '/',
-    analyticsLimiter, // 🔥 frequent listing
-    authorize('Admin', 'HR', 'Manager', 'Finance', 'Employee'),
+    analyticsLimiter,
+    requirePermission('VIEW_SHIFTS'),
     shiftCtrl.listShifts
 );
 
 router.put(
     '/:id',
-    strictLimiter, // 🔥 update shift = sensitive
-    authorize('Admin', 'HR', 'Manager', 'Finance', 'Employee'),
+    strictLimiter,
+    requirePermission('MANAGE_SHIFTS'),
     validate(shiftSchema),
     shiftCtrl.updateShift
 );
 
 router.delete(
     '/:id',
-    strictLimiter, // 🔥 destructive action
-    authorize('Admin', 'HR', 'Manager', 'Finance', 'Employee'),
+    strictLimiter,
+    requirePermission('MANAGE_SHIFTS'),
     shiftCtrl.deleteShift
 );
 
-// ── SHIFT ASSIGNMENT ─────────────────────────────────
-
 router.post(
     '/assign',
-    strictLimiter, // 🔥 assignment changes data heavily
-    authorize('Admin', 'HR', 'Manager', 'Finance', 'Employee'),
+    strictLimiter,
+    requirePermission('ASSIGN_SHIFT'),
     validate(assignShiftSchema),
     shiftCtrl.assignShift
 );
 
 router.get(
     '/history/:employeeId',
-    analyticsLimiter, // 🔥 read-heavy endpoint
-    authorize('Admin', 'HR', 'Manager', 'Finance', 'Employee'),
+    analyticsLimiter,
+    requirePermission('VIEW_SHIFTS'),
     shiftCtrl.getEmployeeShiftHistory
 );
 
-// ── SHIFT REPORT ─────────────────────────────────────
-
 router.get(
     '/report',
-    analyticsLimiter, // 🔥 report queries are heavy
-    authorize('Admin', 'HR', 'Manager', 'Finance', 'Employee'),
+    analyticsLimiter,
+    requirePermission('VIEW_SHIFT_REPORT'),
     validate(shiftReportQuerySchema, 'query'),
     shiftCtrl.getShiftReport
 );
