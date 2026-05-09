@@ -24,9 +24,6 @@ const toMinutes = (time) => {
     return (h * 60) + m;
 };
 
-// ======================
-// 🚀 AUTO CHECK-IN
-// ======================
 const autoCheckIn = async ({ userId, ip }) => {
     try {
         const user = await User.findByPk(userId, {
@@ -125,14 +122,21 @@ const autoCheckIn = async ({ userId, ip }) => {
     }
 };
 
-// ======================
-// 🚀 AUTO CHECK-OUT
-// ======================
+
 const autoCheckOut = async ({ userId, ip }) => {
     try {
         const user = await User.findByPk(userId);
 
-        if (!user || !user.companyId) return;
+        if (!user || !user.companyId) {
+            logger.warn(
+                `AUTO_CHECKOUT_INVALID_USER: ${JSON.stringify(
+                    { userId },
+                    null,
+                    2
+                )}`
+            );
+            return;
+        }
 
         const date = todayDate();
         const now = new Date();
@@ -146,39 +150,72 @@ const autoCheckOut = async ({ userId, ip }) => {
             },
         });
 
-        if (!record) return;
-
-        // ❌ already checked out
-        if (record.checkOut) {
-            logger.info({ event: 'AUTO_CHECKOUT_SKIP', userId });
+        // No attendance found
+        if (!record) {
+            logger.warn(
+                `AUTO_CHECKOUT_NO_RECORD: ${JSON.stringify(
+                    { userId, date },
+                    null,
+                    2
+                )}`
+            );
             return;
         }
 
-        // ❌ no check-in → skip
-        if (!record.checkIn) return;
+        // Already checked out
+        if (record.checkOut) {
+            logger.info(
+                `AUTO_CHECKOUT_SKIP: ${JSON.stringify(
+                    {
+                        userId,
+                        existingCheckOut: record.checkOut,
+                    },
+                    null,
+                    2
+                )}`
+            );
+            return;
+        }
+
+        // No check-in
+        if (!record.checkIn) {
+            logger.warn(
+                `AUTO_CHECKOUT_NO_CHECKIN: ${JSON.stringify(
+                    { userId },
+                    null,
+                    2
+                )}`
+            );
+            return;
+        }
 
         const checkInM = toMinutes(record.checkIn);
         const nowM = toMinutes(checkOutTime);
 
-        // ✅ support night shift
+        // Night shift support
         let workedMinutes =
             nowM < checkInM
                 ? (1440 - checkInM) + nowM
                 : nowM - checkInM;
 
-        // ❌ ignore fake sessions
+        // Fake session prevention
         if (workedMinutes < 30) {
-            logger.warn({
-                event: 'INVALID_WORK_DURATION',
-                userId,
-                workedMinutes,
-            });
+            logger.warn(
+                `INVALID_WORK_DURATION: ${JSON.stringify(
+                    {
+                        userId,
+                        workedMinutes,
+                    },
+                    null,
+                    2
+                )}`
+            );
             return;
         }
 
         let status = record.status;
 
-        // ✅ normalize status
+        // Attendance status
         if (workedMinutes >= 480) {
             status = 'present';
         } else if (workedMinutes >= 240) {
@@ -187,7 +224,10 @@ const autoCheckOut = async ({ userId, ip }) => {
             status = 'absent';
         }
 
-        const overtimeMinutes = Math.max(0, workedMinutes - 480);
+        const overtimeMinutes = Math.max(
+            0,
+            workedMinutes - 480
+        );
 
         await record.update({
             checkOut: checkOutTime,
@@ -198,19 +238,32 @@ const autoCheckOut = async ({ userId, ip }) => {
             checkOutIp: ip || null,
         });
 
-        logger.info({
-            event: 'AUTO_CHECKOUT_DONE',
-            userId,
-            workedMinutes,
-            status,
-        });
+        logger.info(
+            `AUTO_CHECKOUT_DONE: ${JSON.stringify(
+                {
+                    userId,
+                    workedMinutes,
+                    overtimeMinutes,
+                    status,
+                    checkOutTime,
+                },
+                null,
+                2
+            )}`
+        );
 
     } catch (err) {
-        logger.error({
-            event: 'AUTO_CHECKOUT_ERROR',
-            userId,
-            error: err.message,
-        });
+        logger.error(
+            `AUTO_CHECKOUT_ERROR: ${JSON.stringify(
+                {
+                    userId,
+                    error: err.message,
+                    stack: err.stack,
+                },
+                null,
+                2
+            )}`
+        );
     }
 };
 
