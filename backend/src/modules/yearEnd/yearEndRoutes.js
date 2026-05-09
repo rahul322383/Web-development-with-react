@@ -1,32 +1,37 @@
 'use strict';
 
 const express = require('express');
+
 const authenticate = require('../../middleware/auth.middleware');
-const authorize = require('../../middleware/rbacMiddleware');
 const validate = require('../../middleware/validate.middleware');
+
+const {
+    requirePermission,
+} = require('../../utils/permissions');
+
 const yearEndController = require('./yearEndController');
+
 const { yearSchema } = require('./yearEndValidation');
 
-// 🔥 ADD LIMITER
 const { strictLimiter } = require('../../config/security');
 
 const router = express.Router();
 
-/* 🔒 AUTH FIRST */
+/* 🔒 AUTH */
 router.use(authenticate);
 
-/* 📄 SAFE READ (no strict limit needed, but protected by globalLimiter) */
+/* 📄 View Year-End Summaries */
 router.get(
     '/',
-    authorize('Admin', 'HR', 'Finance', 'Manager'),
+    requirePermission('VIEW_YEAR_END_REPORT'),
     yearEndController.listSummaries
 );
 
-/* ⚠️ HEAVY OPERATION → STRICT LIMIT */
+/* ⚠️ Heavy generation operation */
 router.post(
     '/generate',
-    strictLimiter, // 🔥 protects from spam / accidental multiple triggers
-    authorize('Admin', 'HR', 'Finance', 'Manager'),
+    strictLimiter,
+    requirePermission('GENERATE_YEAR_END_REPORT'),
     validate(yearSchema),
     yearEndController.generateSummary
 );
