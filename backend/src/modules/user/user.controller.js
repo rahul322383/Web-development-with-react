@@ -1,185 +1,264 @@
-
 'use strict';
 
-const asyncHandler = require('../../utils/asyncHandler');
 const userService = require('./user.service');
+const {
+  getSummaryStats,
+  getChartData,
+  getLeaveData,
+  getExpenseData,
+  getUserListData,
+  getAttritionData,
+  getAttritionByDepartment,
+  getDepartmentPerformance,
+  getLeaveTrends,
+  getLeaveStatusBreakdown,
+  getCostPerEmployee,
+  getCostByDepartment
+} = require('./userDashboard');
 
-// ─────────────────────────────────────────────────────────────
-// LIST USERS
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────
 
-const listUsers = asyncHandler(async (req, res) => {
-  const result = await userService.listUsers(req.query, req.user);
-
-  if (!result.success) {
-    return res.status(result.statusCode || 400).json(result);
-  }
-
-  return res.status(200).json(result);
-});
-
-// ─────────────────────────────────────────────────────────────
-// GET USER BY ID
-// ─────────────────────────────────────────────────────────────
-
-const getUserById = asyncHandler(async (req, res) => {
-  const id = Number(req.params.id);
-
-  if (!id || isNaN(id)) {
-    return res.status(400).json({ success: false, message: 'Invalid user ID' });
-  }
-
-  const result = await userService.getUserById(id);
-
+/**
+ * Send a service result as an HTTP response.
+ * Service functions return { success, statusCode, data, message }.
+ */
+const send = (res, result) => {
   if (!result) {
-    return res.status(404).json({ success: false, message: 'User not found' });
+    return res.status(500).json({ success: false, message: 'No result returned' });
   }
+  const status = result.statusCode ?? (result.success ? 200 : 400);
+  return res.status(status).json(result);
+};
 
-  return res.status(200).json({ success: true, data: result });
-});
+/**
+ * Parse date query params, with a sensible fallback to the current year boundary
+ * when startDate / endDate are not supplied.
+ */
+const parseDateRange = (query) => {
+  const now = new Date();
+  const startDate = query.startDate
+    ? new Date(query.startDate)
+    : new Date(Date.UTC(now.getFullYear(), 0, 1));
+  const endDate = query.endDate
+    ? new Date(query.endDate)
+    : new Date(Date.UTC(now.getFullYear(), 11, 31, 23, 59, 59, 999));
+  return { startDate, endDate };
+};
 
-// ─────────────────────────────────────────────────────────────
-// CREATE USER
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// USER CRUD
+// ─────────────────────────────────────────────
 
-const createUser = asyncHandler(async (req, res) => {
+const listUsers = async (req, res) => {
+  const result = await userService.listUsers(req.query, req.user);
+  send(res, result);
+};
+
+const getUserById = async (req, res) => {
+  const result = await userService.getUserById(req.params.id, req.user);
+  send(res, result);
+};
+
+const createUser = async (req, res) => {
   const result = await userService.createUser(req.body, req.user, req.ip);
+  send(res, result);
+};
 
-  if (!result.success) {
-    return res.status(result.statusCode || 400).json(result);
-  }
+const updateUser = async (req, res) => {
+  const result = await userService.updateUser(req.params.id, req.body, req.user, req.ip);
+  send(res, result);
+};
 
-  return res.status(201).json(result);
-});
+const deleteUser = async (req, res) => {
+  const result = await userService.deleteUser(req.params.id, req.user, req.ip);
+  send(res, result);
+};
 
-// ─────────────────────────────────────────────────────────────
-// UPDATE USER
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// DASHBOARD — consolidated
+// ─────────────────────────────────────────────
 
-const updateUser = asyncHandler(async (req, res) => {
-  const id = Number(req.params.id);
-
-  if (!id || isNaN(id)) {
-    return res.status(400).json({ success: false, message: 'Invalid user ID' });
-  }
-
-  const result = await userService.updateUser(id, req.body, req.user, req.ip);
-
-  if (!result.success) {
-    return res.status(result.statusCode || 400).json(result);
-  }
-
-  return res.status(200).json(result);
-});
-
-// ─────────────────────────────────────────────────────────────
-// DELETE USER
-// ─────────────────────────────────────────────────────────────
-
-const deleteUser = asyncHandler(async (req, res) => {
-  const id = Number(req.params.id);
-
-  if (!id || isNaN(id)) {
-    return res.status(400).json({ success: false, message: 'Invalid user ID' });
-  }
-
-  const result = await userService.deleteUser(id, req.user, req.ip);
-
-  if (!result.success) {
-    return res.status(result.statusCode || 400).json(result);
-  }
-
-  return res.status(200).json(result);
-});
-
-// ─────────────────────────────────────────────────────────────
-// DASHBOARD SUMMARY
-// ─────────────────────────────────────────────────────────────
-
-const getDashboardSummary = asyncHandler(async (req, res) => {
-  const year = parseInt(req.query.year) || new Date().getFullYear();
-  const page = Math.max(1, parseInt(req.query.page) || 1);
-  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 10));
-
-  if (!Number.isInteger(year) || year < 2000 || year > 2100) {
-    return res.status(400).json({ success: false, message: 'Invalid year parameter' });
-  }
-
-  const result = await userService.getDashboardSummary({ year, page, limit, user: req.user });
-
-  if (!result.success) {
-    return res.status(result.statusCode || 400).json(result);
-  }
-
-  return res.status(200).json(result);
-});
-
-// ─────────────────────────────────────────────────────────────
-// GET USERS BY DEPARTMENT
-// ─────────────────────────────────────────────────────────────
-
-const getUsersByDepartment = asyncHandler(async (req, res) => {
-  const department = req.params.department?.trim();
-
-  if (!department) {
-    return res.status(400).json({ success: false, message: 'Department is required' });
-  }
-
-  const result = await userService.getUsersByDepartment(department, req.user);
-
-  if (result?.success === false) {
-    return res.status(result.statusCode || 400).json(result);
-  }
-
-  return res.status(200).json({
-    success: true,
-    message: result.length ? 'Users fetched successfully' : 'No users found in this department',
-    count: result.length,
-    data: result,
+const getDashboardSummary = async (req, res) => {
+  const { year, page, limit } = req.query;
+  const result = await userService.getDashboardSummary({
+    year,
+    page: Number(page) || 1,
+    limit: Number(limit) || 10,
+    user: req.user
   });
-});
+  send(res, result);
+};
 
-// ─────────────────────────────────────────────────────────────
-// ASSIGN MANAGER
-// ✅ FIXED: was calling assignManager() which was never imported
-//    Now correctly calls userService.assignManager()
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// DASHBOARD — thin handlers (individual widgets)
+// ─────────────────────────────────────────────
 
-const assignManagerController = asyncHandler(async (req, res) => {
+const getDashboardStats = async (req, res) => {
+  const role = req.user?.primaryRole;
+  const canViewFinance = ['Admin', 'Finance'].includes(role);
+  const result = await getSummaryStats(req.query.year, canViewFinance);
+  send(res, { success: true, statusCode: 200, data: result });
+};
+
+const getDashboardCharts = async (req, res) => {
+  const role = req.user?.primaryRole;
+  const canViewFinance = ['Admin', 'Finance'].includes(role);
+  const result = await getChartData(req.query.year, canViewFinance);
+  send(res, result.success !== false
+    ? { success: true, statusCode: 200, data: result }
+    : result
+  );
+};
+
+const getDashboardLeaves = async (req, res) => {
+  const { year, page = 1, limit = 10 } = req.query;
+  const result = await getLeaveData(year, Number(page), Number(limit));
+  send(res, result.success !== false
+    ? { success: true, statusCode: 200, data: result }
+    : result
+  );
+};
+
+const getDashboardExpenses = async (req, res) => {
+  const { year, page = 1, limit = 10 } = req.query;
+  const role = req.user?.primaryRole;
+  const result = await getExpenseData(year, Number(page), Number(limit), role);
+  send(res, result.success !== false
+    ? { success: true, statusCode: 200, data: result }
+    : result
+  );
+};
+
+const getDashboardUsers = async (req, res) => {
+  const { page = 1, limit = 10 } = req.query;
+  const result = await getUserListData(Number(page), Number(limit));
+  send(res, result.success !== false
+    ? { success: true, statusCode: 200, data: result }
+    : result
+  );
+};
+
+// ─────────────────────────────────────────────
+// ANALYTICS
+// ─────────────────────────────────────────────
+
+const getAttritionDataController = async (req, res) => {
+  const { startDate, endDate } = parseDateRange(req.query);
+  const { department } = req.query;
+  const result = await getAttritionData({ startDate, endDate, department });
+  send(res, result.success !== false
+    ? { success: true, statusCode: 200, data: result }
+    : result
+  );
+};
+
+const getAttritionByDepartmentController = async (req, res) => {
+  const { startDate, endDate } = parseDateRange(req.query);
+  const result = await getAttritionByDepartment({ startDate, endDate });
+  send(res, result.success !== false
+    ? { success: true, statusCode: 200, data: result }
+    : result
+  );
+};
+
+const getDepartmentPerformanceController = async (req, res) => {
+  const { department } = req.query;
+  const result = await getDepartmentPerformance({ department });
+  send(res, result.success !== false
+    ? { success: true, statusCode: 200, data: result }
+    : result
+  );
+};
+
+const getLeaveTrendsController = async (req, res) => {
+  const { startDate, endDate } = parseDateRange(req.query);
+  const { department } = req.query;
+  const result = await getLeaveTrends({ startDate, endDate, department });
+  send(res, result.success !== false
+    ? { success: true, statusCode: 200, data: result }
+    : result
+  );
+};
+
+const getLeaveStatusBreakdownController = async (req, res) => {
+  const { startDate, endDate } = parseDateRange(req.query);
+  const result = await getLeaveStatusBreakdown({ startDate, endDate });
+  send(res, result.success !== false
+    ? { success: true, statusCode: 200, data: result }
+    : result
+  );
+};
+
+const getCostPerEmployeeController = async (req, res) => {
+  const { startDate, endDate } = parseDateRange(req.query);
+  const { department } = req.query;
+  const result = await getCostPerEmployee({ startDate, endDate, department });
+  send(res, result.success !== false
+    ? { success: true, statusCode: 200, data: result }
+    : result
+  );
+};
+
+const getCostByDepartmentController = async (req, res) => {
+  const { startDate, endDate } = parseDateRange(req.query);
+  const result = await getCostByDepartment({ startDate, endDate });
+  send(res, result.success !== false
+    ? { success: true, statusCode: 200, data: result }
+    : result
+  );
+};
+
+// ─────────────────────────────────────────────
+// DEPARTMENT / MANAGER
+// ─────────────────────────────────────────────
+
+const getUsersByDepartment = async (req, res) => {
+  const result = await userService.getUsersByDepartment(req.params.department, req.user);
+  send(res, result);
+};
+
+const assignManagerController = async (req, res) => {
   const { employeeId, managerId } = req.body;
-
-  if (!employeeId || !managerId) {
-    return res.status(400).json({
-      success: false,
-      message: 'employeeId and managerId are required',
-    });
-  }
-
-  if (Number(employeeId) === Number(managerId)) {
-    return res.status(400).json({
-      success: false,
-      message: 'An employee cannot be assigned as their own manager',
-    });
-  }
-
-  const result = await userService.assignManager({        // ✅ FIXED
-    employeeId: Number(employeeId),
-    managerId: Number(managerId),
-    actor: req.user,
+  const result = await userService.assignManager({
+    employeeId,
+    managerId,
+    actor: req.user
   });
+  send(res, result);
+};
 
-  return res.status(result.success ? 200 : (result.statusCode || 400)).json(result);
-});
-
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────
 
 module.exports = {
+  // CRUD
   listUsers,
   getUserById,
   createUser,
   updateUser,
   deleteUser,
+
+  // Dashboard — consolidated
   getDashboardSummary,
+
+  // Dashboard — individual widgets
+  getDashboardStats,
+  getDashboardCharts,
+  getDashboardLeaves,
+  getDashboardExpenses,
+  getDashboardUsers,
+
+  // Analytics
+  getAttritionData: getAttritionDataController,
+  getAttritionByDepartment: getAttritionByDepartmentController,
+  getDepartmentPerformance: getDepartmentPerformanceController,
+  getLeaveTrends: getLeaveTrendsController,
+  getLeaveStatusBreakdown: getLeaveStatusBreakdownController,
+  getCostPerEmployee: getCostPerEmployeeController,
+  getCostByDepartment: getCostByDepartmentController,
+
+  // Other
   getUsersByDepartment,
-  assignManagerController,
+  assignManagerController
 };
