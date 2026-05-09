@@ -1,10 +1,9 @@
-
 'use strict';
 
 const bcrypt = require('bcrypt');
 const sequelize = require('../../database/sequelize');
+
 const userRepository = require('./userRepository');
-const { User } = require('../../database/initModels');   // ✅ FIXED: was missing
 const { clearCacheKeys } = require('../../utils/cache');
 const { logAuditEvent } = require('../../utils/auditLogger');
 const logger = require('../../config/logger');
@@ -12,28 +11,30 @@ const eventBus = require('../../utils/Eventbus');
 const { assertPermission } = require('../../utils/permissions');
 const { notifyUserCreated, notifyUserUpdated, notifyUserDeleted } = require('./userNotifications');
 const { buildChangelog } = require('./userFormatter');
+
 const {
   getSummaryStats,
   getChartData,
   getLeaveData,
   getExpenseData,
-  getUserListData,
+  getUserListData
 } = require('./userDashboard');
+
 const {
   listUsersSchema,
   createUserSchema,
   updateUserSchema,
   dashboardQuerySchema,
   departmentSchema,
-  validate,
+  validate
 } = require('./user.validation');
 
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────
 // HELPERS
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────
 
 const fail = (message, statusCode = 400, data = null) => ({
-  success: false, message, statusCode, data,
+  success: false, message, statusCode, data
 });
 
 const handleError = (event, error, fallback = 'Operation failed') => {
@@ -41,9 +42,9 @@ const handleError = (event, error, fallback = 'Operation failed') => {
   return fail(error.message || fallback, error.statusCode || 500);
 };
 
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────
 // LIST USERS
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────
 
 const listUsers = async (query, actor) => {
   const perm = assertPermission(actor, 'LIST_USERS');
@@ -66,17 +67,17 @@ const listUsers = async (query, actor) => {
         total: count,
         page,
         limit,
-        totalPages: Math.ceil(count / limit),
-      },
+        totalPages: Math.ceil(count / limit)
+      }
     };
   } catch (error) {
     return handleError('LIST_USERS_FAILED', error, 'Failed to fetch users');
   }
 };
 
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────
 // GET USER BY ID
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────
 
 const getUserById = async (id, actor) => {
   const perm = assertPermission(actor, 'VIEW_USER');
@@ -93,9 +94,9 @@ const getUserById = async (id, actor) => {
   }
 };
 
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────
 // CREATE USER
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────
 
 const createUser = async (payload, actor, ipAddress) => {
   const perm = assertPermission(actor, 'CREATE_USER');
@@ -133,9 +134,9 @@ const createUser = async (payload, actor, ipAddress) => {
             passwordHash,
             managerId: value.managerId || null,
             department: value.department || null,
-            baseSalary: value.baseSalary,
+            baseSalary: value.baseSalary
           },
-          transaction,
+          transaction
         );
 
         const [role] = await userRepository.findOrCreateRole(value.role, transaction);
@@ -157,7 +158,7 @@ const createUser = async (payload, actor, ipAddress) => {
         actionType: 'CREATE',
         oldData: null,
         newData: { id: fullUser.id, email: fullUser.email },
-        ipAddress,
+        ipAddress
       });
     } catch (auditErr) {
       logger.error({ event: 'AUDIT_LOG_FAILED', error: auditErr.message });
@@ -165,7 +166,7 @@ const createUser = async (payload, actor, ipAddress) => {
 
     const [adminIds, hrTeamIds] = await Promise.all([
       userRepository.getAdminIds(),
-      userRepository.getHRTeamIds(),
+      userRepository.getHRTeamIds()
     ]);
 
     notifyUserCreated({ actor, user: fullUser, role: value.role, adminIds, hrTeamIds });
@@ -178,9 +179,9 @@ const createUser = async (payload, actor, ipAddress) => {
   }
 };
 
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────
 // UPDATE USER
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────
 
 const updateUser = async (id, payload, actor, ipAddress) => {
   const perm = assertPermission(actor, 'UPDATE_USER');
@@ -234,7 +235,7 @@ const updateUser = async (id, payload, actor, ipAddress) => {
         actionType: 'UPDATE',
         oldData: existing.toJSON?.() ?? existing,
         newData: updatedUser.toJSON?.() ?? updatedUser,
-        ipAddress,
+        ipAddress
       });
     } catch (auditErr) {
       logger.error({ event: 'AUDIT_LOG_FAILED', error: auditErr.message });
@@ -253,9 +254,9 @@ const updateUser = async (id, payload, actor, ipAddress) => {
   }
 };
 
-// ─────────────────────────────────────────────────────────────
-// DELETE USER
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// DELETE USER (soft)
+// ─────────────────────────────────────────────
 
 const deleteUser = async (id, actor, ipAddress) => {
   const perm = assertPermission(actor, 'DELETE_USER');
@@ -277,7 +278,7 @@ const deleteUser = async (id, actor, ipAddress) => {
         actionType: 'DELETE',
         oldData: existing,
         newData: null,
-        ipAddress,
+        ipAddress
       });
     } catch (auditErr) {
       logger.error({ event: 'AUDIT_LOG_FAILED', error: auditErr.message });
@@ -285,7 +286,7 @@ const deleteUser = async (id, actor, ipAddress) => {
 
     const [adminIds, hrTeamIds] = await Promise.all([
       userRepository.getAdminIds(),
-      userRepository.getHRTeamIds(),
+      userRepository.getHRTeamIds()
     ]);
 
     notifyUserDeleted({ actor, user: existing, adminIds, hrTeamIds });
@@ -298,9 +299,9 @@ const deleteUser = async (id, actor, ipAddress) => {
   }
 };
 
-// ─────────────────────────────────────────────────────────────
-// DASHBOARD SUMMARY
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// DASHBOARD — consolidated
+// ─────────────────────────────────────────────
 
 const getDashboardSummary = async ({ year, page, limit, user: actor }) => {
   const perm = assertPermission(actor, 'VIEW_DASHBOARD');
@@ -320,7 +321,7 @@ const getDashboardSummary = async ({ year, page, limit, user: actor }) => {
       getChartData(value.year, canViewFinance),
       getLeaveData(value.year, value.page, value.limit),
       getExpenseData(value.year, value.page, value.limit, role),
-      canViewAll ? getUserListData(value.page, value.limit) : Promise.resolve(null),
+      canViewAll ? getUserListData(value.page, value.limit) : Promise.resolve(null)
     ]);
 
     const unwrap = (settled) =>
@@ -334,17 +335,17 @@ const getDashboardSummary = async ({ year, page, limit, user: actor }) => {
         charts: unwrap(charts),
         leaves: unwrap(leaves),
         expenses: unwrap(expenses),
-        users: unwrap(users),
-      },
+        users: unwrap(users)
+      }
     };
   } catch (error) {
     return handleError('GET_DASHBOARD_FAILED', error, 'Failed to fetch dashboard');
   }
 };
 
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────
 // GET USERS BY DEPARTMENT
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────
 
 const getUsersByDepartment = async (department, actor) => {
   const perm = assertPermission(actor, 'VIEW_DEPARTMENT');
@@ -355,12 +356,15 @@ const getUsersByDepartment = async (department, actor) => {
 
   try {
     const users = await userRepository.getUsersByDepartment(validation.value.department);
-    return users;
+    return { success: true, statusCode: 200, data: users };
   } catch (error) {
     return handleError('GET_USERS_BY_DEPARTMENT_FAILED', error, 'Failed to fetch department users');
   }
 };
 
+// ─────────────────────────────────────────────
+// ASSIGN MANAGER
+// ─────────────────────────────────────────────
 
 const assignManager = async ({ employeeId, managerId, actor }) => {
   if (actor) {
@@ -369,17 +373,16 @@ const assignManager = async ({ employeeId, managerId, actor }) => {
   }
 
   try {
-    const employee = await userRepository.findUserById(employeeId);  // ✅ FIXED
+    const employee = await userRepository.findUserById(employeeId);
     if (!employee) return fail('Employee not found', 404);
 
-    const manager = await userRepository.findUserById(managerId);    // ✅ FIXED
+    const manager = await userRepository.findUserById(managerId);
     if (!manager) return fail('Manager not found', 404);
 
     if (Number(employeeId) === Number(managerId)) {
       return fail('Employee cannot be their own manager', 422);
     }
 
-    // ✅ Use repository update to keep audit trail + cache bust consistent
     await userRepository.updateUserById(employeeId, { managerId }, null);
 
     const updated = await userRepository.findUserById(employeeId);
@@ -391,7 +394,7 @@ const assignManager = async ({ employeeId, managerId, actor }) => {
       success: true,
       message: 'Manager assigned successfully',
       statusCode: 200,
-      data: updated,
+      data: updated
     };
 
   } catch (error) {
@@ -399,10 +402,9 @@ const assignManager = async ({ employeeId, managerId, actor }) => {
   }
 };
 
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────
 
 module.exports = {
-  assignManager,
   listUsers,
   getUserById,
   createUser,
@@ -410,4 +412,5 @@ module.exports = {
   deleteUser,
   getDashboardSummary,
   getUsersByDepartment,
+  assignManager
 };
