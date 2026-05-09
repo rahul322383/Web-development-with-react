@@ -1,64 +1,78 @@
 'use strict';
 
 const express = require('express');
+
 const router = express.Router();
+
 const authenticate = require('../../middleware/auth.middleware');
-const authorize = require('../../middleware/rbacMiddleware');
-const ctrl = require('./payrollController');
 const validate = require('../../middleware/validate.middleware');
-const { analyticsLimiter, strictLimiter } = require('../../config/security');
+
+const {
+    requirePermission,
+} = require('../../utils/permissions');
+
+const ctrl = require('./payrollController');
+
+const {
+    analyticsLimiter,
+    strictLimiter,
+} = require('../../config/security');
 
 router.use(authenticate);
 
 router.get(
     '/my/history',
     analyticsLimiter,
+    requirePermission('VIEW_PAYROLL'),
     ctrl.getMyPayrollHistory
 );
 
 router.get(
     '/ytd',
     analyticsLimiter,
+    requirePermission('VIEW_PAYROLL'),
     ctrl.getYTDSummary
 );
 
 router.get(
     '/:payrollId/payslip',
     analyticsLimiter,
+    requirePermission('VIEW_PAYROLL'),
     ctrl.downloadPayslip
 );
 
 router.get(
     '/:payrollId/breakdown',
     analyticsLimiter,
+    requirePermission('VIEW_PAYROLL'),
     ctrl.getSalaryBreakdown
 );
 
 router.get(
     '/monthly-summary',
     analyticsLimiter,
-    authorize('Admin', 'HR', 'Finance', 'Manager'),
+    requirePermission('VIEW_PAYROLL'),
     ctrl.getMonthlyPayrollSummary
 );
 
 router.get(
     '/employee/:employeeId',
     analyticsLimiter,
-    authorize('Admin', 'HR', 'Finance', 'Manager'),
+    requirePermission('VIEW_PAYROLL'),
     ctrl.getPayrollByEmployee
 );
 
 router.post(
     '/process',
     strictLimiter,
-    authorize('Admin', 'HR', 'Finance', 'Manager'),
+    requirePermission('GENERATE_PAYROLL'),
     ctrl.processPayroll
 );
 
 router.patch(
     '/lock',
     strictLimiter,
-    authorize('Admin', 'HR', 'Finance', 'Manager'),
+    requirePermission('APPROVE_PAYROLL'),
     ctrl.lockPayroll
 );
 
