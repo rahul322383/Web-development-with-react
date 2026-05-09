@@ -9,29 +9,65 @@ module.exports = (sequelize, DataTypes) => {
                 primaryKey: true,
                 autoIncrement: true,
             },
-            userId: {
-                type: DataTypes.BIGINT.UNSIGNED,
+
+            scopeType: {
+                type: DataTypes.ENUM(
+                    'global',
+                    'company',
+                    'department',
+                    'role',
+                    'user'
+                ),
                 allowNull: false,
-                field: 'user_id',
-                references: { model: 'users', key: 'id' },
+                defaultValue: 'user',
+                field: 'scope_type',
             },
+
+            scopeId: {
+                type: DataTypes.BIGINT.UNSIGNED,
+                allowNull: true,
+                field: 'scope_id',
+            },
+
+            category: {
+                type: DataTypes.STRING(100),
+                allowNull: false,
+            },
+
             key: {
                 type: DataTypes.STRING(100),
                 allowNull: false,
             },
+
             value: {
-                type: DataTypes.TEXT,
+                type: DataTypes.JSON,
                 allowNull: true,
+            },
+
+            datatype: {
+                type: DataTypes.ENUM(
+                    'string',
+                    'number',
+                    'boolean',
+                    'json'
+                ),
+                defaultValue: 'string',
             },
         },
         {
             tableName: 'settings',
             timestamps: true,
             underscored: true,
+
             indexes: [
                 {
                     unique: true,
-                    fields: ['user_id', 'key'], // one key per user
+                    fields: [
+                        'scope_type',
+                        'scope_id',
+                        'category',
+                        'key',
+                    ],
                 },
             ],
         }
