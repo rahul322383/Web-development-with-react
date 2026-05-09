@@ -1,30 +1,71 @@
 'use strict';
 
 const express = require('express');
-const router = express.Router();
-const authenticate = require('../../middleware/auth.middleware');
-const authorize = require('../../middleware/rbacMiddleware');
-const { apiLimiter, strictLimiter } = require('../../middleware/rateLimit.middleware');
-const notificationController = require('./notificationController');
 
-const ALL_ROLES = ['Employee', 'Manager', 'HR', 'Finance', 'Admin'];
+const router = express.Router();
+
+const authenticate = require('../../middleware/auth.middleware');
+
+const {
+    requirePermission,
+} = require('../../utils/permissions');
+
+const {
+    apiLimiter,
+    strictLimiter,
+} = require('../../middleware/rateLimit.middleware');
+
+const notificationController = require('./notificationController');
 
 router.use(authenticate, apiLimiter);
 
-router.get('/', authorize(...ALL_ROLES), notificationController.listMyNotifications);
+router.get(
+    '/',
+    requirePermission('VIEW_NOTIFICATIONS'),
+    notificationController.listMyNotifications
+);
 
-router.get('/unread-count', authorize(...ALL_ROLES), strictLimiter, notificationController.getUnreadCount);
+router.get(
+    '/unread-count',
+    strictLimiter,
+    requirePermission('VIEW_NOTIFICATIONS'),
+    notificationController.getUnreadCount
+);
 
-router.get('/preferences', authorize(...ALL_ROLES), notificationController.getMyPreferences);
+router.get(
+    '/preferences',
+    requirePermission('VIEW_NOTIFICATIONS'),
+    notificationController.getMyPreferences
+);
 
-router.patch('/preferences', authorize(...ALL_ROLES), notificationController.updateMyPreferences);
+router.patch(
+    '/preferences',
+    requirePermission('VIEW_NOTIFICATIONS'),
+    notificationController.updateMyPreferences
+);
 
-router.patch('/read-all', authorize(...ALL_ROLES), notificationController.markAllRead);
+router.patch(
+    '/read-all',
+    requirePermission('VIEW_NOTIFICATIONS'),
+    notificationController.markAllRead
+);
 
-router.patch('/:id/read', authorize(...ALL_ROLES), notificationController.markRead);
+router.patch(
+    '/:id/read',
+    requirePermission('VIEW_NOTIFICATIONS'),
+    notificationController.markRead
+);
 
-router.delete('/', authorize(...ALL_ROLES), notificationController.clearAllNotifications);
+router.delete(
+    '/',
+    requirePermission('DELETE_NOTIFICATION'),
+    notificationController.clearAllNotifications
+);
 
-router.delete('/:id', authorize(...ALL_ROLES), notificationController.deleteNotification);
+router.delete(
+    '/:id',
+    requirePermission('DELETE_NOTIFICATION'),
+    notificationController.deleteNotification
+);
 
 module.exports = router;
