@@ -1,12 +1,24 @@
 'use strict';
 
 const express = require('express');
+
 const authenticate = require('../../middleware/auth.middleware');
-const authorize = require('../../middleware/rbacMiddleware');
 const validate = require('../../middleware/validate.middleware');
-const { analyticsLimiter, strictLimiter } = require('../../config/security');
+
+const {
+    requirePermission,
+} = require('../../utils/permissions');
+
+const {
+    analyticsLimiter,
+    strictLimiter,
+} = require('../../config/security');
+
 const ctrl = require('./reports.controller');
-const { dateRangeSchema } = require('./reports.validation');
+
+const {
+    dateRangeSchema,
+} = require('./reports.validation');
 
 const router = express.Router();
 
@@ -15,7 +27,7 @@ router.use(authenticate);
 router.get(
     '/dashboard',
     analyticsLimiter,
-    authorize('Admin', 'HR', 'Manager'),
+    requirePermission('VIEW_DASHBOARD'),
     validate(dateRangeSchema, 'query'),
     ctrl.dashboard
 );
@@ -23,7 +35,7 @@ router.get(
 router.get(
     '/employees',
     analyticsLimiter,
-    authorize('Admin', 'HR'),
+    requirePermission('LIST_USERS'),
     validate(dateRangeSchema, 'query'),
     ctrl.employees
 );
@@ -31,7 +43,7 @@ router.get(
 router.get(
     '/payroll',
     analyticsLimiter,
-    authorize('Admin', 'Finance'),
+    requirePermission('VIEW_PAYROLL'),
     validate(dateRangeSchema, 'query'),
     ctrl.payroll
 );
@@ -39,7 +51,7 @@ router.get(
 router.get(
     '/leave',
     analyticsLimiter,
-    authorize('Admin', 'HR', 'Manager'),
+    requirePermission('VIEW_LEAVE'),
     validate(dateRangeSchema, 'query'),
     ctrl.leave
 );
@@ -47,7 +59,7 @@ router.get(
 router.get(
     '/expenses',
     analyticsLimiter,
-    authorize('Admin', 'Finance', 'HR'),
+    requirePermission('LIST_MY_EXPENSES'),
     validate(dateRangeSchema, 'query'),
     ctrl.expenses
 );
@@ -55,7 +67,7 @@ router.get(
 router.get(
     '/export/csv/:module',
     strictLimiter,
-    authorize('Admin', 'HR', 'Finance'),
+    requirePermission('EXPORT_PAYROLL'),
     validate(dateRangeSchema, 'query'),
     ctrl.exportCSV
 );
@@ -63,7 +75,7 @@ router.get(
 router.get(
     '/export/pdf/:module',
     strictLimiter,
-    authorize('Admin', 'HR', 'Finance'),
+    requirePermission('EXPORT_PAYROLL'),
     validate(dateRangeSchema, 'query'),
     ctrl.exportPDF
 );
