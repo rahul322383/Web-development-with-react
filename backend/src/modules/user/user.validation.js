@@ -1,4 +1,3 @@
-
 'use strict';
 
 const Joi = require('joi');
@@ -16,20 +15,23 @@ const createUserSchema = Joi.object({
   email: Joi.string().email().required(),
   password: Joi.string().min(8).max(128).required(),
   role: Joi.string().valid('Admin', 'HR', 'Manager', 'Finance', 'Employee').required(),
-  managerId: Joi.number().integer().positive().optional(),
-  department: Joi.string().trim().max(100).optional(),
+  managerId: Joi.number().integer().positive().optional().allow(null),
+  department: Joi.string().trim().max(100).optional().allow('', null),
   baseSalary: Joi.number().min(0).default(0).optional(),
 });
 
 const updateUserSchema = Joi.object({
-  employeeCode: Joi.string().trim().max(50).optional(),
+  employeeCode: Joi.string().trim().max(50).optional().allow('', null),
   firstName: Joi.string().trim().max(100).optional(),
   lastName: Joi.string().trim().max(100).optional(),
   email: Joi.string().email().optional(),
+  // 'phone' is sent from the frontend but was missing — added here
+  phone: Joi.string().trim().max(20).optional().allow('', null),
   role: Joi.string().valid('Admin', 'HR', 'Manager', 'Finance', 'Employee').optional(),
+  // managerId: null means "clear the manager"
   managerId: Joi.number().integer().positive().optional().allow(null),
-  department: Joi.string().trim().max(100).optional(),
-  baseSalary: Joi.number().min(0).optional(),
+  department: Joi.string().trim().max(100).optional().allow('', null),
+  baseSalary: Joi.number().min(0).optional().allow(null),
   isActive: Joi.boolean().optional(),
 }).min(1);
 
@@ -46,7 +48,7 @@ const departmentSchema = Joi.object({
 const validate = (schema, data) => {
   const { error, value } = schema.validate(data, { abortEarly: false, stripUnknown: true });
   if (error) {
-    return { valid: false, message: error.details.map(d => d.message).join(', ') };
+    return { valid: false, message: error.details.map((d) => d.message).join(', ') };
   }
   return { valid: true, value };
 };
