@@ -1,5 +1,234 @@
 
 
+// import React, { useEffect } from "react";
+// import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
+// import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+// import { Toaster } from "sonner";
+
+// import Layout from "./components/layout/layout";
+// import { ProtectedRoute } from "./routes/ProtectedRoute";
+// import { PublicRoute } from "./routes/PublicRoute";
+// import { useAuth } from "./context/AuthContext";
+// import PayrollRouter from "./routes/PayrollRouter";
+// // ── AI Chat Widget ──────────────────────────────────────────
+// import AiChat from "./ai/AiChat"; 
+
+// // Auth Pages
+// import  Login  from "./pages/Login";
+// import Register from "./pages/Register";
+
+// // Dashboard Pages
+// import { Dashboard } from "./pages/Dashboard";
+// import { Users } from "./pages/Users";
+// import { Leave } from "./pages/Leave";
+// import Notifications from "./Notification//Notification";
+// import PendingLeaves from "./leave/pending-leave";
+// import ApprovedLeaves from "./leave/approved-leave";
+// import Expenses from "./Expenses/Expenses";
+// import DepartmentDashboard from "./department/DepartmentDashboard";
+// import Payroll from "./pyaroll/Payroll";
+// import YearEnd from "./YearEnd/YearEnd";
+// import AuditLogs from "./Audit/AuditLogs";
+// import { ProfilePage } from "./pages/ProfilePage";
+// import SettingsPage from "./pages/SettingsPage";
+// import ReportsPage from "./pages/ReportsPage";
+// import { PasswordResetPages } from "./pages/PasswordResetPages";
+// import AttendancePage from "./pages/AttendancePage";
+// import EmployeePayroll from "./pyaroll/EmployeePayroll";
+// import AdminPayroll from "./pyaroll/AdminPayroll";
+// import AnalyticsDashboard from "./analytics/AnalyticsDashboard";
+// import CompanyPage from './company/CompanyPage'
+// import PayrollDashboard from "./pyaroll/PayrollDashboard"
+// import ShiftManagement from './pages/ShiftManagement'
+
+
+
+
+
+// // Public Pages
+// import HomePage from "./pages/home";
+// import Features from "./Public/Features";
+// import Pricing from "./Public/Pricing";
+// import Demo from "./Public/Demo";
+// import About from "./Public/about";
+// import Privacy from "./Public/Privacy";
+// import Terms from "./Public/Terms";
+// import Security from "./Public/Security";
+// import Help from "./Public/help";
+// import Contact from "./Public/contact";
+
+// const queryClient = new QueryClient({
+//   defaultOptions: {
+//     queries: {
+//       refetchOnWindowFocus: false,
+//       retry: 1,
+//     },
+//   },
+// });
+
+// // ─────────────────────────────────────────────────────────────
+// // AppRoutes — all page routing lives here
+// // ─────────────────────────────────────────────────────────────
+// function AppRoutes() {
+//   const { logout, user, isAuthenticated } = useAuth();
+//   const navigate = useNavigate();
+
+//   useEffect(() => {
+//     const handleLogout = () => {
+//       logout();
+//       navigate("/login", { replace: true });
+//     };
+//     window.addEventListener("logout", handleLogout);
+//     return () => window.removeEventListener("logout", handleLogout);
+//   }, [logout, navigate]);
+
+//   return (
+//     <>
+//       <Routes>
+//         <Route element={<Layout />}>
+
+//           {/* ── PUBLIC ─────────────────────────────────────── */}
+//           <Route path="/" element={<HomePage />} />
+//           <Route path="/features" element={<Features />} />
+//           <Route path="/pricing" element={<Pricing />} />
+//           <Route path="/demo" element={<Demo />} />
+//           <Route path="/about" element={<About />} />
+//           <Route path="/privacy" element={<Privacy />} />
+//           <Route path="/terms" element={<Terms />} />
+//           <Route path="/security" element={<Security />} />
+//           <Route path="/help" element={<Help />} />
+//           <Route path="/contact" element={<Contact />} />
+
+//           <Route path="/forgot-password" element={<PasswordResetPages />} />
+//           <Route path="/reset-password" element={<PasswordResetPages />} />
+//           <Route path="/change-password" element={<PasswordResetPages />} />
+
+//           {/* ── PROTECTED ──────────────────────────────────── */}
+//           <Route path="/dashboard" element={
+//             <ProtectedRoute><Dashboard /></ProtectedRoute>
+//           } />
+
+//           <Route
+//             path="/company"
+//             element={
+//               <ProtectedRoute roles={['Admin', 'HR', 'Manager', 'Finance', 'Employee' ]}>
+//                 <CompanyPage />
+//               </ProtectedRoute>
+//             }
+//           />
+
+//           <Route path="/department-dashboard" element={
+//             <ProtectedRoute><DepartmentDashboard /></ProtectedRoute>
+//           } />
+
+//           <Route
+//             path="/payroll"
+//             element={
+//               <ProtectedRoute>
+//                 <PayrollRouter />
+//               </ProtectedRoute>
+//             }
+//           />
+//           <Route path="/attendance" element={
+//             <ProtectedRoute><AttendancePage /></ProtectedRoute>
+//           } />
+          
+
+//           <Route path="/shift-management" element={
+//             <ProtectedRoute >
+//               <ShiftManagement />
+//             </ProtectedRoute>
+//           } />
+
+//           <Route path="/users" element={
+//             <ProtectedRoute roles={["admin", "manager"]}><Users /></ProtectedRoute>
+//           } />
+
+//           <Route path="/leave" element={
+//             <ProtectedRoute><Leave /></ProtectedRoute>
+//           } />
+
+//           <Route path="/pending-leave" element={
+//             <ProtectedRoute roles={["manager", "admin", "hr"]}><PendingLeaves /></ProtectedRoute>
+//           } />
+
+//           <Route path="/approved-leave" element={
+//             <ProtectedRoute roles={["manager", "admin", "hr"]}><ApprovedLeaves /></ProtectedRoute>
+//           } />
+
+//           <Route path="/expenses" element={
+//             <ProtectedRoute><Expenses /></ProtectedRoute>
+//           } />
+
+//           <Route path="/audit-logs" element={
+//             <ProtectedRoute roles={["admin", "hr", "manager", "finance"]}><AuditLogs /></ProtectedRoute>
+//           } />
+
+//           <Route path="/year-end" element={
+//             <ProtectedRoute><YearEnd /></ProtectedRoute>
+//           } />
+
+//           <Route path="/profile" element={
+//             <ProtectedRoute><ProfilePage /></ProtectedRoute>
+//           } />
+
+//           <Route path="/notifications" element={
+//             <ProtectedRoute><Notifications /></ProtectedRoute>
+//           } />
+
+//           <Route path="/reports" element={
+//             <ProtectedRoute><ReportsPage /></ProtectedRoute>
+//           } />
+         
+
+//             <Route path="/analytics" element={
+//               <ProtectedRoute roles={["admin", "hr", "finance"]}>
+//                 <AnalyticsDashboard />
+//               </ProtectedRoute>
+//             } />
+
+//           <Route path="/settings" element={
+//             <ProtectedRoute><SettingsPage /></ProtectedRoute>
+//           } />
+
+//         </Route>
+
+//         {/* ── AUTH ───────────────────────────────────────────── */}
+//         <Route path="/login" element={
+//           <PublicRoute><Login /></PublicRoute>
+//         } />
+
+//         <Route path="/register" element={
+//           <PublicRoute><Register /></PublicRoute>
+//         } />
+
+//         {/* ── FALLBACK ───────────────────────────────────────── */}
+//         <Route path="*" element={<Navigate to="/" replace />} />
+//       </Routes>
+
+//       {/* ── AI Chat Widget (only shown to logged-in users) ── */}
+//       {isAuthenticated && <AiChat />}
+//     </>
+//   );
+// }
+
+// // ─────────────────────────────────────────────────────────────
+// // App — root providers
+// // ─────────────────────────────────────────────────────────────
+// function App() {
+//   return (
+//     <QueryClientProvider client={queryClient}>
+//       <BrowserRouter>
+//         <AppRoutes />
+//       </BrowserRouter>
+//       <Toaster position="top-right" richColors />
+//     </QueryClientProvider>
+//   );
+// }
+
+// export default App;
+
+
 import React, { useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -10,40 +239,36 @@ import { ProtectedRoute } from "./routes/ProtectedRoute";
 import { PublicRoute } from "./routes/PublicRoute";
 import { useAuth } from "./context/AuthContext";
 import PayrollRouter from "./routes/PayrollRouter";
-// ── AI Chat Widget ──────────────────────────────────────────
-import AiChat from "./ai/AiChat"; 
+
+// ── AI Chat Widget
+import AiChat from "./ai/AiChat";
 
 // Auth Pages
-import  Login  from "./pages/Login";
+import Login from "./pages/Login";
 import Register from "./pages/Register";
 
-// Dashboard Pages
+// Password Reset Pages — individually exported (no more PasswordResetPages router)
+import { ForgotPassword, ResetPassword, ChangePassword } from "./pages/PasswordResetPages";
+
+// Dashboard / Protected Pages
 import { Dashboard } from "./pages/Dashboard";
 import { Users } from "./pages/Users";
 import { Leave } from "./pages/Leave";
-import Notifications from "./Notification//Notification";
+import Notifications from "./Notification/Notification";
 import PendingLeaves from "./leave/pending-leave";
 import ApprovedLeaves from "./leave/approved-leave";
 import Expenses from "./Expenses/Expenses";
 import DepartmentDashboard from "./department/DepartmentDashboard";
-import Payroll from "./pyaroll/Payroll";
 import YearEnd from "./YearEnd/YearEnd";
 import AuditLogs from "./Audit/AuditLogs";
 import { ProfilePage } from "./pages/ProfilePage";
 import SettingsPage from "./pages/SettingsPage";
 import ReportsPage from "./pages/ReportsPage";
-import { PasswordResetPages } from "./pages/PasswordResetPages";
 import AttendancePage from "./pages/AttendancePage";
-import EmployeePayroll from "./pyaroll/EmployeePayroll";
-import AdminPayroll from "./pyaroll/AdminPayroll";
 import AnalyticsDashboard from "./analytics/AnalyticsDashboard";
-import CompanyPage from './company/CompanyPage'
-import PayrollDashboard from "./pyaroll/PayrollDashboard"
-import ShiftManagement from './pages/ShiftManagement'
-
-
-
-
+import CompanyPage from "./company/CompanyPage";
+import PayrollDashboard from "./pyaroll/PayrollDashboard";
+import ShiftManagement from "./pages/ShiftManagement";
 
 // Public Pages
 import HomePage from "./pages/home";
@@ -57,6 +282,10 @@ import Security from "./Public/Security";
 import Help from "./Public/help";
 import Contact from "./Public/contact";
 
+// -----------------------------------------------------------------------------
+// React Query client
+// -----------------------------------------------------------------------------
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -66,13 +295,15 @@ const queryClient = new QueryClient({
   },
 });
 
-// ─────────────────────────────────────────────────────────────
-// AppRoutes — all page routing lives here
-// ─────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
+// AppRoutes
+// -----------------------------------------------------------------------------
+
 function AppRoutes() {
-  const { logout, user, isAuthenticated } = useAuth();
+  const { logout, isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
+  // Global logout event (fired by axios interceptor on 401)
   useEffect(() => {
     const handleLogout = () => {
       logout();
@@ -87,7 +318,7 @@ function AppRoutes() {
       <Routes>
         <Route element={<Layout />}>
 
-          {/* ── PUBLIC ─────────────────────────────────────── */}
+          {/* ── PUBLIC ──────────────────────────────────────────── */}
           <Route path="/" element={<HomePage />} />
           <Route path="/features" element={<Features />} />
           <Route path="/pricing" element={<Pricing />} />
@@ -99,49 +330,46 @@ function AppRoutes() {
           <Route path="/help" element={<Help />} />
           <Route path="/contact" element={<Contact />} />
 
-          <Route path="/forgot-password" element={<PasswordResetPages />} />
-          <Route path="/reset-password" element={<PasswordResetPages />} />
-          <Route path="/change-password" element={<PasswordResetPages />} />
+          {/* ── PASSWORD RESET (public, no auth needed) ─────────── */}
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
 
-          {/* ── PROTECTED ──────────────────────────────────── */}
+          {/* change-password requires auth — user must be logged in */}
+          <Route path="/change-password" element={
+            <ProtectedRoute><ChangePassword /></ProtectedRoute>
+          } />
+
+          {/* ── PROTECTED ───────────────────────────────────────── */}
           <Route path="/dashboard" element={
             <ProtectedRoute><Dashboard /></ProtectedRoute>
           } />
 
-          <Route
-            path="/company"
-            element={
-              <ProtectedRoute roles={['Admin', 'HR', 'Manager', 'Finance', 'Employee' ]}>
-                <CompanyPage />
-              </ProtectedRoute>
-            }
-          />
+          <Route path="/company" element={
+            <ProtectedRoute roles={["Admin", "HR", "Manager", "Finance", "Employee"]}>
+              <CompanyPage />
+            </ProtectedRoute>
+          } />
 
           <Route path="/department-dashboard" element={
             <ProtectedRoute><DepartmentDashboard /></ProtectedRoute>
           } />
 
-          <Route
-            path="/payroll"
-            element={
-              <ProtectedRoute>
-                <PayrollRouter />
-              </ProtectedRoute>
-            }
-          />
+          <Route path="/payroll" element={
+            <ProtectedRoute><PayrollRouter /></ProtectedRoute>
+          } />
+
           <Route path="/attendance" element={
             <ProtectedRoute><AttendancePage /></ProtectedRoute>
           } />
-          
 
           <Route path="/shift-management" element={
-            <ProtectedRoute >
-              <ShiftManagement />
-            </ProtectedRoute>
+            <ProtectedRoute><ShiftManagement /></ProtectedRoute>
           } />
 
           <Route path="/users" element={
-            <ProtectedRoute roles={["admin", "manager"]}><Users /></ProtectedRoute>
+            <ProtectedRoute roles={["Admin", "Manager"]}>
+              <Users />
+            </ProtectedRoute>
           } />
 
           <Route path="/leave" element={
@@ -149,11 +377,15 @@ function AppRoutes() {
           } />
 
           <Route path="/pending-leave" element={
-            <ProtectedRoute roles={["manager", "admin", "hr"]}><PendingLeaves /></ProtectedRoute>
+            <ProtectedRoute roles={["Admin", "Manager", "HR"]}>
+              <PendingLeaves />
+            </ProtectedRoute>
           } />
 
           <Route path="/approved-leave" element={
-            <ProtectedRoute roles={["manager", "admin", "hr"]}><ApprovedLeaves /></ProtectedRoute>
+            <ProtectedRoute roles={["Admin", "Manager", "HR"]}>
+              <ApprovedLeaves />
+            </ProtectedRoute>
           } />
 
           <Route path="/expenses" element={
@@ -161,7 +393,9 @@ function AppRoutes() {
           } />
 
           <Route path="/audit-logs" element={
-            <ProtectedRoute roles={["admin", "hr", "manager", "finance"]}><AuditLogs /></ProtectedRoute>
+            <ProtectedRoute roles={["Admin", "HR", "Manager", "Finance"]}>
+              <AuditLogs />
+            </ProtectedRoute>
           } />
 
           <Route path="/year-end" element={
@@ -179,13 +413,12 @@ function AppRoutes() {
           <Route path="/reports" element={
             <ProtectedRoute><ReportsPage /></ProtectedRoute>
           } />
-         
 
-            <Route path="/analytics" element={
-              <ProtectedRoute roles={["admin", "hr", "finance"]}>
-                <AnalyticsDashboard />
-              </ProtectedRoute>
-            } />
+          <Route path="/analytics" element={
+            <ProtectedRoute roles={["Admin", "HR", "Finance"]}>
+              <AnalyticsDashboard />
+            </ProtectedRoute>
+          } />
 
           <Route path="/settings" element={
             <ProtectedRoute><SettingsPage /></ProtectedRoute>
@@ -193,28 +426,25 @@ function AppRoutes() {
 
         </Route>
 
-        {/* ── AUTH ───────────────────────────────────────────── */}
-        <Route path="/login" element={
-          <PublicRoute><Login /></PublicRoute>
-        } />
+        {/* ── AUTH (outside Layout, no sidebar/navbar) ────────────── */}
+        <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
+        <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
 
-        <Route path="/register" element={
-          <PublicRoute><Register /></PublicRoute>
-        } />
-
-        {/* ── FALLBACK ───────────────────────────────────────── */}
+        {/* ── FALLBACK ────────────────────────────────────────────── */}
         <Route path="*" element={<Navigate to="/" replace />} />
+
       </Routes>
 
-      {/* ── AI Chat Widget (only shown to logged-in users) ── */}
+      {/* AI Chat Widget — only for authenticated users */}
       {isAuthenticated && <AiChat />}
     </>
   );
 }
 
-// ─────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 // App — root providers
-// ─────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
