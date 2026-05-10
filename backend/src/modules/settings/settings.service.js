@@ -1,82 +1,65 @@
 'use strict';
 
-const settingsRepository = require('./settings.repository');
+const repository = require('./settings.repository');
+const defaults = require('./settings.defaults');
+const { ALLOWED_SETTINGS } = require('./settings.constants');
 const { sequelize } = require('../../database/initModels');
-const logger = require('../../config/logger');
 
-// GET all settings for authenticated user
-const getSettings = async (userId) => {
-    try {
-        const settings = await settingsRepository.findAllByUser(userId);
-        return { success: true, data: settings };
-    } catch (error) {
-        logger.error({ event: 'GET_SETTINGS_FAILED', userId, error: error.message });
-        return { success: false, message: error.message || 'Failed to fetch settings', statusCode: 500 };
+const validateSetting = (category, key) =>
+    !!(ALLOWED_SETTINGS[category] && ALLOWED_SETTINGS[category].includes(key));
+
+const parseValue = (value, datatype) => {
+    switch (datatype) {
+        case 'number': return Number(value);
+        case 'boolean': return value === 'false' ? false : Boolean(value);
+        case 'json': return typeof value === 'string' ? JSON.parse(value) : value;
+        default: return String(value);
     }
 };
 
-// GET single setting by key
-const getSetting = async (userId, key) => {
-    try {
-        const setting = await settingsRepository.findByUserAndKey(userId, key);
-        if (!setting) return { success: false, message: 'Setting not found', statusCode: 404 };
-        return { success: true, data: setting };
-    } catch (error) {
-        logger.error({ event: 'GET_SETTING_FAILED', userId, key, error: error.message });
-        return { success: false, message: error.message || 'Failed to fetch setting', statusCode: 500 };
+const getSettings = async (scopeType, scopeId) =>
+    repository.findAll({ scopeType, scopeId });
+
+const getSetting = async (scopeType, scopeId, category, key) => {
+    const setting = await repository.findOne({ scopeType, scopeId, category, key });
+    if (setting) return setting;
+    return { value: defaults?.[category]?.[key] ?? null };
+};
+
+const updateSetting = async (payload) => {
+    const { scopeType, scopeId, category, key, value, datatype } = payload;
+
+    if (!validateSetting(category, key)) {
+        return { success: false, message: `Invalid setting: "${category}.${key}" is not allowed` };
     }
+
+    const parsedValue = parseValue(value, datatype);
+    await repository.upsert({ scopeType, scopeId, category, key, value: parsedValue, datatype });
+    return repository.findOne({ scopeType, scopeId, category, key });
 };
 
-// UPDATE single setting  { key, value }
-const updateSetting = async (userId, key, value) => {
-    try {
-        await sequelize.transaction(async (transaction) => {
-            await settingsRepository.upsertSetting(userId, key, value, transaction);
-        });
-        const updated = await settingsRepository.findByUserAndKey(userId, key);
-        return { success: true, message: 'Setting updated', data: updated };
-    } catch (error) {
-        logger.error({ event: 'UPDATE_SETTING_FAILED', userId, key, error: error.message });
-        return { success: false, message: error.message || 'Failed to update setting', statusCode: 500 };
+const updateManySettings = async (settings) => {
+    const invalid = settings.filter(({ category, key }) => !validateSetting(category, key));
+    if (invalid.length > 0) {
+        const keys = invalid.map(({ category, key }) => `${category}.${key}`).join(', ');
+        return { success: false, message: `Invalid settings: ${keys}` };
     }
+
+    await sequelize.transaction(async (transaction) => {
+        const payloads = settings.map((s) => ({
+            ...s,
+            value: parseValue(s.value, s.datatype),
+        }));
+        await repository.bulkUpsert(payloads, transaction);
+    });
+
+    return { success: true };
 };
 
-// UPDATE multiple settings  [ { key, value }, ... ]
-const updateManySettings = async (userId, settings) => {
-    try {
-        if (!Array.isArray(settings) || settings.length === 0)
-            return { success: false, message: 'Settings array is required', statusCode: 400 };
-
-        await sequelize.transaction(async (transaction) => {
-            await settingsRepository.upsertMany(userId, settings, transaction);
-        });
-
-        const updated = await settingsRepository.findAllByUser(userId);
-        return { success: true, message: 'Settings updated', data: updated };
-    } catch (error) {
-        logger.error({ event: 'UPDATE_MANY_SETTINGS_FAILED', userId, error: error.message });
-        return { success: false, message: error.message || 'Failed to update settings', statusCode: 500 };
-    }
+const deleteSetting = async (scopeType, scopeId, category, key) => {
+    const deleted = await repository.remove({ scopeType, scopeId, category, key });
+    if (!deleted) return { success: false, message: 'Setting not found' };
+    return { success: true };
 };
 
-// DELETE single setting by key
-const deleteSetting = async (userId, key) => {
-    try {
-        const existing = await settingsRepository.findByUserAndKey(userId, key);
-        if (!existing) return { success: false, message: 'Setting not found', statusCode: 404 };
-
-        await settingsRepository.deleteByUserAndKey(userId, key);
-        return { success: true, message: 'Setting deleted' };
-    } catch (error) {
-        logger.error({ event: 'DELETE_SETTING_FAILED', userId, key, error: error.message });
-        return { success: false, message: error.message || 'Failed to delete setting', statusCode: 500 };
-    }
-};
-
-module.exports = {
-    getSettings,
-    getSetting,
-    updateSetting,
-    updateManySettings,
-    deleteSetting,
-};
+module.exports = { getSettings, getSetting, updateSetting, updateManySettings, deleteSetting };
