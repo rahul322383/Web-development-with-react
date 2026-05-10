@@ -1,24 +1,67 @@
 'use strict';
 
 const express = require('express');
-const authenticate = require('../../middleware/auth.middleware');
-const validate = require('../../middleware/validate.middleware');
-const { analyticsLimiter, strictLimiter } = require('../../config/security');
-const settingsController = require('./settings.controller');
-const { updateOneSchema, updateManySchema } = require('./settings.validation');
-
 const router = express.Router();
 
-router.use(authenticate, analyticsLimiter);
+const controller = require('./settings.controller');
 
-router.get('/', settingsController.getAll);
+const authenticate =
+    require('../../middleware/auth.middleware');
 
-router.get('/:key', settingsController.getOne);
+// -----------------------------------------------------------------------------
+// Middleware
+// -----------------------------------------------------------------------------
 
-router.put('/', strictLimiter, validate(updateManySchema), settingsController.updateMany);
+router.use(authenticate);
 
-router.put('/:key', strictLimiter, validate(updateOneSchema), settingsController.updateOne);
+// -----------------------------------------------------------------------------
+// GET ALL SETTINGS
+// GET /settings
+// -----------------------------------------------------------------------------
 
-router.delete('/:key', strictLimiter, settingsController.remove);
+router.get(
+    '/',
+    controller.getAll
+);
+
+// -----------------------------------------------------------------------------
+// GET SINGLE SETTING
+// GET /settings/:category/:settingKey
+// -----------------------------------------------------------------------------
+
+router.get(
+    '/:category/:settingKey',
+    controller.getOne
+);
+
+// -----------------------------------------------------------------------------
+// UPDATE SINGLE SETTING
+// PUT /settings
+// -----------------------------------------------------------------------------
+
+router.put(
+    '/',
+    controller.updateOne
+);
+
+// -----------------------------------------------------------------------------
+// UPDATE MULTIPLE SETTINGS
+// PUT /settings/bulk/update
+// -----------------------------------------------------------------------------
+
+router.put(
+    '/bulk/update',
+    controller.updateMany
+);
+
+// -----------------------------------------------------------------------------
+// DELETE SINGLE SETTING
+// DELETE /settings/:category/:settingKey
+// -----------------------------------------------------------------------------
+
+router.delete(
+    '/:category/:settingKey',
+    controller.remove
+);
 
 module.exports = router;
