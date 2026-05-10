@@ -101,7 +101,7 @@ const dispatch = async ({
             }
 
         } catch (err) {
-            console.error('❌ PREF ERROR:', err);
+           
             prefs = { email: true, sms: false, in_app: true };
         }
 
