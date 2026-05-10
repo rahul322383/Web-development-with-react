@@ -743,7 +743,6 @@ const assignShift = async ({ actor, data }) => {
 
     } catch (err) {
 
-        console.error('Error in assignShift:', err);
 
         logger.error({
             event: 'ASSIGN_SHIFT_FAILED',
