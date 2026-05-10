@@ -15,6 +15,7 @@ const AImodules = require('../modules/AI')
 const anaylticsModule = require('../modules/anayltics')
 const companyModule = require('../modules/company');
 const shiftModule = require('../modules/shift');
+const passwordModule = require('../modules/password');
 
 
 const router = express.Router();
@@ -35,5 +36,7 @@ router.use('/companies', companyModule.routes);
 router.use('/shifts', shiftModule.routes);
 // ✅ FIX REPORTS
 router.use('/reports', reportsModule.routes);
+router.use('/password', passwordModule.routes);
+
 
 module.exports = router;
