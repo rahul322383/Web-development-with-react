@@ -1,4 +1,3 @@
-// Dashboard.jsx
 import React, {
   useEffect,
   useState,
@@ -20,7 +19,10 @@ import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { StatCard } from "../components/ui/StatCardSkeleton";
 
-/* ----------------------------- Constants ----------------------------- */
+// -----------------------------------------------------------------------------
+// Constants
+// -----------------------------------------------------------------------------
+
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 const CURRENCY_FORMATTER = new Intl.NumberFormat("en-IN", {
@@ -34,7 +36,10 @@ const NUMBER_FORMATTER = new Intl.NumberFormat("en-IN");
 const formatCurrency = (n) => CURRENCY_FORMATTER.format(Number(n) || 0);
 const formatNumber = (n) => NUMBER_FORMATTER.format(Number(n) || 0);
 
-/* ----------------------------- Chart ----------------------------- */
+// -----------------------------------------------------------------------------
+// DashboardChart — fully hardened canvas renderer
+// -----------------------------------------------------------------------------
+
 const DashboardChart = memo(({ type = "bar", data, loading, height = 300 }) => {
   const canvasRef = useRef(null);
   const rafRef = useRef(null);
@@ -45,14 +50,15 @@ const DashboardChart = memo(({ type = "bar", data, loading, height = 300 }) => {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
     const container = canvas.parentElement;
-    if (!container) return;
+    if (!ctx || !container) return;
 
     const draw = () => {
       const dpr = window.devicePixelRatio || 1;
-      const cssWidth = container.clientWidth;
+
+      // FIX: clamp container width — avoids division by zero on first render
+      const cssWidth = Math.max(container.clientWidth, 300);
       const cssHeight = height;
 
-      // High-DPI aware sizing
       canvas.width = cssWidth * dpr;
       canvas.height = cssHeight * dpr;
       canvas.style.width = `${cssWidth}px`;
@@ -60,14 +66,31 @@ const DashboardChart = memo(({ type = "bar", data, loading, height = 300 }) => {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
       const padding = { top: 20, right: 20, bottom: 40, left: 60 };
-      const chartHeight = cssHeight - 60;
-      const dataset = data.datasets[0];
-      const values = dataset.data || [];
+
+      // FIX: clamp chart area — never goes negative
+      const chartHeight = Math.max(cssHeight - padding.top - padding.bottom, 100);
+      const chartW = Math.max(cssWidth - padding.left - padding.right, 1);
+
+      // FIX: safe dataset extraction with type coercion
+      const dataset = data?.datasets?.[0];
+      if (!dataset) return;
+
+      const values = Array.isArray(dataset.data)
+        ? dataset.data.map((v) => Number(v) || 0)
+        : [];
+      if (!values.length) return;
+
       const maxValue = Math.max(...values, 1);
+
+      // FIX: only accept hex colors for gradient — fall back cleanly otherwise
+      const isHex = (c) => typeof c === "string" && /^#[0-9A-Fa-f]{3,8}$/.test(c);
+      const rawBg = dataset.backgroundColor;
+      const bg = isHex(rawBg) ? rawBg : "#4F46E5";
+      const line = typeof dataset.borderColor === "string" ? dataset.borderColor : bg;
 
       ctx.clearRect(0, 0, cssWidth, cssHeight);
 
-      // Grid
+      // Grid lines
       ctx.strokeStyle = "#e2e8f0";
       ctx.lineWidth = 0.5;
       for (let i = 0; i <= 5; i++) {
@@ -78,47 +101,107 @@ const DashboardChart = memo(({ type = "bar", data, loading, height = 300 }) => {
         ctx.stroke();
       }
 
-      const chartW = cssWidth - padding.left - padding.right;
+      // Y-axis labels
+      ctx.fillStyle = "#94a3b8";
+      ctx.font = "10px Inter, sans-serif";
+      ctx.textAlign = "right";
+      for (let i = 0; i <= 5; i++) {
+        const val = Math.round((maxValue / 5) * (5 - i));
+        const y = padding.top + (chartHeight / 5) * i;
+        ctx.fillText(formatNumber(val), padding.left - 6, y + 3);
+      }
 
+      // ── Bar chart ──────────────────────────────────────────────────
       if (type === "bar") {
         const slot = chartW / values.length;
-        const barWidth = slot * 0.7;
-        const barSpacing = slot * 0.3;
+        if (!Number.isFinite(slot) || slot <= 0) return;
+
+        const barWidth = slot * 0.65;
+        const barOffset = slot * 0.175; // centres the bar inside the slot
 
         ctx.font = "10px Inter, sans-serif";
         ctx.textAlign = "center";
 
         values.forEach((value, i) => {
-          const x = padding.left + i * (barWidth + barSpacing);
-          const barHeight = (value / maxValue) * chartHeight;
+          const safeVal = Math.max(Number(value) || 0, 0);
+          const barHeight = (safeVal / maxValue) * chartHeight;
+          const x = padding.left + i * slot + barOffset;
           const y = padding.top + chartHeight - barHeight;
 
-          const gradient = ctx.createLinearGradient(x, y, x + barWidth, y + barHeight);
-          gradient.addColorStop(0, dataset.backgroundColor);
-          gradient.addColorStop(1, `${dataset.backgroundColor}cc`);
-          ctx.fillStyle = gradient;
-          ctx.fillRect(x, y, barWidth, barHeight);
+          // Guard: skip degenerate geometry
+          if (
+            !Number.isFinite(x) || !Number.isFinite(y) ||
+            !Number.isFinite(barWidth) || !Number.isFinite(barHeight) ||
+            barWidth <= 0 || barHeight < 0
+          ) return;
 
-          ctx.fillStyle = "#64748b";
-          ctx.fillText(value, x + barWidth / 2, y - 5);
+          // Gradient — safe because bg is validated hex
+          const gradient = ctx.createLinearGradient(x, y, x, y + barHeight);
+          gradient.addColorStop(0, bg);
+          gradient.addColorStop(1, `${bg}99`);
+
+          ctx.fillStyle = gradient;
+          ctx.globalAlpha = 0.9;
+          ctx.beginPath();
+
+          // Rounded top corners
+          const r = Math.min(4, barWidth / 2, barHeight);
+          if (barHeight > r) {
+            ctx.moveTo(x + r, y);
+            ctx.lineTo(x + barWidth - r, y);
+            ctx.quadraticCurveTo(x + barWidth, y, x + barWidth, y + r);
+            ctx.lineTo(x + barWidth, y + barHeight);
+            ctx.lineTo(x, y + barHeight);
+            ctx.lineTo(x, y + r);
+            ctx.quadraticCurveTo(x, y, x + r, y);
+          } else {
+            ctx.rect(x, y, barWidth, barHeight);
+          }
+          ctx.fill();
+          ctx.globalAlpha = 1;
+
+          // Value label above bar
+          if (safeVal > 0) {
+            ctx.fillStyle = "#64748b";
+            ctx.fillText(safeVal, x + barWidth / 2, y - 5);
+          }
         });
-      } else if (type === "line") {
-        const denom = Math.max(1, values.length - 1);
+      }
+
+      // ── Line chart ─────────────────────────────────────────────────
+      if (type === "line") {
+        const denom = Math.max(values.length - 1, 1);
         const points = values.map((v, i) => ({
           x: padding.left + (i * chartW) / denom,
-          y: padding.top + chartHeight - (v / maxValue) * chartHeight,
+          y: padding.top + chartHeight - (Math.max(Number(v) || 0, 0) / maxValue) * chartHeight,
         }));
 
+        // Area fill
         ctx.beginPath();
-        ctx.strokeStyle = dataset.borderColor;
-        ctx.lineWidth = 2;
+        points.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+        ctx.lineTo(points[points.length - 1].x, padding.top + chartHeight);
+        ctx.lineTo(points[0].x, padding.top + chartHeight);
+        ctx.closePath();
+
+        const areaGrad = ctx.createLinearGradient(0, padding.top, 0, padding.top + chartHeight);
+        areaGrad.addColorStop(0, `${line}33`);
+        areaGrad.addColorStop(1, `${line}00`);
+        ctx.fillStyle = isHex(line) ? areaGrad : `${line}22`;
+        ctx.fill();
+
+        // Line
+        ctx.beginPath();
+        ctx.strokeStyle = line;
+        ctx.lineWidth = 2.5;
+        ctx.lineJoin = "round";
         points.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
         ctx.stroke();
 
+        // Dots
         points.forEach((p) => {
           ctx.beginPath();
           ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
-          ctx.fillStyle = dataset.borderColor;
+          ctx.fillStyle = line;
           ctx.fill();
           ctx.strokeStyle = "#fff";
           ctx.lineWidth = 2;
@@ -126,15 +209,26 @@ const DashboardChart = memo(({ type = "bar", data, loading, height = 300 }) => {
         });
       }
 
-      // Labels
-      ctx.fillStyle = "#64748b";
+      // X-axis labels
+      ctx.fillStyle = "#94a3b8";
       ctx.font = "11px Inter, sans-serif";
       ctx.textAlign = "center";
-      const labelDenom = Math.max(1, data.labels.length - 1);
-      data.labels.forEach((label, i) => {
-        const x = padding.left + (i * chartW) / labelDenom;
-        ctx.fillText(label, x, cssHeight - 15);
-      });
+
+      const labelCount = data.labels.length;
+      const labelDenom = Math.max(labelCount - 1, 1);
+
+      if (type === "bar") {
+        const slot = chartW / labelCount;
+        data.labels.forEach((label, i) => {
+          const x = padding.left + i * slot + slot / 2;
+          ctx.fillText(label, x, cssHeight - padding.bottom + 20);
+        });
+      } else {
+        data.labels.forEach((label, i) => {
+          const x = padding.left + (i * chartW) / labelDenom;
+          ctx.fillText(label, x, cssHeight - padding.bottom + 20);
+        });
+      }
     };
 
     const scheduleDraw = () => {
@@ -144,7 +238,6 @@ const DashboardChart = memo(({ type = "bar", data, loading, height = 300 }) => {
 
     scheduleDraw();
 
-    // ResizeObserver is more efficient than window resize
     const ro = new ResizeObserver(scheduleDraw);
     ro.observe(container);
 
@@ -157,30 +250,38 @@ const DashboardChart = memo(({ type = "bar", data, loading, height = 300 }) => {
   if (loading) {
     return (
       <div className="w-full animate-pulse" aria-busy="true">
-        <div className="h-[300px] bg-slate-200 dark:bg-slate-700 rounded-lg" />
+        <div className="bg-slate-200 dark:bg-slate-700 rounded-lg" style={{ height }} />
+      </div>
+    );
+  }
+
+  if (!data?.datasets?.[0]?.data?.length) {
+    return (
+      <div className="flex items-center justify-center text-slate-400 dark:text-slate-600 text-sm" style={{ height }}>
+        No data available
       </div>
     );
   }
 
   return (
-    <div className="w-full">
+    <div className="w-full overflow-hidden">
       <canvas ref={canvasRef} role="img" aria-label="Chart" />
     </div>
   );
 });
 DashboardChart.displayName = "DashboardChart";
 
-/* ----------------------------- Spinner ----------------------------- */
+// -----------------------------------------------------------------------------
+// Spinner
+// -----------------------------------------------------------------------------
+
 const LoadingSpinner = memo(({ size = "default", text = "Loading..." }) => {
   const sizeClass =
     size === "small" ? "h-8 w-8" : size === "large" ? "h-16 w-16" : "h-12 w-12";
-
   return (
-    <div className="flex justify-center items-center min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
+    <div className="flex justify-center items-center min-h-screen bg-gray-50 dark:bg-gray-900">
       <div className="text-center">
-        <div
-          className={`animate-spin rounded-full ${sizeClass} border-b-2 border-blue-600 dark:border-blue-400 mx-auto`}
-        />
+        <div className={`animate-spin rounded-full ${sizeClass} border-b-2 border-blue-600 dark:border-blue-400 mx-auto`} />
         <p className="mt-4 text-gray-600 dark:text-gray-400">{text}</p>
       </div>
     </div>
@@ -188,15 +289,15 @@ const LoadingSpinner = memo(({ size = "default", text = "Loading..." }) => {
 });
 LoadingSpinner.displayName = "LoadingSpinner";
 
-/* ----------------------------- Helpers ----------------------------- */
-// Robustly unwrap any axios/double-wrapped API shape
+// -----------------------------------------------------------------------------
+// Helpers
+// -----------------------------------------------------------------------------
+
 const unwrap = (resp) => {
   let d = resp?.data ?? resp;
-  // peel up to 3 layers
   for (let i = 0; i < 3; i++) {
-    if (d && typeof d === "object" && "data" in d && !("summary" in d)) {
-      d = d.data;
-    } else break;
+    if (d && typeof d === "object" && "data" in d && !("summary" in d)) d = d.data;
+    else break;
   }
   return d;
 };
@@ -206,17 +307,18 @@ const isSameMonth = (date, m, y) => {
   return d.getMonth() === m && d.getFullYear() === y;
 };
 
-/* ----------------------------- Sub-components ----------------------------- */
+// -----------------------------------------------------------------------------
+// Sub-components
+// -----------------------------------------------------------------------------
+
 const ActivityItem = memo(({ activity }) => {
   const Icon = activity.icon;
   return (
     <div className="flex items-start gap-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
-      <Icon className="h-4 w-4 text-indigo-600 mt-0.5" />
-      <div className="flex-1">
-        <p className="text-sm font-medium text-slate-900 dark:text-white">
-          {activity.description}
-        </p>
-        <p className="text-xs text-slate-500 mt-1">{activity.time}</p>
+      <Icon className="h-4 w-4 text-indigo-600 mt-0.5 shrink-0" />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-slate-900 dark:text-white truncate">{activity.description}</p>
+        <p className="text-xs text-slate-500 mt-0.5">{activity.time}</p>
       </div>
     </div>
   );
@@ -226,7 +328,7 @@ ActivityItem.displayName = "ActivityItem";
 const QuickStatRow = memo(({ icon: Icon, color, label, value }) => (
   <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
     <div className="flex items-center gap-2">
-      <Icon className={`h-4 w-4 ${color}`} />
+      <Icon className={`h-4 w-4 ${color} shrink-0`} />
       <span className="text-sm text-slate-600 dark:text-slate-400">{label}</span>
     </div>
     <span className="font-semibold text-slate-900 dark:text-white">{value}</span>
@@ -235,17 +337,14 @@ const QuickStatRow = memo(({ icon: Icon, color, label, value }) => (
 QuickStatRow.displayName = "QuickStatRow";
 
 const PendingLeaveRow = memo(({ leave }) => (
-  <tr className="border-b border-slate-200 dark:border-slate-700 last:border-0">
+  <tr className="border-b border-slate-200 dark:border-slate-700 last:border-0 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
     <td className="py-3 px-4">
-      <p className="text-sm font-medium text-slate-900 dark:text-white">
-        {leave.employeeName || "Unknown"}
-      </p>
+      <p className="text-sm font-medium text-slate-900 dark:text-white">{leave.employeeName || "Unknown"}</p>
       <p className="text-xs text-slate-500">{leave.employeeEmail}</p>
     </td>
     <td className="py-3 px-4">
       <p className="text-sm text-slate-600 dark:text-slate-400">
-        {new Date(leave.startDate).toLocaleDateString()} -{" "}
-        {new Date(leave.endDate).toLocaleDateString()}
+        {new Date(leave.startDate).toLocaleDateString()} – {new Date(leave.endDate).toLocaleDateString()}
       </p>
     </td>
     <td className="py-3 px-4">
@@ -262,7 +361,10 @@ const PendingLeaveRow = memo(({ leave }) => (
 ));
 PendingLeaveRow.displayName = "PendingLeaveRow";
 
-/* ----------------------------- Main Dashboard ----------------------------- */
+// -----------------------------------------------------------------------------
+// Dashboard
+// -----------------------------------------------------------------------------
+
 export const Dashboard = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -275,21 +377,16 @@ export const Dashboard = () => {
   const abortRef = useRef(null);
 
   const fetchDashboardData = useCallback(async (isRefresh = false) => {
-    // Cancel any in-flight request
     abortRef.current?.abort?.();
     const controller = new AbortController();
     abortRef.current = controller;
 
     try {
       if (!isRefresh) setLoading(true);
-      const response = await userApi.getDashboardSummary({
-        signal: controller.signal,
-      });
-
+      const response = await userApi.getDashboardSummary({ signal: controller.signal });
       if (controller.signal.aborted) return;
 
       const innerData = unwrap(response);
-
       if (innerData?.summary) {
         setDashboardData(innerData);
       } else {
@@ -318,7 +415,8 @@ export const Dashboard = () => {
     fetchDashboardData(true);
   }, [fetchDashboardData]);
 
-  /* ------- Single-pass data processing for performance ------- */
+  // ── Single-pass data processing ──────────────────────────────────────────
+
   const processedData = useMemo(() => {
     if (!dashboardData) return null;
 
@@ -335,10 +433,9 @@ export const Dashboard = () => {
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
 
-    // Single pass over users
     let activeEmployees = 0;
     let newHiresThisMonth = 0;
-    const departmentMap = new Map(); // dept -> { employeeCount, totalSalary }
+    const departmentMap = new Map();
 
     for (const u of userList) {
       if (u.isActive) activeEmployees++;
@@ -346,35 +443,25 @@ export const Dashboard = () => {
         newHiresThisMonth++;
       }
       if (u.department) {
-        const entry = departmentMap.get(u.department) || {
-          employeeCount: 0,
-          totalSalary: 0,
-        };
+        const entry = departmentMap.get(u.department) || { employeeCount: 0, totalSalary: 0 };
         entry.employeeCount++;
         entry.totalSalary += parseFloat(u.baseSalary || 0);
         departmentMap.set(u.department, entry);
       }
     }
 
-    const departmentStats = Array.from(departmentMap.entries()).map(
-      ([name, v]) => ({ name, ...v })
-    );
+    const departmentStats = Array.from(departmentMap.entries()).map(([name, v]) => ({ name, ...v }));
 
     const approvedLeaves = summary?.leaves?.approved || 0;
     const pendingLeaves = summary?.leaves?.pending || 0;
     const rejectedLeaves = summary?.leaves?.rejected || 0;
     const totalLeaveRequests = approvedLeaves + pendingLeaves + rejectedLeaves;
     const totalUsers = summary?.totalUsers || 0;
+    const attendanceRate = totalUsers > 0
+      ? Math.min(100, Math.max(0, Math.round(100 - (totalLeaveRequests / totalUsers) * 5)))
+      : 100;
 
-    const attendanceRate =
-      totalUsers > 0
-        ? Math.min(
-          100,
-          Math.max(0, Math.round(100 - (totalLeaveRequests / totalUsers) * 5))
-        )
-        : 100;
-
-    // Recent activities (limited slices)
+    // Recent activities — capped slices
     const recentActivities = [];
 
     for (let i = 0; i < Math.min(3, userList.length); i++) {
@@ -388,9 +475,7 @@ export const Dashboard = () => {
       });
     }
 
-    const pendingLeavesList =
-      leaves?.segmented?.pending || leaves?.pending || [];
-
+    const pendingLeavesList = leaves?.segmented?.pending || leaves?.pending || [];
     for (let i = 0; i < Math.min(2, pendingLeavesList.length); i++) {
       const l = pendingLeavesList[i];
       recentActivities.push({
@@ -416,28 +501,28 @@ export const Dashboard = () => {
 
     recentActivities.sort((a, b) => b.sortKey - a.sortKey);
 
+    // FIX: ensure chart arrays are always valid numbers
+    const sanitizeChartArray = (arr) =>
+      Array.isArray(arr) ? arr.map((v) => Number(v) || 0) : new Array(12).fill(0);
+
     const leaveChartData = {
       labels: MONTHS,
-      datasets: [
-        {
-          label: "Leave Requests",
-          data: charts?.leaves || new Array(12).fill(0),
-          backgroundColor: "#4F46E5",
-          borderColor: "#4F46E5",
-        },
-      ],
+      datasets: [{
+        label: "Leave Requests",
+        data: sanitizeChartArray(charts?.leaves),
+        backgroundColor: "#4F46E5",
+        borderColor: "#4F46E5",
+      }],
     };
 
     const departmentChartData = {
       labels: departmentStats.map((d) => d.name),
-      datasets: [
-        {
-          label: "Employees",
-          data: departmentStats.map((d) => d.employeeCount),
-          backgroundColor: "#8B5CF6",
-          borderColor: "#8B5CF6",
-        },
-      ],
+      datasets: [{
+        label: "Employees",
+        data: departmentStats.map((d) => d.employeeCount),
+        backgroundColor: "#8B5CF6",
+        borderColor: "#8B5CF6",
+      }],
     };
 
     return {
@@ -509,38 +594,21 @@ export const Dashboard = () => {
     ];
   }, [processedData]);
 
-  const todayString = useMemo(
-    () =>
-      new Date().toLocaleDateString("en-IN", {
-        month: "long",
-        day: "numeric",
-        year: "numeric",
-      }),
-    []
-  );
+  const todayString = useMemo(() =>
+    new Date().toLocaleDateString("en-IN", { month: "long", day: "numeric", year: "numeric" }), []);
 
-  const userFirstName =
-    user?.firstName || user?.name?.split(" ")?.[0] || "User";
+  const userFirstName = user?.firstName || user?.name?.split(" ")?.[0] || "User";
 
-  if (loading && !dashboardData) {
-    return <LoadingSpinner text="Loading dashboard..." />;
-  }
+  if (loading && !dashboardData) return <LoadingSpinner text="Loading dashboard..." />;
 
   if (!processedData) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 flex items-center justify-center">
         <div className="text-center">
           <AlertCircle className="h-16 w-16 text-slate-400 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-2">
-            No Data Available
-          </h2>
-          <p className="text-slate-600 dark:text-slate-400 mb-4">
-            Unable to load dashboard data
-          </p>
-          <button
-            onClick={handleRefresh}
-            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
-          >
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-2">No Data Available</h2>
+          <p className="text-slate-600 dark:text-slate-400 mb-4">Unable to load dashboard data</p>
+          <button onClick={handleRefresh} className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors">
             Try Again
           </button>
         </div>
@@ -553,6 +621,7 @@ export const Dashboard = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
         {/* Header */}
         <div className="mb-8">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
@@ -562,10 +631,8 @@ export const Dashboard = () => {
               </h1>
               <p className="text-slate-600 dark:text-slate-400">
                 Welcome back,{" "}
-                <span className="font-semibold text-indigo-600 dark:text-indigo-400">
-                  {userFirstName}
-                </span>
-                ! Here's what's happening with your organization.
+                <span className="font-semibold text-indigo-600 dark:text-indigo-400">{userFirstName}</span>!
+                {" "}Here's what's happening with your organization.
               </p>
             </div>
 
@@ -669,6 +736,7 @@ export const Dashboard = () => {
 
         {/* Bottom grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
+
           {/* Recent Activities */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -676,17 +744,12 @@ export const Dashboard = () => {
             transition={{ delay: 0.4 }}
             className="bg-white dark:bg-slate-900 rounded-xl p-6 border border-slate-200 dark:border-slate-800 shadow-lg"
           >
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-indigo-100 to-purple-100 dark:from-indigo-900/30 dark:to-purple-900/30 flex items-center justify-center">
-                  <Clock className="h-5 w-5 text-indigo-600" />
-                </div>
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-                  Recent Activities
-                </h3>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-indigo-100 to-purple-100 dark:from-indigo-900/30 dark:to-purple-900/30 flex items-center justify-center">
+                <Clock className="h-5 w-5 text-indigo-600" />
               </div>
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Recent Activities</h3>
             </div>
-
             <div className="space-y-3">
               {recentActivities.length > 0 ? (
                 recentActivities.map((a, i) => <ActivityItem key={i} activity={a} />)
@@ -703,48 +766,18 @@ export const Dashboard = () => {
             transition={{ delay: 0.5 }}
             className="bg-white dark:bg-slate-900 rounded-xl p-6 border border-slate-200 dark:border-slate-800 shadow-lg"
           >
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-emerald-100 to-teal-100 dark:from-emerald-900/30 dark:to-teal-900/30 flex items-center justify-center">
-                  <TrendingUp className="h-5 w-5 text-emerald-600" />
-                </div>
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-                  Quick Stats
-                </h3>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-emerald-100 to-teal-100 dark:from-emerald-900/30 dark:to-teal-900/30 flex items-center justify-center">
+                <TrendingUp className="h-5 w-5 text-emerald-600" />
               </div>
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Quick Stats</h3>
             </div>
-
             <div className="space-y-3">
-              <QuickStatRow
-                icon={UserPlus}
-                color="text-emerald-600"
-                label="New Hires (This Month)"
-                value={formatNumber(summary.newHiresThisMonth)}
-              />
-              <QuickStatRow
-                icon={Briefcase}
-                color="text-indigo-600"
-                label="Active Departments"
-                value={formatNumber(summary.departments)}
-              />
-              <QuickStatRow
-                icon={Activity}
-                color="text-purple-600"
-                label="Attendance Rate"
-                value={`${summary.attendanceRate}%`}
-              />
-              <QuickStatRow
-                icon={CheckCircle}
-                color="text-emerald-600"
-                label="Active Employees"
-                value={formatNumber(summary.activeEmployees)}
-              />
-              <QuickStatRow
-                icon={XCircle}
-                color="text-rose-600"
-                label="Rejected Leaves"
-                value={formatNumber(summary.rejectedLeaves)}
-              />
+              <QuickStatRow icon={UserPlus} color="text-emerald-600" label="New Hires (This Month)" value={formatNumber(summary.newHiresThisMonth)} />
+              <QuickStatRow icon={Briefcase} color="text-indigo-600" label="Active Departments" value={formatNumber(summary.departments)} />
+              <QuickStatRow icon={Activity} color="text-purple-600" label="Attendance Rate" value={`${summary.attendanceRate}%`} />
+              <QuickStatRow icon={CheckCircle} color="text-emerald-600" label="Active Employees" value={formatNumber(summary.activeEmployees)} />
+              <QuickStatRow icon={XCircle} color="text-rose-600" label="Rejected Leaves" value={formatNumber(summary.rejectedLeaves)} />
             </div>
           </motion.div>
 
@@ -761,11 +794,9 @@ export const Dashboard = () => {
               </div>
               <h3 className="text-lg font-semibold">Need Help?</h3>
             </div>
-
             <p className="text-indigo-100 text-sm mb-6">
               Get the most out of HRMS with our comprehensive guides and dedicated support team.
             </p>
-
             <div className="space-y-3">
               <button className="w-full bg-white text-indigo-600 px-4 py-3 rounded-lg text-sm font-medium hover:bg-indigo-50 transition-all">
                 View Documentation
@@ -774,17 +805,14 @@ export const Dashboard = () => {
                 Contact Support
               </button>
             </div>
-
-            <div className="mt-6 pt-6 border-t border-indigo-400/30">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-indigo-200">Response time</span>
-                <span className="font-semibold">&lt; 2 hours</span>
-              </div>
+            <div className="mt-6 pt-6 border-t border-indigo-400/30 flex items-center justify-between text-sm">
+              <span className="text-indigo-200">Response time</span>
+              <span className="font-semibold">&lt; 2 hours</span>
             </div>
           </motion.div>
         </div>
 
-        {/* Pending Leaves */}
+        {/* Pending Leaves Table */}
         {pendingLeaves.length > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -804,7 +832,6 @@ export const Dashboard = () => {
                 View All <ChevronRight className="w-4 h-4" />
               </button>
             </div>
-
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
@@ -824,6 +851,7 @@ export const Dashboard = () => {
             </div>
           </motion.div>
         )}
+
       </div>
     </div>
   );
