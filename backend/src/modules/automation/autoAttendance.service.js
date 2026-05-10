@@ -102,7 +102,7 @@ const autoCheckIn = async ({ userId, ip }) => {
             checkInIp: ip || null,
         };
 
-        logger.info({ event: 'AUTO_CHECKIN_PAYLOAD', payload });
+      
         
 
         // ✅ UPSERT logic (safe)
@@ -113,7 +113,7 @@ const autoCheckIn = async ({ userId, ip }) => {
         }
 
     } catch (err) {
-        console.error('Auto check-in error:', err);
+    
         logger.error({
             event: 'AUTO_CHECKIN_ERROR',
             userId,
