@@ -1,47 +1,7 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import {
-  Sparkles,
-  Github,
-  Linkedin,
-  Twitter,
-  Mail,
-  Heart,
-  ArrowUp,
-  Briefcase,
-  FileText,
-  Users,
-  Shield,
-  Scale,
-  Lock,
-  HelpCircle,
-  BookOpen,
-  CreditCard,
-  Globe,
-  MessageSquare
-} from 'lucide-react';
-
-const ICON_MAP = {
-  Sparkles,
-  Github,
-  Linkedin,
-  Twitter,
-  Mail,
-  Heart,
-  ArrowUp,
-  Briefcase,
-  FileText,
-  Users,
-  Shield,
-  Scale,
-  Lock,
-  HelpCircle,
-  BookOpen,
-  CreditCard,
-  Globe,
-  MessageSquare
-};
+import * as Icons from 'lucide-react';
 
 const APP_NAME = 'HRMS';
 
@@ -95,33 +55,34 @@ const socialLinks = [
   { icon: 'Mail', href: 'mailto:contact@company.com', label: 'Email' }
 ];
 
-const FooterLink = ({ link }) => {
-  const Icon = ICON_MAP[link.icon] || FileText;
-  const isExternal = link.href.startsWith('http');
+// Memoized to prevent re-renders in static footer
+const FooterLink = memo(({ link }) => {
+  const Icon = Icons[link.icon] || Icons.FileText;
+  const isExternal = link.href.startsWith('http') || link.href.startsWith('mailto');
 
-  const className = "group inline-flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors";
+  const commonProps = {
+    className: "group inline-flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+  };
 
-  if (isExternal) {
-    return (
-      <a
-        href={link.href}
-        target="_blank"
-        rel="noopener noreferrer"
-        className={className}
-      >
-        <Icon className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
-        <span>{link.name}</span>
-      </a>
-    );
-  }
-
-  return (
-    <Link to={link.href} className={className}>
+  const content = (
+    <>
       <Icon className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
       <span>{link.name}</span>
+    </>
+  );
+
+  return isExternal ? (
+    <a href={link.href} target="_blank" rel="noopener noreferrer" {...commonProps}>
+      {content}
+    </a>
+  ) : (
+    <Link to={link.href} {...commonProps}>
+      {content}
     </Link>
   );
-};
+});
+
+FooterLink.displayName = 'FooterLink';
 
 export const Footer = () => {
   const currentYear = new Date().getFullYear();
@@ -131,10 +92,12 @@ export const Footer = () => {
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
         <nav aria-label="Footer Navigation" className="py-12 lg:py-16">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-8 lg:gap-12">
+
+            {/* Branding Section */}
             <div className="lg:col-span-4">
               <div className="flex items-center space-x-2 mb-4">
                 <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
-                  <Sparkles className="w-4 h-4 text-white" />
+                  <Icons.Sparkles className="w-4 h-4 text-white" />
                 </div>
                 <span className="text-lg font-semibold text-slate-900 dark:text-white">
                   {APP_NAME}
@@ -143,19 +106,20 @@ export const Footer = () => {
               <p className="text-sm text-slate-600 dark:text-slate-400 mb-6 leading-relaxed max-w-sm">
                 Modern HR management platform helping teams build better workplaces through streamlined operations and data-driven insights.
               </p>
+
               <div className="flex items-center space-x-3">
-                {socialLinks.map((social) => {
-                  const SocialIcon = ICON_MAP[social.icon] || Mail;
+                {socialLinks.map(({ icon, href, label }) => {
+                  const SocialIcon = Icons[icon] || Icons.Mail;
                   return (
                     <motion.a
-                      key={social.label}
+                      key={label}
                       whileHover={{ scale: 1.05, y: -1 }}
                       whileTap={{ scale: 0.95 }}
-                      href={social.href}
+                      href={href}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="w-9 h-9 bg-slate-100 dark:bg-slate-800 rounded-lg flex items-center justify-center hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors group"
-                      aria-label={social.label}
+                      aria-label={label}
                     >
                       <SocialIcon className="w-4 h-4 text-slate-600 dark:text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors" />
                     </motion.a>
@@ -164,9 +128,10 @@ export const Footer = () => {
               </div>
             </div>
 
+            {/* Nav Sections */}
             {footerSections.map((section) => (
               <div key={section.id} className="lg:col-span-2">
-                <h4 className="font-semibold text-slate-900 dark:text-white mb-4 text-sm">
+                <h4 className="font-semibold text-slate-900 dark:text-white mb-4 text-sm uppercase tracking-wider">
                   {section.title}
                 </h4>
                 <ul className="space-y-3">
@@ -181,20 +146,21 @@ export const Footer = () => {
           </div>
         </nav>
 
-        <div className="py-4 flex flex-wrap items-center justify-between border-t border-slate-200 dark:border-slate-800">
-          <p className="text-sm text-slate-600 dark:text-slate-400 flex items-center gap-1">
-            &copy; {currentYear} {APP_NAME}. All rights reserved.
+        {/* Bottom Bar */}
+        <div className="py-6 flex flex-wrap items-center justify-between border-t border-slate-200 dark:border-slate-800">
+          <div className="text-sm text-slate-600 dark:text-slate-400 flex items-center gap-1">
+            <span>&copy; {currentYear} {APP_NAME}.</span>
             <span className="hidden sm:inline-flex items-center gap-1 ml-2 text-xs text-slate-500">
-              Made with <Heart className="w-3 h-3 text-rose-500" /> by {APP_NAME} Team
+              Made with <Icons.Heart className="w-3 h-3 text-rose-500 fill-rose-500" /> by {APP_NAME} Team
             </span>
-          </p>
+          </div>
 
           <button
             onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-            className="p-2 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400"
+            className="p-2.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-indigo-500 hover:text-white dark:hover:bg-indigo-600 transition-all shadow-sm"
             aria-label="Scroll to top"
           >
-            <ArrowUp className="w-4 h-4" />
+            <Icons.ArrowUp className="w-4 h-4" />
           </button>
         </div>
       </div>
