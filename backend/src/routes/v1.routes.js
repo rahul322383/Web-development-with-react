@@ -16,6 +16,8 @@ const anaylticsModule = require('../modules/anayltics')
 const companyModule = require('../modules/company');
 const shiftModule = require('../modules/shift');
 const passwordModule = require('../modules/password');
+const recruitmentModule = require('../modules/recruitment');
+
 
 
 const router = express.Router();
@@ -34,7 +36,7 @@ router.use('/ai', AImodules.routes)
 router.use('/analytics', anaylticsModule.routes);
 router.use('/companies', companyModule.routes);
 router.use('/shifts', shiftModule.routes);
-// ✅ FIX REPORTS
+router.use('/recruitment', recruitmentModule.routes);
 router.use('/reports', reportsModule.routes);
 router.use('/password', passwordModule.routes);
 
