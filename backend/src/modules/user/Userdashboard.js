@@ -201,7 +201,7 @@ const getChartData = async (year, canViewFinance = false) => {
             salary: canViewFinance ? formatMonthly(salary, 'total') : []
         };
     } catch (error) {
-        console.error('Chart data failed:', error);
+       
         return {
             success: false,
             message: 'Failed to load chart data',
@@ -709,10 +709,7 @@ const getCostPerEmployee = async ({ startDate, endDate, department } = {}) => {
 
     } catch (error) {
 
-        console.error(
-            'Cost per employee failed:',
-            error
-        );
+       
 
         return {
             success: false,
