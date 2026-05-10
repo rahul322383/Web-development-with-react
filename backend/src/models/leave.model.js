@@ -47,7 +47,7 @@ module.exports = (sequelize, DataTypes) => {
 
       // ── Leave metadata ──────────────────────────────────────
       reason: {
-        type: DataTypes.STRING(500),  // bumped from 300 to match Joi max
+        type: DataTypes.STRING(500), 
         allowNull: true,
       },
 
@@ -66,14 +66,14 @@ module.exports = (sequelize, DataTypes) => {
       },
 
       daysRequested: {
-        type: DataTypes.DECIMAL(4, 1),  // supports 0.5 for half-day
+        type: DataTypes.DECIMAL(4, 1), 
         allowNull: false,
         field: 'days_requested',
       },
 
       // ── Status ──────────────────────────────────────────────
       status: {
-        type: DataTypes.ENUM('Pending', 'Approved', 'Rejected'),
+        type: DataTypes.ENUM('Pending', 'Approved', 'Rejected', 'Cancelled'),
         allowNull: false,
         defaultValue: 'Pending',
       },
@@ -88,7 +88,7 @@ module.exports = (sequelize, DataTypes) => {
       tableName: 'leave_requests',
       underscored: true,
       timestamps: true,
-      paranoid: true,  // keeps deleted_at (already in your schema)
+      paranoid: true, 
     }
   );
 
