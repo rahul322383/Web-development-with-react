@@ -444,7 +444,7 @@ const AuditLogs = () => {
       const response = await getAuditStats(params);
       if (response.success) setStats(response.data);
     } catch (error) {
-      console.error('Stats fetch failed:', error);
+    
     } finally {
       setStatsLoading(false);
     }
