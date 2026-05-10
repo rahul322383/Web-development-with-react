@@ -1,591 +1,532 @@
-
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useAuth } from '../context/AuthContext';
-import settingsAPI from '../api/settings.api';
-import { toast } from 'sonner';
+import React, { useEffect, useMemo, useState, useCallback, memo } from 'react';
 import {
-    Save,
-    RotateCcw,
-    Trash2,
-    Moon,
-    Globe,
-    Bell,
-    Clock,
-    Type,
-    AlertCircle,
-    Loader2,
-    Plus,
-    X,
-    Settings2,
-    CheckCircle2,
-    Calendar,
-    DollarSign,
-    Building2,
-    UserCheck,
-    Timer,
-    Briefcase,
-    Users,
-    Mail,
-    Phone,
-    MapPin,
-    Key,
-    Shield,
-    Eye,
-    EyeOff,
-    Search,
-    Undo2,
+    Save, Loader2, CheckCircle2, Search, Settings2,
+    Palette, Clock, DollarSign, Shield, Users, Bell,
+    MapPin, FileText, BarChart2, Zap, Globe, Link,
+    TrendingUp, GitBranch, Monitor, Calendar, Briefcase,
+    CreditCard, Bot, Building2, Sun, Moon, Monitor as MonitorIcon
 } from 'lucide-react';
+import { toast } from 'sonner';
+import settingsAPI from '../api/settings.api';
 
 // -----------------------------------------------------------------------------
-// Comprehensive HRMS Settings Schema
+// CATEGORY META
 // -----------------------------------------------------------------------------
-const KNOWN_SETTINGS = {
-    // (Keep the exact same schema as before – I'll include a condensed version here
-    // for brevity in this answer, but you can copy the full schema from previous code.)
-    // Appearance
-    theme: { label: 'Theme', category: 'Appearance', icon: Moon, type: 'select', options: [{ value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }, { value: 'system', label: 'System' }], description: 'Choose your preferred color scheme', editableBy: ['admin', 'hr', 'manager', 'employee'] },
-    language: { label: 'Language', category: 'Appearance', icon: Globe, type: 'select', options: [{ value: 'en', label: 'English' }, { value: 'es', label: 'Spanish' }, { value: 'fr', label: 'French' }, { value: 'de', label: 'German' }, { value: 'hi', label: 'Hindi' }], description: 'Select your interface language', editableBy: ['admin', 'hr', 'manager', 'employee'] },
-    fontSize: { label: 'Font Size', category: 'Appearance', icon: Type, type: 'number', min: 12, max: 20, step: 1, description: 'Base font size in pixels', editableBy: ['admin', 'hr', 'manager', 'employee'] },
-    compactMode: { label: 'Compact Mode', category: 'Appearance', icon: Settings2, type: 'toggle', description: 'Reduce spacing and padding', editableBy: ['admin', 'hr', 'manager', 'employee'] },
-    // Attendance
-    office_start_time: { label: 'Office Start Time', category: 'Attendance', icon: Clock, type: 'time', description: 'Default work day start time', editableBy: ['admin', 'hr'] },
-    office_end_time: { label: 'Office End Time', category: 'Attendance', icon: Clock, type: 'time', description: 'Default work day end time', editableBy: ['admin', 'hr'] },
-    late_mark_after: { label: 'Late Mark After (minutes)', category: 'Attendance', icon: Timer, type: 'number', min: 0, max: 120, description: 'Minutes after start time to mark late', editableBy: ['admin', 'hr'] },
-    half_day_hours: { label: 'Half Day Hours', category: 'Attendance', icon: Timer, type: 'number', min: 1, max: 8, description: 'Minimum hours for half‑day attendance', editableBy: ['admin', 'hr'] },
-    allow_geo_fencing: { label: 'Enable Geo‑Fencing', category: 'Attendance', icon: MapPin, type: 'toggle', description: 'Require location for check‑in/out', editableBy: ['admin', 'hr'] },
-    geo_fence_radius: { label: 'Geo‑Fence Radius (meters)', category: 'Attendance', icon: MapPin, type: 'number', min: 50, max: 1000, description: 'Allowed distance from office location', editableBy: ['admin', 'hr'] },
-    // Leave
-    max_leaves_per_year: { label: 'Max Leaves Per Year', category: 'Leave', icon: Calendar, type: 'number', min: 0, max: 365, description: 'Total paid leaves allowed annually', editableBy: ['admin', 'hr'] },
-    carry_forward_limit: { label: 'Carry Forward Limit', category: 'Leave', icon: Calendar, type: 'number', min: 0, max: 365, description: 'Max leaves that can be carried forward', editableBy: ['admin', 'hr'] },
-    leave_approval_required: { label: 'Leave Approval Required', category: 'Leave', icon: UserCheck, type: 'toggle', description: 'Require manager approval for leave requests', editableBy: ['admin', 'hr'] },
-    sick_leave_separate: { label: 'Separate Sick Leave Pool', category: 'Leave', icon: Briefcase, type: 'toggle', description: 'Maintain separate sick leave balance', editableBy: ['admin', 'hr'] },
-    sick_leave_days: { label: 'Sick Leave Days', category: 'Leave', icon: Briefcase, type: 'number', min: 0, max: 30, description: 'Annual sick leave entitlement', editableBy: ['admin', 'hr'] },
-    // Payroll
-    salary_cycle: { label: 'Salary Cycle', category: 'Payroll', icon: DollarSign, type: 'select', options: [{ value: 'monthly', label: 'Monthly' }, { value: 'bi-weekly', label: 'Bi‑Weekly' }, { value: 'weekly', label: 'Weekly' }], description: 'Frequency of salary disbursement', editableBy: ['admin'] },
-    payday: { label: 'Payday', category: 'Payroll', icon: Calendar, type: 'number', min: 1, max: 31, description: 'Day of month/week for salary credit', editableBy: ['admin'] },
-    pf_enabled: { label: 'Provident Fund (PF) Enabled', category: 'Payroll', icon: Shield, type: 'toggle', description: 'Enable PF deductions', editableBy: ['admin'] },
-    pf_percentage: { label: 'PF Contribution (%)', category: 'Payroll', icon: Shield, type: 'number', min: 0, max: 20, step: 0.5, description: 'Employee PF contribution percentage', editableBy: ['admin'] },
-    tax_enabled: { label: 'Tax Deduction Enabled', category: 'Payroll', icon: DollarSign, type: 'toggle', description: 'Enable automatic tax calculation', editableBy: ['admin'] },
-    overtime_pay_multiplier: { label: 'Overtime Pay Multiplier', category: 'Payroll', icon: Timer, type: 'number', min: 1.0, max: 3.0, step: 0.1, description: 'Hourly rate multiplier for overtime', editableBy: ['admin'] },
-    // Company
-    company_name: { label: 'Company Name', category: 'Company', icon: Building2, type: 'text', description: 'Official registered name', editableBy: ['admin'] },
-    company_email: { label: 'Company Email', category: 'Company', icon: Mail, type: 'text', description: 'Primary contact email', editableBy: ['admin'] },
-    company_phone: { label: 'Company Phone', category: 'Company', icon: Phone, type: 'text', description: 'Primary contact number', editableBy: ['admin'] },
-    company_address: { label: 'Company Address', category: 'Company', icon: MapPin, type: 'text', description: 'Registered office address', editableBy: ['admin'] },
-    company_timezone: { label: 'Company Timezone', category: 'Company', icon: Clock, type: 'select', options: (() => { if (typeof Intl !== 'undefined' && Intl.supportedValuesOf) return Intl.supportedValuesOf('timeZone').map(tz => ({ value: tz, label: tz })); return [{ value: 'UTC', label: 'UTC' }, { value: 'America/New_York', label: 'Eastern Time' }, { value: 'Asia/Kolkata', label: 'India Standard Time' }, { value: 'Europe/London', label: 'London' }]; })(), description: 'Default timezone for company operations', editableBy: ['admin'] },
-    fiscal_year_start: { label: 'Fiscal Year Start', category: 'Company', icon: Calendar, type: 'date', description: 'Start date of financial year (MM‑DD)', editableBy: ['admin'] },
-    // Notifications
-    email_notifications: { label: 'Email Notifications', category: 'Notifications', icon: Mail, type: 'toggle', description: 'Send email alerts for important events', editableBy: ['admin', 'hr', 'manager', 'employee'] },
-    push_notifications: { label: 'Push Notifications', category: 'Notifications', icon: Bell, type: 'toggle', description: 'Send browser/device push alerts', editableBy: ['admin', 'hr', 'manager', 'employee'] },
-    notify_on_leave_request: { label: 'Notify on Leave Request', category: 'Notifications', icon: Calendar, type: 'toggle', description: 'Alert managers when leave is requested', editableBy: ['admin', 'hr', 'manager'] },
-    notify_on_attendance_anomaly: { label: 'Notify on Attendance Anomaly', category: 'Notifications', icon: AlertCircle, type: 'toggle', description: 'Alert HR on late/missing check‑ins', editableBy: ['admin', 'hr'] },
-    // Security
-    two_factor_auth: { label: 'Two‑Factor Authentication', category: 'Security', icon: Shield, type: 'toggle', description: 'Require 2FA for all users', editableBy: ['admin'] },
-    session_timeout_minutes: { label: 'Session Timeout (minutes)', category: 'Security', icon: Timer, type: 'number', min: 5, max: 480, description: 'Auto logout after inactivity', editableBy: ['admin'] },
-    password_expiry_days: { label: 'Password Expiry (days)', category: 'Security', icon: Key, type: 'number', min: 0, max: 365, description: 'Force password change after N days (0 = never)', editableBy: ['admin'] },
-    allow_social_login: { label: 'Allow Social Login', category: 'Security', icon: Users, type: 'toggle', description: 'Enable Google/Microsoft SSO', editableBy: ['admin'] },
-    // Recruitment
-    auto_archive_candidates_days: { label: 'Auto‑archive Candidates (days)', category: 'Recruitment', icon: Briefcase, type: 'number', min: 30, max: 365, description: 'Days after which inactive candidates are archived', editableBy: ['admin', 'hr'] },
-    require_offer_approval: { label: 'Require Offer Approval', category: 'Recruitment', icon: UserCheck, type: 'toggle', description: 'Offers need second‑level approval', editableBy: ['admin', 'hr'] },
-    default_interview_duration: { label: 'Default Interview Duration (mins)', category: 'Recruitment', icon: Clock, type: 'number', min: 15, max: 120, step: 15, description: 'Default slot length for interviews', editableBy: ['admin', 'hr'] },
-    // Performance
-    review_cycle_months: { label: 'Review Cycle (months)', category: 'Performance', icon: Calendar, type: 'number', min: 3, max: 12, description: 'Frequency of performance reviews', editableBy: ['admin', 'hr'] },
-    self_appraisal_enabled: { label: 'Self Appraisal Enabled', category: 'Performance', icon: Eye, type: 'toggle', description: 'Allow employees to self‑evaluate', editableBy: ['admin', 'hr'] },
-    peer_review_enabled: { label: 'Peer Review Enabled', category: 'Performance', icon: Users, type: 'toggle', description: 'Include peer feedback in reviews', editableBy: ['admin', 'hr'] },
-    rating_scale_max: { label: 'Rating Scale Maximum', category: 'Performance', icon: Settings2, type: 'number', min: 3, max: 10, description: 'Highest possible performance rating', editableBy: ['admin', 'hr'] },
-};
 
-// Helper to infer type for unknown settings
-const inferInputType = (value) => {
-    if (typeof value === 'boolean') return 'toggle';
-    if (typeof value === 'number') return 'number';
-    return 'text';
+const CATEGORY_META = {
+    company: { label: 'Company', icon: Building2 },
+    employee: { label: 'Employee', icon: Users },
+    appearance: { label: 'Appearance', icon: Palette },
+    attendance: { label: 'Attendance', icon: Clock },
+    leave: { label: 'Leave', icon: Calendar },
+    payroll: { label: 'Payroll', icon: DollarSign },
+    notification: { label: 'Notification', icon: Bell },
+    security: { label: 'Security', icon: Shield },
+    shift: { label: 'Shift', icon: Clock },
+    geo: { label: 'Geo', icon: MapPin },
+    document: { label: 'Document', icon: FileText },
+    appraisal: { label: 'Appraisal', icon: BarChart2 },
+    recruitment: { label: 'Recruitment', icon: Briefcase },
+    expense: { label: 'Expense', icon: CreditCard },
+    ai: { label: 'AI', icon: Bot },
+    integration: { label: 'Integration', icon: Link },
+    localization: { label: 'Localization', icon: Globe },
+    analytics: { label: 'Analytics', icon: TrendingUp },
+    workflow: { label: 'Workflow', icon: GitBranch },
+    system: { label: 'System', icon: Monitor },
 };
 
 // -----------------------------------------------------------------------------
-// Main Component
+// SETTINGS SCHEMA
 // -----------------------------------------------------------------------------
-const SettingsPage = () => {
-    const { isAuthenticated, user } = useAuth();
-    const [settings, setSettings] = useState({});
-    const [originalSettings, setOriginalSettings] = useState({});
-    const [isLoading, setIsLoading] = useState(true);
-    const [isSaving, setIsSaving] = useState(false);
-    const [error, setError] = useState(null);
-    const [editingKey, setEditingKey] = useState(null);
-    const [newSetting, setNewSetting] = useState({ key: '', value: '' });
-    const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
-    const [lastSaved, setLastSaved] = useState(null);
-    const [searchQuery, setSearchQuery] = useState('');
-    const [showSaveAnimation, setShowSaveAnimation] = useState(false);
 
-    const autoSaveTimerRef = useRef(null);
-    const hasPendingChangesRef = useRef(false);
+const SETTINGS_SCHEMA = {
+    company_name: { category: 'company', label: 'Company Name', type: 'text', defaultValue: '' },
+    company_email: { category: 'company', label: 'Company Email', type: 'text', defaultValue: '' },
+    timezone: {
+        category: 'company', label: 'Timezone', type: 'select', defaultValue: 'Asia/Kolkata',
+        options: [
+            { label: 'Asia/Kolkata (IST)', value: 'Asia/Kolkata' },
+            { label: 'UTC', value: 'UTC' },
+            { label: 'America/New_York (EST)', value: 'America/New_York' },
+            { label: 'Europe/London (GMT)', value: 'Europe/London' },
+        ],
+    },
+    currency: {
+        category: 'company', label: 'Currency', type: 'select', defaultValue: 'INR',
+        options: [{ label: 'INR ₹', value: 'INR' }, { label: 'USD $', value: 'USD' }, { label: 'EUR €', value: 'EUR' }],
+    },
+    date_format: {
+        category: 'company', label: 'Date Format', type: 'select', defaultValue: 'DD/MM/YYYY',
+        options: [{ label: 'DD/MM/YYYY', value: 'DD/MM/YYYY' }, { label: 'MM/DD/YYYY', value: 'MM/DD/YYYY' }, { label: 'YYYY-MM-DD', value: 'YYYY-MM-DD' }],
+    },
+    language: {
+        category: 'company', label: 'Language', type: 'select', defaultValue: 'en',
+        options: [{ label: 'English', value: 'en' }, { label: 'Hindi', value: 'hi' }],
+    },
+    fiscal_year_start: {
+        category: 'company', label: 'Fiscal Year Start', type: 'select', defaultValue: 'April',
+        options: ['January', 'April', 'July', 'October'].map(m => ({ label: m, value: m })),
+    },
+    employee_code_prefix: { category: 'employee', label: 'Employee Code Prefix', type: 'text', defaultValue: 'EMP' },
+    auto_generate_employee_id: { category: 'employee', label: 'Auto Generate Employee ID', type: 'toggle', defaultValue: true },
+    probation_period_days: { category: 'employee', label: 'Probation Period (days)', type: 'number', defaultValue: 90 },
+    allow_profile_edit: { category: 'employee', label: 'Allow Profile Edit', type: 'toggle', defaultValue: true },
+    theme: {
+        category: 'appearance', label: 'Theme', type: 'select', defaultValue: 'system',
+        options: [
+            { label: 'Light', value: 'light' },
+            { label: 'Dark', value: 'dark' },
+            { label: 'System', value: 'system' },
+        ],
+    },
+    compact_mode: { category: 'appearance', label: 'Compact Mode', type: 'toggle', defaultValue: false },
+    sidebar_collapsed: { category: 'appearance', label: 'Sidebar Collapsed', type: 'toggle', defaultValue: false },
+    primary_color: { category: 'appearance', label: 'Primary Color', type: 'color', defaultValue: '#4F46E5' },
+    grace_period: { category: 'attendance', label: 'Grace Period (mins)', type: 'number', defaultValue: 10 },
+    late_mark_minutes: { category: 'attendance', label: 'Late Mark After (mins)', type: 'number', defaultValue: 30 },
+    half_day_minutes: { category: 'attendance', label: 'Half Day Minutes', type: 'number', defaultValue: 240 },
+    geo_fencing_enabled: { category: 'attendance', label: 'Geo Fencing', type: 'toggle', defaultValue: false },
+    face_recognition_required: { category: 'attendance', label: 'Face Recognition Required', type: 'toggle', defaultValue: false },
+    overtime_enabled: { category: 'attendance', label: 'Overtime Enabled', type: 'toggle', defaultValue: false },
+    carry_forward_enabled: { category: 'leave', label: 'Carry Forward Enabled', type: 'toggle', defaultValue: true },
+    max_carry_forward_days: { category: 'leave', label: 'Max Carry Forward (days)', type: 'number', defaultValue: 10 },
+    sandwich_leave_enabled: { category: 'leave', label: 'Sandwich Leave', type: 'toggle', defaultValue: false },
+    leave_approval_levels: { category: 'leave', label: 'Approval Levels', type: 'number', defaultValue: 1 },
+    negative_leave_allowed: { category: 'leave', label: 'Negative Leave Allowed', type: 'toggle', defaultValue: false },
+    salary_cycle: {
+        category: 'payroll', label: 'Salary Cycle', type: 'select', defaultValue: 'monthly',
+        options: [{ label: 'Monthly', value: 'monthly' }, { label: 'Weekly', value: 'weekly' }],
+    },
+    tax_enabled: { category: 'payroll', label: 'Tax Enabled', type: 'toggle', defaultValue: true },
+    pf_enabled: { category: 'payroll', label: 'PF Enabled', type: 'toggle', defaultValue: true },
+    esi_enabled: { category: 'payroll', label: 'ESI Enabled', type: 'toggle', defaultValue: false },
+    bonus_enabled: { category: 'payroll', label: 'Bonus Enabled', type: 'toggle', defaultValue: false },
+    auto_generate_payslip: { category: 'payroll', label: 'Auto Generate Payslip', type: 'toggle', defaultValue: true },
+    email_notifications: { category: 'notification', label: 'Email Notifications', type: 'toggle', defaultValue: true },
+    push_notifications: { category: 'notification', label: 'Push Notifications', type: 'toggle', defaultValue: true },
+    sms_notifications: { category: 'notification', label: 'SMS Notifications', type: 'toggle', defaultValue: false },
+    birthday_reminders: { category: 'notification', label: 'Birthday Reminders', type: 'toggle', defaultValue: true },
+    attendance_alerts: { category: 'notification', label: 'Attendance Alerts', type: 'toggle', defaultValue: true },
+    two_factor_auth: { category: 'security', label: 'Two-Factor Auth', type: 'toggle', defaultValue: false },
+    password_expiry_days: { category: 'security', label: 'Password Expiry (days)', type: 'number', defaultValue: 90 },
+    max_login_attempts: { category: 'security', label: 'Max Login Attempts', type: 'number', defaultValue: 5 },
+    session_timeout_minutes: { category: 'security', label: 'Session Timeout (mins)', type: 'number', defaultValue: 30 },
+    default_shift: { category: 'shift', label: 'Default Shift', type: 'text', defaultValue: 'General' },
+    night_shift_allowance: { category: 'shift', label: 'Night Shift Allowance', type: 'toggle', defaultValue: false },
+    rotational_shift_enabled: { category: 'shift', label: 'Rotational Shift', type: 'toggle', defaultValue: false },
+    gps_tracking_enabled: { category: 'geo', label: 'GPS Tracking', type: 'toggle', defaultValue: false },
+    allowed_radius_meters: { category: 'geo', label: 'Allowed Radius (m)', type: 'number', defaultValue: 200 },
+    work_from_home_enabled: { category: 'geo', label: 'Work From Home Enabled', type: 'toggle', defaultValue: true },
+    max_upload_size_mb: { category: 'document', label: 'Max Upload Size (MB)', type: 'number', defaultValue: 10 },
+    document_expiry_alert_days: { category: 'document', label: 'Expiry Alert Before (days)', type: 'number', defaultValue: 30 },
+    appraisal_cycle: {
+        category: 'appraisal', label: 'Appraisal Cycle', type: 'select', defaultValue: 'yearly',
+        options: [{ label: 'Yearly', value: 'yearly' }, { label: 'Half-Yearly', value: 'half-yearly' }, { label: 'Quarterly', value: 'quarterly' }],
+    },
+    self_review_enabled: { category: 'appraisal', label: 'Self Review', type: 'toggle', defaultValue: true },
+    manager_review_enabled: { category: 'appraisal', label: 'Manager Review', type: 'toggle', defaultValue: true },
+    rating_scale_max: { category: 'appraisal', label: 'Rating Scale Max', type: 'number', defaultValue: 5 },
+    auto_assign_interviewer: { category: 'recruitment', label: 'Auto Assign Interviewer', type: 'toggle', defaultValue: false },
+    candidate_resume_required: { category: 'recruitment', label: 'Resume Required', type: 'toggle', defaultValue: true },
+    offer_letter_approval_required: { category: 'recruitment', label: 'Offer Letter Approval', type: 'toggle', defaultValue: true },
+    expense_approval_levels: { category: 'expense', label: 'Approval Levels', type: 'number', defaultValue: 1 },
+    max_claim_amount: { category: 'expense', label: 'Max Claim Amount', type: 'number', defaultValue: 50000 },
+    receipt_required: { category: 'expense', label: 'Receipt Required', type: 'toggle', defaultValue: true },
+    ai_resume_screening: { category: 'ai', label: 'AI Resume Screening', type: 'toggle', defaultValue: false },
+    auto_leave_prediction: { category: 'ai', label: 'Auto Leave Prediction', type: 'toggle', defaultValue: false },
+    chatbot_enabled: { category: 'ai', label: 'Chatbot Enabled', type: 'toggle', defaultValue: false },
+    slack_enabled: { category: 'integration', label: 'Slack', type: 'toggle', defaultValue: false },
+    google_calendar_sync: { category: 'integration', label: 'Google Calendar', type: 'toggle', defaultValue: false },
+    zoom_integration: { category: 'integration', label: 'Zoom', type: 'toggle', defaultValue: false },
+    country: { category: 'localization', label: 'Country', type: 'text', defaultValue: 'India' },
+    holiday_calendar: {
+        category: 'localization', label: 'Holiday Calendar', type: 'select', defaultValue: 'IN',
+        options: [{ label: 'India (IN)', value: 'IN' }, { label: 'US', value: 'US' }, { label: 'UK', value: 'UK' }],
+    },
+    currency_symbol: { category: 'localization', label: 'Currency Symbol', type: 'text', defaultValue: '₹' },
+    dashboard_refresh_interval: { category: 'analytics', label: 'Dashboard Refresh (mins)', type: 'number', defaultValue: 5 },
+    allow_data_export: { category: 'analytics', label: 'Allow Data Export', type: 'toggle', defaultValue: true },
+    chart_theme: {
+        category: 'analytics', label: 'Chart Theme', type: 'select', defaultValue: 'modern',
+        options: [{ label: 'Modern', value: 'modern' }, { label: 'Classic', value: 'classic' }, { label: 'Minimal', value: 'minimal' }],
+    },
+    multi_level_approval: { category: 'workflow', label: 'Multi Level Approval', type: 'toggle', defaultValue: false },
+    auto_escalation_enabled: { category: 'workflow', label: 'Auto Escalation', type: 'toggle', defaultValue: false },
+    approval_timeout_days: { category: 'workflow', label: 'Approval Timeout (days)', type: 'number', defaultValue: 3 },
+    maintenance_mode: { category: 'system', label: 'Maintenance Mode', type: 'toggle', defaultValue: false },
+    debug_logging: { category: 'system', label: 'Debug Logging', type: 'toggle', defaultValue: false },
+    api_rate_limit: { category: 'system', label: 'API Rate Limit', type: 'number', defaultValue: 100 },
+};
 
-    // -------------------------------------------------------------------------
-    // Fetch all settings
-    // -------------------------------------------------------------------------
-    const fetchSettings = useCallback(async () => {
-        if (!isAuthenticated) return;
-        try {
-            setIsLoading(true);
-            setError(null);
-            const response = await settingsAPI.getAll();
-            let settingsData = {};
-            if (response.data?.settings) settingsData = response.data.settings;
-            else if (response.settings) settingsData = response.settings;
-            else if (typeof response === 'object') settingsData = response;
-            setSettings(settingsData);
-            setOriginalSettings(JSON.parse(JSON.stringify(settingsData)));
-        } catch (err) {
-            const message = err.response?.data?.message || err.message || 'Failed to load settings';
-            setError(message);
-            toast.error('Could not load settings');
-        } finally {
-            setIsLoading(false);
-        }
-    }, [isAuthenticated]);
+// -----------------------------------------------------------------------------
+// HELPERS
+// -----------------------------------------------------------------------------
 
+const getDatatype = (v) =>
+    typeof v === 'boolean' ? 'boolean'
+        : typeof v === 'number' ? 'number'
+            : typeof v === 'object' ? 'json'
+                : 'string';
+
+const buildInitialState = () => {
+    const obj = {};
+    Object.entries(SETTINGS_SCHEMA).forEach(([k, v]) => { obj[k] = v.defaultValue; });
+    return obj;
+};
+
+// -----------------------------------------------------------------------------
+// GLOBAL THEME HOOK
+// -----------------------------------------------------------------------------
+
+const useThemeSync = (theme) => {
     useEffect(() => {
-        fetchSettings();
-    }, [fetchSettings]);
-
-    // -------------------------------------------------------------------------
-    // Stable diff (no JSON.stringify)
-    // -------------------------------------------------------------------------
-    const hasChanges = useMemo(() => {
-        for (const key in settings) {
-            if (settings[key] !== originalSettings[key]) return true;
-        }
-        for (const key in originalSettings) {
-            if (settings[key] !== originalSettings[key]) return true;
-        }
-        return false;
-    }, [settings, originalSettings]);
-
-    // Permission check
-    const canEdit = useCallback((key) => {
-        const schema = KNOWN_SETTINGS[key];
-        if (!schema?.editableBy) return true;
-        return schema.editableBy.includes(user?.role);
-    }, [user]);
-
-    // -------------------------------------------------------------------------
-    // Update local state
-    // -------------------------------------------------------------------------
-    const handleSettingChange = (key, value) => {
-        const schema = KNOWN_SETTINGS[key];
-        let parsedValue = value;
-        if (schema?.type === 'number') parsedValue = Number(value);
-        else if (schema?.type === 'toggle') parsedValue = Boolean(value);
-
-        setSettings(prev => {
-            const updated = { ...prev, [key]: parsedValue };
-            hasPendingChangesRef.current = true;
-            return updated;
-        });
-    };
-
-    // -------------------------------------------------------------------------
-    // Save single setting
-    // -------------------------------------------------------------------------
-    const saveSingleSetting = async (key) => {
-        try {
-            const value = settings[key];
-            await settingsAPI.updateOne(key, { value });
-            setOriginalSettings(prev => ({ ...prev, [key]: value }));
-            setLastSaved(new Date());
-            setShowSaveAnimation(true);
-            setTimeout(() => setShowSaveAnimation(false), 1500);
-            toast.success(`"${key}" updated`);
-        } catch (err) {
-            const message = err.response?.data?.message || `Failed to update "${key}"`;
-            toast.error(message);
-        }
-    };
-
-    // -------------------------------------------------------------------------
-    // Bulk save all changed settings (stable diff)
-    // -------------------------------------------------------------------------
-    const saveAllSettings = async (silent = false) => {
-        if (!hasChanges) return;
-        try {
-            setIsSaving(true);
-            const changedEntries = Object.entries(settings).filter(
-                ([key, val]) => val !== originalSettings[key]
-            );
-            const payload = { settings: changedEntries.map(([key, value]) => ({ key, value })) };
-            await settingsAPI.updateMany(payload);
-            setOriginalSettings(JSON.parse(JSON.stringify(settings)));
-            setLastSaved(new Date());
-            hasPendingChangesRef.current = false;
-            setShowSaveAnimation(true);
-            setTimeout(() => setShowSaveAnimation(false), 1500);
-            if (!silent) toast.success('All settings saved');
-        } catch (err) {
-            const message = err.response?.data?.message || 'Failed to save settings';
-            toast.error(message);
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
-    // -------------------------------------------------------------------------
-    // Auto‑save (debounced 2.5s)
-    // -------------------------------------------------------------------------
-    useEffect(() => {
-        if (!autoSaveEnabled || !hasChanges) return;
-        if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
-        autoSaveTimerRef.current = setTimeout(() => {
-            if (hasPendingChangesRef.current) {
-                saveAllSettings(true);
-                toast.info('Auto‑saved', { duration: 1500 });
+        const root = document.documentElement;
+        const applyTheme = (mode) => {
+            if (mode === 'dark') {
+                root.classList.add('dark');
+                root.classList.remove('light');
+            } else {
+                root.classList.add('light');
+                root.classList.remove('dark');
             }
-        }, 2500);
-        return () => clearTimeout(autoSaveTimerRef.current);
-    }, [settings, autoSaveEnabled, hasChanges]);
+        };
 
-    // -------------------------------------------------------------------------
-    // Reset changes (and optionally undo last change)
-    // -------------------------------------------------------------------------
-    const resetChanges = () => {
-        setSettings(JSON.parse(JSON.stringify(originalSettings)));
-        hasPendingChangesRef.current = false;
-        toast.info('Changes discarded');
-    };
-
-    const undoLastChange = () => {
-        // Revert to original (same as reset but with different message)
-        setSettings(JSON.parse(JSON.stringify(originalSettings)));
-        hasPendingChangesRef.current = false;
-        toast.info('Last change undone');
-    };
-
-    // -------------------------------------------------------------------------
-    // Delete setting
-    // -------------------------------------------------------------------------
-    const deleteSetting = async (key) => {
-        if (!window.confirm(`Delete setting "${key}"? This cannot be undone.`)) return;
-        try {
-            await settingsAPI.remove(key);
-            setSettings(prev => { const { [key]: _, ...rest } = prev; return rest; });
-            setOriginalSettings(prev => { const { [key]: _, ...rest } = prev; return rest; });
-            toast.success(`"${key}" deleted`);
-        } catch (err) {
-            toast.error(err.response?.data?.message || `Failed to delete "${key}"`);
-        }
-    };
-
-    // -------------------------------------------------------------------------
-    // Add new custom setting
-    // -------------------------------------------------------------------------
-    const addNewSetting = async () => {
-        if (!newSetting.key.trim()) {
-            toast.error('Key cannot be empty');
+        if (theme === 'dark') {
+            applyTheme('dark');
             return;
         }
-        if (settings.hasOwnProperty(newSetting.key)) {
-            toast.error(`"${newSetting.key}" already exists`);
+        if (theme === 'light') {
+            applyTheme('light');
             return;
         }
-        try {
-            let parsedValue;
-            try { parsedValue = JSON.parse(newSetting.value); } catch { parsedValue = newSetting.value; }
-            await settingsAPI.updateOne(newSetting.key, { value: parsedValue });
-            setSettings(prev => ({ ...prev, [newSetting.key]: parsedValue }));
-            setOriginalSettings(prev => ({ ...prev, [newSetting.key]: parsedValue }));
-            setNewSetting({ key: '', value: '' });
-            setEditingKey(null);
-            toast.success(`"${newSetting.key}" added`);
-        } catch (err) {
-            toast.error(err.response?.data?.message || 'Failed to add setting');
-        }
-    };
 
-    // -------------------------------------------------------------------------
-    // Render input based on type
-    // -------------------------------------------------------------------------
-    const renderSettingInput = (key, value) => {
-        const schema = KNOWN_SETTINGS[key];
-        const type = schema?.type || inferInputType(value);
-        const disabled = !canEdit(key);
-        const baseClass = `bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm w-full focus:ring-2 focus:ring-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed`;
+        // System preference
+        const mq = window.matchMedia('(prefers-color-scheme: dark)');
+        const onChange = (e) => applyTheme(e.matches ? 'dark' : 'light');
 
-        switch (type) {
+        applyTheme(mq.matches ? 'dark' : 'light');
+        mq.addEventListener('change', onChange);
+        return () => mq.removeEventListener('change', onChange);
+    }, [theme]);
+};
+
+// -----------------------------------------------------------------------------
+// SETTING ROW
+// -----------------------------------------------------------------------------
+
+const SettingRow = memo(({ settingKey, config, value, isChanged, onChange }) => {
+    const baseInputClass =
+        'w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 ' +
+        'rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all ' +
+        'dark:text-slate-200 placeholder-gray-400 dark:placeholder-slate-500';
+
+    const renderInput = () => {
+        switch (config.type) {
             case 'toggle':
                 return (
-                    <label className="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" checked={Boolean(value)} onChange={(e) => handleSettingChange(key, e.target.checked)} disabled={disabled} className="sr-only peer" />
-                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 dark:peer-focus:ring-indigo-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-indigo-600"></div>
-                    </label>
+                    <button
+                        onClick={() => onChange(settingKey, !value)}
+                        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${value ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-slate-700'
+                            }`}
+                    >
+                        <span
+                            className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${value ? 'translate-x-6' : 'translate-x-1'
+                                }`}
+                        />
+                    </button>
                 );
+
             case 'select':
                 return (
-                    <select value={String(value)} onChange={(e) => handleSettingChange(key, e.target.value)} disabled={disabled} className={baseClass}>
-                        {schema.options.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                    <select value={value} onChange={(e) => onChange(settingKey, e.target.value)} className={baseInputClass}>
+                        {config.options.map(opt => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
                     </select>
                 );
+
+            case 'color':
+                return (
+                    <div className="flex items-center gap-3">
+                        <input
+                            type="color"
+                            value={value}
+                            onChange={(e) => onChange(settingKey, e.target.value)}
+                            className="h-10 w-16 cursor-pointer rounded-xl border border-gray-200 dark:border-slate-700 bg-transparent p-0.5"
+                        />
+                        <span className="text-sm font-mono text-slate-500 dark:text-slate-400">{value}</span>
+                    </div>
+                );
+
             case 'number':
-                return <input type="number" min={schema.min} max={schema.max} step={schema.step} value={value} onChange={(e) => handleSettingChange(key, e.target.value)} disabled={disabled} className={baseClass} />;
-            case 'time':
-                return <input type="time" value={value || ''} onChange={(e) => handleSettingChange(key, e.target.value)} disabled={disabled} className={baseClass} />;
-            case 'date':
-                return <input type="date" value={value || ''} onChange={(e) => handleSettingChange(key, e.target.value)} disabled={disabled} className={baseClass} />;
+                return (
+                    <input
+                        type="number"
+                        value={value}
+                        onChange={(e) => onChange(settingKey, Number(e.target.value))}
+                        className={baseInputClass}
+                    />
+                );
+
             default:
-                return <input type="text" value={String(value)} onChange={(e) => handleSettingChange(key, e.target.value)} disabled={disabled} className={baseClass} />;
+                return (
+                    <input
+                        type="text"
+                        value={value}
+                        onChange={(e) => onChange(settingKey, e.target.value)}
+                        className={baseInputClass}
+                    />
+                );
         }
     };
 
-    // -------------------------------------------------------------------------
-    // Render a setting row (with search highlight)
-    // -------------------------------------------------------------------------
-    const renderSettingRow = ([key, value]) => {
-        const schema = KNOWN_SETTINGS[key];
-        const Icon = schema?.icon || Settings2;
-        const isModified = settings[key] !== originalSettings[key];
-        const editable = canEdit(key);
-        const isHighlighted = searchQuery && (key.toLowerCase().includes(searchQuery.toLowerCase()) || (schema?.label && schema.label.toLowerCase().includes(searchQuery.toLowerCase())));
-
-        return (
-            <div key={key} className={`p-4 rounded-xl border transition-all ${isModified ? 'border-yellow-400 bg-yellow-50 dark:bg-yellow-900/10 dark:border-yellow-600' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800'} ${!editable ? 'opacity-75' : ''} ${isHighlighted ? 'ring-2 ring-indigo-400 dark:ring-indigo-500' : ''}`}>
-                <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-                    <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                            <Icon className="w-5 h-5 text-indigo-500 dark:text-indigo-400 flex-shrink-0" />
-                            <h3 className="font-medium text-gray-900 dark:text-white truncate">
-                                {schema?.label || key}
-                            </h3>
-                            {isModified && (
-                                <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-200 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300">Modified</span>
-                            )}
-                            {!editable && (
-                                <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 flex items-center gap-1">
-                                    <Shield className="w-3 h-3" />
-                                    Restricted
-                                </span>
-                            )}
-                        </div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">
-                            {schema?.description || `Key: ${key}`}
-                        </p>
+    return (
+        <div
+            className={`group border rounded-2xl p-4 sm:p-5 transition-all ${isChanged
+                    ? 'border-amber-400 bg-amber-50/50 dark:border-amber-600/40 dark:bg-amber-900/10'
+                    : 'border-gray-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-500/40 bg-white dark:bg-slate-900'
+                }`}
+        >
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <Settings2 className="w-4 h-4 shrink-0 text-indigo-500" />
+                        <h3 className="font-medium text-slate-900 dark:text-slate-100">{config.label}</h3>
+                        {isChanged ? (
+                            <span className="text-[10px] uppercase tracking-wider font-bold bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full">
+                                Modified
+                            </span>
+                        ) : (
+                            <CheckCircle2 className="w-4 h-4 text-green-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                        )}
                     </div>
-                    <div className="flex items-center gap-3">
-                        <div className="w-48 sm:w-56">
-                            {renderSettingInput(key, value)}
-                        </div>
-                        <div className="flex items-center gap-1">
-                            {editable && isModified && (
-                                <button onClick={() => saveSingleSetting(key)} className="p-2 text-green-600 hover:bg-green-50 rounded-lg dark:text-green-400 dark:hover:bg-green-900/20 transition-colors" title="Save this setting">
-                                    <Save className="w-4 h-4" />
-                                </button>
-                            )}
-                            {editable && !KNOWN_SETTINGS[key] && (
-                                <button onClick={() => deleteSetting(key)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg dark:text-red-400 dark:hover:bg-red-900/20 transition-colors" title="Delete setting">
-                                    <Trash2 className="w-4 h-4" />
-                                </button>
-                            )}
-                            {!isModified && settings[key] === originalSettings[key] && (
-                                <CheckCircle2 className="w-4 h-4 text-green-500 ml-1" title="Saved" />
-                            )}
-                        </div>
-                    </div>
+                    <p className="text-xs text-gray-400 dark:text-slate-500 mt-1 font-mono truncate">{settingKey}</p>
+                </div>
+                <div className="w-full sm:w-64 shrink-0 flex justify-start sm:justify-end">
+                    {renderInput()}
                 </div>
             </div>
-        );
+        </div>
+    );
+});
+
+// -----------------------------------------------------------------------------
+// MAIN SETTINGS PAGE
+// -----------------------------------------------------------------------------
+
+const SettingsPage = () => {
+    const [settings, setSettings] = useState(buildInitialState);
+    const [originalSettings, setOriginalSettings] = useState(buildInitialState);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [search, setSearch] = useState('');
+    const [activeCategory, setActiveCategory] = useState('company');
+
+    // Sync theme to HTML element
+    useThemeSync(settings.theme);
+
+    // ── Fetch ──────────────────────────────────────────────────────────────────
+    const fetchSettings = useCallback(async () => {
+        try {
+            setLoading(true);
+            const response = await settingsAPI.getAll({ scopeType: 'company', scopeId: 1 });
+            const data = response?.data || [];
+            const formatted = buildInitialState();
+            data.forEach(item => {
+                if (Object.prototype.hasOwnProperty.call(formatted, item.key)) {
+                    formatted[item.key] = item.value;
+                }
+            });
+            setSettings(formatted);
+            setOriginalSettings(structuredClone(formatted));
+        } catch {
+            toast.error('Failed to load settings');
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => { fetchSettings(); }, [fetchSettings]);
+
+    // ── Change handler ─────────────────────────────────────────────────────────
+    const handleChange = useCallback((key, value) => {
+        setSettings(prev => ({ ...prev, [key]: value }));
+    }, []);
+
+    // ── Has changes ────────────────────────────────────────────────────────────
+    const hasChanges = useMemo(
+        () => Object.keys(settings).some(k => settings[k] !== originalSettings[k]),
+        [settings, originalSettings]
+    );
+
+    // ── Save ───────────────────────────────────────────────────────────────────
+    const saveAll = async () => {
+        try {
+            setSaving(true);
+            const changed = Object.entries(settings).filter(([k, v]) => v !== originalSettings[k]);
+            if (!changed.length) return;
+
+            const payload = {
+                settings: changed.map(([key, value]) => ({
+                    scopeType: 'company',
+                    scopeId: 1,
+                    category: SETTINGS_SCHEMA[key]?.category || 'custom',
+                    key,
+                    value,
+                    datatype: getDatatype(value),
+                })),
+            };
+
+            await settingsAPI.updateMany(payload);
+            setOriginalSettings(structuredClone(settings));
+            toast.success('Settings saved successfully');
+        } catch {
+            toast.error('Failed to save changes');
+        } finally {
+            setSaving(false);
+        }
     };
 
-    // -------------------------------------------------------------------------
-    // Group settings by category (filtered by search)
-    // -------------------------------------------------------------------------
-    const groupedSettings = useMemo(() => {
-        const groups = {};
-        const lowerSearch = searchQuery.toLowerCase();
-        Object.entries(settings).forEach(([key, value]) => {
-            const schema = KNOWN_SETTINGS[key];
-            const label = schema?.label || key;
-            if (lowerSearch && !key.toLowerCase().includes(lowerSearch) && !label.toLowerCase().includes(lowerSearch)) return;
-            const category = schema?.category || 'Custom';
-            if (!groups[category]) groups[category] = [];
-            groups[category].push([key, value]);
+    // ── Filtered list ──────────────────────────────────────────────────────────
+    const filteredSettings = useMemo(() => {
+        const q = search.toLowerCase();
+        return Object.entries(SETTINGS_SCHEMA).filter(([key, config]) => {
+            if (config.category !== activeCategory) return false;
+            if (!q) return true;
+            return key.toLowerCase().includes(q) || config.label.toLowerCase().includes(q);
         });
-        const categoryOrder = ['Appearance', 'Company', 'Attendance', 'Leave', 'Payroll', 'Recruitment', 'Performance', 'Notifications', 'Security', 'Custom'];
-        const sortedGroups = {};
-        categoryOrder.forEach(cat => { if (groups[cat]) sortedGroups[cat] = groups[cat]; });
-        Object.keys(groups).forEach(cat => { if (!sortedGroups[cat]) sortedGroups[cat] = groups[cat]; });
-        return sortedGroups;
-    }, [settings, searchQuery]);
+    }, [activeCategory, search]);
 
-    // -------------------------------------------------------------------------
-    // Loading / Error / Not Authenticated
-    // -------------------------------------------------------------------------
-    if (!isAuthenticated) {
+    // ── Category counts ────────────────────────────────────────────────────────
+    const changedCounts = useMemo(() => {
+        const counts = {};
+        Object.entries(SETTINGS_SCHEMA).forEach(([key, config]) => {
+            if (settings[key] !== originalSettings[key]) {
+                counts[config.category] = (counts[config.category] || 0) + 1;
+            }
+        });
+        return counts;
+    }, [settings, originalSettings]);
+
+    // ── Loading ────────────────────────────────────────────────────────────────
+    if (loading)
         return (
-            <div className="max-w-6xl mx-auto mt-8 px-4">
-                <div className="bg-amber-50 dark:bg-amber-900/20 border-l-4 border-amber-500 text-amber-800 dark:text-amber-300 p-6 rounded-lg">
-                    Please log in to manage settings.
-                </div>
+            <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
+                <Loader2 className="w-10 h-10 animate-spin text-indigo-600" />
+                <p className="text-slate-500 animate-pulse text-sm">Loading configuration…</p>
             </div>
         );
-    }
 
-    if (isLoading) {
-        return (
-            <div className="max-w-6xl mx-auto px-4 py-8">
-                <div className="mb-8">
-                    <div className="h-8 w-48 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-2" />
-                    <div className="h-4 w-64 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
-                </div>
-                <div className="space-y-8">
-                    {[1, 2, 3].map(i => (
-                        <div key={i}>
-                            <div className="h-6 w-40 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-4" />
-                            <div className="space-y-4">
-                                {[1, 2].map(j => (
-                                    <div key={j} className="h-20 bg-gray-100 dark:bg-gray-800 rounded-xl animate-pulse" />
-                                ))}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-        );
-    }
+    const ActiveIcon = CATEGORY_META[activeCategory]?.icon || Settings2;
 
-    if (error) {
-        return (
-            <div className="max-w-6xl mx-auto mt-8 px-4">
-                <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-8 text-center">
-                    <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-                    <h3 className="text-lg font-semibold text-red-800 dark:text-red-300 mb-2">Failed to load settings</h3>
-                    <p className="text-sm text-red-600 dark:text-red-400 mb-6">{error}</p>
-                    <button onClick={fetchSettings} className="px-5 py-2.5 bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-200 rounded-lg hover:bg-red-200 dark:hover:bg-red-900/60 transition-colors font-medium">
-                        Try again
+    return (
+        <div className="min-h-screen bg-gray-50 dark:bg-slate-950 transition-colors duration-300">
+            <div className="max-w-6xl mx-auto p-4 sm:p-6 lg:p-8">
+                {/* HEADER */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+                    <div>
+                        <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                            <Settings2 className="w-7 h-7 text-indigo-600" />
+                            Settings
+                        </h1>
+                        <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">
+                            Configure your HRMS workspace — {Object.keys(SETTINGS_SCHEMA).length} options across {Object.keys(CATEGORY_META).length} categories
+                        </p>
+                    </div>
+                    <button
+                        onClick={saveAll}
+                        disabled={!hasChanges || saving}
+                        className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-indigo-200 dark:shadow-none transition-all text-sm font-medium"
+                    >
+                        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                        Save Changes
+                        {hasChanges && (
+                            <span className="bg-white/20 text-white text-xs px-1.5 py-0.5 rounded-full">
+                                {Object.values(changedCounts).reduce((a, b) => a + b, 0)}
+                            </span>
+                        )}
                     </button>
                 </div>
-            </div>
-        );
-    }
 
-    // -------------------------------------------------------------------------
-    // Main Render
-    // -------------------------------------------------------------------------
-    return (
-        <div className="max-w-6xl mx-auto px-4 py-8">
-            {/* Header */}
-            <div className="mb-6">
-                <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Settings</h1>
-                <p className="text-gray-600 dark:text-gray-400">
-                    Configure system preferences, policies, and custom options.
-                </p>
-            </div>
-
-            {/* Search Bar */}
-            <div className="mb-6">
-                <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                {/* SEARCH */}
+                <div className="relative group mb-6">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-indigo-500 transition-colors" />
                     <input
                         type="text"
-                        placeholder="Search settings..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full md:w-96 pl-10 pr-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
+                        placeholder="Search settings by name or key…"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        className="w-full pl-11 pr-4 py-3 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-2xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white placeholder:text-gray-400 transition-shadow shadow-sm"
                     />
                 </div>
-            </div>
 
-            {/* Global Actions Bar */}
-            <div className="sticky top-16 z-10 bg-gray-50 dark:bg-gray-900/95 backdrop-blur-sm p-4 rounded-xl border border-gray-200 dark:border-gray-700 mb-6 flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2">
-                        <span className="text-sm text-gray-600 dark:text-gray-400">Auto‑save:</span>
-                        <button onClick={() => setAutoSaveEnabled(!autoSaveEnabled)} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${autoSaveEnabled ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-gray-600'}`}>
-                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${autoSaveEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
-                        </button>
-                    </div>
-                    {lastSaved && (
-                        <span className="text-xs text-gray-500 dark:text-gray-400">
-                            Last saved: {lastSaved.toLocaleTimeString()}
-                        </span>
-                    )}
-                    {hasChanges && (
-                        <span className="text-sm text-yellow-700 dark:text-yellow-400 bg-yellow-100 dark:bg-yellow-900/30 px-3 py-1 rounded-full">
-                            Unsaved changes
-                        </span>
-                    )}
-                    {showSaveAnimation && (
-                        <span className="flex items-center gap-1 text-green-600 dark:text-green-400 animate-bounce">
-                            <CheckCircle2 className="w-4 h-4" />
-                            Saved
-                        </span>
-                    )}
-                </div>
-                <div className="flex gap-2">
-                    {hasChanges && (
-                        <>
-                            <button onClick={undoLastChange} className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center gap-2" title="Undo all changes">
-                                <Undo2 className="w-4 h-4" />
-                                Undo
-                            </button>
-                            <button onClick={resetChanges} className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center gap-2">
-                                <RotateCcw className="w-4 h-4" />
-                                Reset
-                            </button>
-                            <button onClick={() => saveAllSettings(false)} disabled={isSaving} className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 focus:ring-4 focus:ring-indigo-300 dark:focus:ring-indigo-800 transition-colors flex items-center gap-2 disabled:opacity-50">
-                                {isSaving ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</> : <><Save className="w-4 h-4" /> Save All</>}
-                            </button>
-                        </>
-                    )}
-                </div>
-            </div>
+                {/* MAIN CONTENT: sidebar + settings */}
+                <div className="flex flex-col lg:flex-row gap-6">
+                    {/* SIDEBAR CATEGORIES */}
+                    <nav className="lg:w-56 shrink-0">
+                        <div className="flex lg:flex-col gap-2 overflow-x-auto lg:overflow-x-visible pb-2 lg:pb-0 scrollbar-thin">
+                            {Object.entries(CATEGORY_META).map(([cat, { label, icon: Icon }]) => {
+                                const isActive = activeCategory === cat;
+                                const count = changedCounts[cat];
+                                return (
+                                    <button
+                                        key={cat}
+                                        onClick={() => { setActiveCategory(cat); setSearch(''); }}
+                                        className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all whitespace-nowrap w-full text-left ${isActive
+                                                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200 dark:shadow-none'
+                                                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-gray-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-600'
+                                            }`}
+                                    >
+                                        <Icon className="w-4 h-4 shrink-0" />
+                                        <span className="flex-1">{label}</span>
+                                        {count > 0 && (
+                                            <span
+                                                className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isActive ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400'
+                                                    }`}
+                                            >
+                                                {count}
+                                            </span>
+                                        )}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </nav>
 
-            {/* Settings grouped by category */}
-            <div className="space-y-8">
-                {Object.keys(groupedSettings).length === 0 ? (
-                    <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-                        No settings found. Try a different search or add a custom setting below.
-                    </div>
-                ) : (
-                    Object.entries(groupedSettings).map(([category, items]) => (
-                        <section key={category}>
-                            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-                                {category}
-                                <span className="text-sm font-normal text-gray-500 dark:text-gray-400">({items.length})</span>
+                    {/* SETTINGS PANEL */}
+                    <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-4">
+                            <ActiveIcon className="w-5 h-5 text-indigo-500" />
+                            <h2 className="text-base font-semibold text-slate-900 dark:text-white capitalize">
+                                {CATEGORY_META[activeCategory]?.label}
                             </h2>
-                            <div className="space-y-4">
-                                {items.map(renderSettingRow)}
-                            </div>
-                        </section>
-                    ))
-                )}
-            </div>
+                            <span className="text-xs text-slate-400 dark:text-slate-500">
+                                {filteredSettings.length} setting{filteredSettings.length !== 1 ? 's' : ''}
+                            </span>
+                        </div>
 
-            {/* Add Custom Setting */}
-            <div className="mt-8 p-5 border border-dashed border-gray-300 dark:border-gray-600 rounded-xl bg-gray-50/50 dark:bg-gray-800/30">
-                {editingKey === 'new' ? (
-                    <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                            <h3 className="font-medium text-gray-900 dark:text-white">Add Custom Setting</h3>
-                            <button onClick={() => { setEditingKey(null); setNewSetting({ key: '', value: '' }); }} className="p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
-                                <X className="w-5 h-5" />
-                            </button>
-                        </div>
-                        <div className="grid sm:grid-cols-2 gap-4">
-                            <input type="text" placeholder="Key (e.g., dashboard.widgets)" value={newSetting.key} onChange={(e) => setNewSetting(prev => ({ ...prev, key: e.target.value }))} className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500" />
-                            <input type="text" placeholder="Value (string, true/false, number)" value={newSetting.value} onChange={(e) => setNewSetting(prev => ({ ...prev, value: e.target.value }))} className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500" />
-                        </div>
-                        <div className="flex justify-end gap-2">
-                            <button onClick={() => { setEditingKey(null); setNewSetting({ key: '', value: '' }); }} className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">Cancel</button>
-                            <button onClick={addNewSetting} className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2">
-                                <Plus className="w-4 h-4" /> Add Setting
-                            </button>
+                        <div className="grid gap-3">
+                            {filteredSettings.length > 0 ? (
+                                filteredSettings.map(([key, config]) => (
+                                    <SettingRow
+                                        key={key}
+                                        settingKey={key}
+                                        config={config}
+                                        value={settings[key]}
+                                        isChanged={settings[key] !== originalSettings[key]}
+                                        onChange={handleChange}
+                                    />
+                                ))
+                            ) : (
+                                <div className="text-center py-16 bg-white dark:bg-slate-900 rounded-3xl border border-dashed border-gray-300 dark:border-slate-800">
+                                    <Search className="w-8 h-8 text-gray-300 dark:text-slate-600 mx-auto mb-3" />
+                                    <p className="text-slate-500 dark:text-slate-400 text-sm">No settings match your search.</p>
+                                </div>
+                            )}
                         </div>
                     </div>
-                ) : (
-                    <button onClick={() => setEditingKey('new')} className="w-full flex items-center justify-center gap-2 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 p-3 rounded-lg transition-colors">
-                        <Plus className="w-5 h-5" />
-                        <span className="font-medium">Add Custom Setting</span>
-                    </button>
-                )}
+                </div>
             </div>
         </div>
     );
