@@ -1,15 +1,27 @@
-
-
 import axiosInstance from './axios';
 
+const handleApiError = (error) => {
+ 
+
+  return Promise.reject({
+    success: false,
+    message:
+      error?.response?.data?.message ||
+      error?.message ||
+      'Something went wrong',
+    errors: error?.response?.data?.errors || null,
+    status: error?.response?.status || 500,
+  });
+};
+
 export const userApi = {
-  // ✅ Get all users (with optional filters)
+  // ✅ Get all users
   getUsers: async (params = {}) => {
     try {
       const response = await axiosInstance.get('/users', { params });
       return response.data.data || response.data;
     } catch (error) {
-      throw error.response?.data || error.message;
+      return handleApiError(error);
     }
   },
 
@@ -19,7 +31,7 @@ export const userApi = {
       const response = await axiosInstance.get(`/users/${id}`);
       return response.data.data || response.data;
     } catch (error) {
-      throw error.response?.data || error.message;
+      return handleApiError(error);
     }
   },
 
@@ -29,7 +41,7 @@ export const userApi = {
       const response = await axiosInstance.post('/users', userData);
       return response.data.data || response.data;
     } catch (error) {
-      throw error.response?.data || error.message;
+      return handleApiError(error);
     }
   },
 
@@ -39,7 +51,7 @@ export const userApi = {
       const response = await axiosInstance.patch(`/users/${id}`, userData);
       return response.data.data || response.data;
     } catch (error) {
-      throw error.response?.data || error.message;
+      return handleApiError(error);
     }
   },
 
@@ -49,27 +61,30 @@ export const userApi = {
       const response = await axiosInstance.delete(`/users/${id}`);
       return response.data.data || response.data;
     } catch (error) {
-      throw error.response?.data || error.message;
+      return handleApiError(error);
     }
   },
 
-
+  // ✅ Dashboard summary
   getDashboardSummary: async () => {
     try {
       const response = await axiosInstance.get('/users/dashboard/summary');
       return response.data;
     } catch (error) {
-      throw error.response?.data || error.message;
+      return handleApiError(error);
     }
   },
 
+  // ✅ Department users
+  getUsersByDepartment: async (department) => {
+    try {
+      const response = await axiosInstance.get(
+        `/users/department/${department}`
+      );
 
- // userApi.js
-  getUsersByDepartment : async (department) => {
-  const response = await axiosInstance.get(`/users/department/${department}`);
-  return response.data.data;
- }
-
-
+      return response.data.data || [];
+    } catch (error) {
+      return handleApiError(error);
+    }
+  },
 };
-
