@@ -1399,15 +1399,9 @@ const chat = async (user, message, history = []) => {
         };
 
     } catch (error) {
-        console.error("🔥 FULL ERROR OBJECT:", error);
-
-        console.error("🔥 MESSAGE:", error.message);
-        console.error("🔥 SQL:", error.sql);
-        console.error("🔥 PARAMETERS:", error.parameters);
-
+       
         if (error.parent) {
-            console.error("🔥 DB ERROR:", error.parent.sqlMessage);
-            console.error("🔥 DB CODE:", error.parent.code);
+            
         }
 
         throw error;
