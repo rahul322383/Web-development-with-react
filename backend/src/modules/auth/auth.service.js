@@ -711,17 +711,6 @@ const getCurrentUser = async (userId) => {
       updatedAt: u.updatedAt,
     };
 
-    logger.info(
-      `GET_CURRENT_USER_SUCCESS: ${JSON.stringify(
-        {
-          userId,
-          role: primaryRole,
-        },
-        null,
-        2
-      )}`
-    );
-
     return {
       success: true,
       data: {
