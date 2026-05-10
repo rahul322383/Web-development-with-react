@@ -119,38 +119,108 @@ const resetPassword = async (rawToken, newPassword) => {
 
 // ─── CHANGE PASSWORD (authenticated) ─────────────────────────────────────────
 
-const changePassword = async (userId, currentPassword, newPassword) => {
+
+const changePassword = async (
+    userId,
+    currentPassword,
+    newPassword
+) => {
     try {
+        // ✅ Find user
         const user = await repo.findUserById(userId);
-        if (!user) return { success: false, message: 'User not found', statusCode: 404 };
 
-        const isMatch = await bcrypt.compare(currentPassword, user.passwordHash);
-        if (!isMatch) return { success: false, message: 'Current password is incorrect', statusCode: 400 };
 
-        if (currentPassword === newPassword)
-            return { success: false, message: 'New password must be different from current password', statusCode: 400 };
+        if (!user) {
+            return {
+                success: false,
+                statusCode: 404,
+                message: 'User not found',
+            };
+        }
 
-        const passwordHash = await bcrypt.hash(newPassword, Number(env.BCRYPT_ROUNDS) || 10);
+        // ✅ Compare current password
+        const isMatch = await bcrypt.compare(
+            currentPassword,
+            user.passwordHash
+        );
+   
+
+        if (!isMatch) {
+            return {
+                success: false,
+                statusCode: 400,
+                message: 'Current password is incorrect',
+            };
+        }
+
+        // ✅ Prevent same password reuse
+        if (currentPassword === newPassword) {
+            return {
+                success: false,
+                statusCode: 400,
+                message:
+                    'New password must be different from current password',
+            };
+        }
+
+        // ✅ Hash password
+        const saltRounds = Number(env.BCRYPT_ROUNDS) || 10;
+
+        const passwordHash = await bcrypt.hash(
+            newPassword,
+            saltRounds
+        );
+
+        // ✅ Update DB
         await repo.updatePassword(userId, passwordHash);
 
-        await sendMail({
+        // ✅ Send email (non-blocking)
+        sendMail({
             to: user.email,
             subject: 'Password Changed Successfully',
             html: `
         <h2>Password Changed</h2>
         <p>Hi ${user.firstName},</p>
-        <p>Your password was successfully changed.</p>
-        <p>If you did not make this change, please contact support immediately.</p>
+        <p>Your password was changed successfully.</p>
+        <p>If this wasn't you, contact support immediately.</p>
       `,
+        }).catch((err) => {
+            logger.error({
+                event: 'PASSWORD_CHANGE_EMAIL_FAILED',
+                userId,
+                error: err.message,
+            });
         });
 
-        logger.info({ event: 'PASSWORD_CHANGED', userId });
-        return { success: true, message: 'Password changed successfully' };
+        // ✅ Audit log
+        logger.info({
+            event: 'PASSWORD_CHANGED',
+            userId,
+        });
+
+        return {
+            success: true,
+            statusCode: 200,
+            message: 'Password changed successfully',
+        };
 
     } catch (error) {
-        logger.error({ event: 'CHANGE_PASSWORD_FAILED', userId, error: error.message });
-        return { success: false, message: 'Something went wrong', statusCode: 500 };
+
+        logger.error({
+            event: 'CHANGE_PASSWORD_FAILED',
+            userId,
+            error: error.message,
+            stack: error.stack,
+        });
+
+        return {
+            success: false,
+            statusCode: 500,
+            message: 'Something went wrong',
+        };
     }
 };
+
+
 
 module.exports = { forgotPassword, verifyResetToken, resetPassword, changePassword };
