@@ -1,31 +1,19 @@
-import api from './axios';
+// src/api/passwordReset.api.js
+import axiosInstance from './axios'; // adjust to your axios instance
 
 const passwordResetAPI = {
+    forgotPassword: (email) =>
+        axiosInstance.post('/password/forgot-password', { email }).then(r => r.data),
 
-    // ==============================
-    // 📩 FORGOT PASSWORD
-    // ==============================
-    forgotPassword: (payload) =>
-        api.post('/auth/forgot-password', payload).then(res => res.data),
+    verifyResetToken: (token) =>
+        axiosInstance.get(`/password/verify-reset-token?token=${token}`).then(r => r.data),
 
-    // ==============================
-    // 🔍 VERIFY RESET TOKEN
-    // ==============================
-    verifyResetToken: (params) =>
-        api.get('/auth/verify-reset-token', { params }).then(res => res.data),
+    resetPassword: (token, newPassword) =>
+        axiosInstance.post('/password/reset-password', { token, newPassword }).then(r => r.data),
 
-    // ==============================
-    // 🔐 RESET PASSWORD
-    // ==============================
-    resetPassword: (payload) =>
-        api.post('/auth/reset-password', payload).then(res => res.data),
-
-    // ==============================
-    // 🔑 CHANGE PASSWORD (LOGGED IN)
-    // ==============================
-    changePassword: (payload) =>
-        api.post('/auth/change-password', payload).then(res => res.data),
-
+    // FIX: pass userId so backend service receives all 3 required args
+    changePassword: (userId, currentPassword, newPassword) =>
+        axiosInstance.post('/password/change-password', { userId, currentPassword, newPassword }).then(r => r.data),
 };
 
 export default passwordResetAPI;
