@@ -18,7 +18,7 @@ const {
     apiLimiter
 } = require('../../middleware/rateLimit.middleware');
 
-router.post('/register', authLimiter, validate(registerSchema), authController.register);
+router.post('/register',  validate(registerSchema), authController.register);
 
 router.post('/login', authLimiter, validate(loginSchema), authController.login);
 
