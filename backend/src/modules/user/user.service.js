@@ -184,50 +184,83 @@ const createUser = async (payload, actor, ipAddress) => {
 // ─────────────────────────────────────────────
 
 const updateUser = async (id, payload, actor, ipAddress) => {
+  // ── 1. Permission ──────────────────────────────────────────────────────────
   const perm = assertPermission(actor, 'UPDATE_USER');
   if (!perm.allowed) return fail(perm.message, 403);
 
+  // ── 2. Basic ID guard ──────────────────────────────────────────────────────
   if (!id || isNaN(Number(id))) return fail('Invalid user ID');
 
+  // ── 3. Validate payload ────────────────────────────────────────────────────
   const validation = validate(updateUserSchema, payload);
   if (!validation.valid) return fail(validation.message);
 
   const { value } = validation;
 
   try {
-    const existing = await userRepository.findUserById(id);
+    // ── 4. Existence check ───────────────────────────────────────────────────
+    const userId = Number(id);
+
+    const existing = await userRepository.findUserById(userId);
     if (!existing) return fail('User not found', 404);
 
-    if (value.managerId) {
+    // ── 5. Manager existence check (only when explicitly setting one) ────────
+    //       managerId === null means "clear" — skip the lookup in that case
+    if (value.managerId != null) {
       const manager = await userRepository.findUserById(value.managerId);
       if (!manager) return fail('Specified manager does not exist', 400);
+
+      // Prevent circular self-assignment
+      if (Number(value.managerId) === Number(id)) {
+        return fail('User cannot be their own manager', 422);
+      }
     }
 
+    // ── 6. Build DB-safe update payload ─────────────────────────────────────
+    //       Map every validated field; exclude `role` — handled separately via roleId
     const mappedPayload = {};
-    if (value.employeeCode !== undefined) mappedPayload.employeeCode = value.employeeCode;
     if (value.firstName !== undefined) mappedPayload.firstName = value.firstName;
     if (value.lastName !== undefined) mappedPayload.lastName = value.lastName;
     if (value.email !== undefined) mappedPayload.email = value.email;
-    if (value.managerId !== undefined) mappedPayload.managerId = value.managerId;
+    if (value.phone !== undefined) mappedPayload.phone = value.phone;
+    if (value.employeeCode !== undefined) mappedPayload.employeeCode = value.employeeCode;
     if (value.department !== undefined) mappedPayload.department = value.department;
     if (value.baseSalary !== undefined) mappedPayload.baseSalary = value.baseSalary;
     if (value.isActive !== undefined) mappedPayload.isActive = value.isActive;
-    if (value.role !== undefined) mappedPayload.role = value.role;
+    // managerId: pass through as-is (null clears it, number sets it)
+    if (value.managerId !== undefined) mappedPayload.managerId = value.managerId;
 
+    // ── 7. Transactional update ──────────────────────────────────────────────
     await sequelize.transaction(async (transaction) => {
-      await userRepository.updateUserById(id, mappedPayload, transaction);
+      // 7a. Update scalar fields on the users table
+      if (Object.keys(mappedPayload).length > 0) {
+        await userRepository.updateUserById(id, mappedPayload, transaction);
+      }
 
+      // 7b. Update role FK (roleId on users table) when role name is provided
+      //     Association is belongsTo — no junction table, no magic methods
       if (value.role) {
-        const [role] = await userRepository.findOrCreateRole(value.role, transaction);
-        await userRepository.updateUserRole(id, role.id, transaction);
+        const [role] = await userRepository.findOrCreateRole(
+          value.role,
+          transaction
+        );
+
+        await userRepository.updateUserRole(
+          Number(id),
+          Number(role.id),
+          transaction
+        );
       }
     });
 
+    // ── 8. Fetch fresh record after update ───────────────────────────────────
     const updatedUser = await userRepository.findUserById(id);
 
+    // ── 9. Cache invalidation (non-blocking) ─────────────────────────────────
     clearCacheKeys([`dashboard_summary:${id}:${new Date().getFullYear()}`])
       .catch((err) => logger.error({ event: 'CACHE_BUST_FAILED', error: err.message }));
 
+    // ── 10. Audit log (non-blocking — failure must not abort the response) ───
     try {
       await logAuditEvent({
         userId: actor.id,
@@ -235,12 +268,13 @@ const updateUser = async (id, payload, actor, ipAddress) => {
         actionType: 'UPDATE',
         oldData: existing.toJSON?.() ?? existing,
         newData: updatedUser.toJSON?.() ?? updatedUser,
-        ipAddress
+        ipAddress,
       });
     } catch (auditErr) {
       logger.error({ event: 'AUDIT_LOG_FAILED', error: auditErr.message });
     }
 
+    // ── 11. Notifications & event bus ────────────────────────────────────────
     const changes = buildChangelog(existing, updatedUser);
     const adminIds = await userRepository.getAdminIds();
 
