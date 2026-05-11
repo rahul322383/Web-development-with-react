@@ -15,9 +15,6 @@ export const handleRequest = async (request) => {
             error?.message ||
             'Something went wrong';
 
-        // Optional: log for debugging / monitoring
-        console.error('API Error:', message);
-
         throw new Error(message);
     }
 };
