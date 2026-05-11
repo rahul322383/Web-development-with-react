@@ -1,3 +1,4 @@
+
 import {
     LayoutDashboard,
     Users,
@@ -36,7 +37,7 @@ export const ROLES = {
     FINANCE: 'Finance',
 };
 
-// ─── Public navigation (unauthenticated) ──────────────────────────────────────
+// ─── Public navigation ───────────────────────────────────────────────────────
 export const PUBLIC_NAVIGATION = [
     { name: 'Home', href: '/', icon: Home },
     { name: 'Features', href: '/features', icon: Sparkles },
@@ -44,13 +45,10 @@ export const PUBLIC_NAVIGATION = [
     { name: 'Demo', href: '/demo', icon: PlayCircle },
     { name: 'About', href: '/about', icon: Info },
     { name: 'Contact', href: '/contact', icon: MessageSquare },
+    { name: 'Careers', href: '/careers', icon: Briefcase },
 ];
 
-// ─── Authenticated navigation (for sidebar & header) ──────────────────────────
-// `showInHeader: true` → appears in desktop header
-// `roles`: array of allowed roles
-// `department` (optional): also shown if user's department matches
-// `badge`: optional badge definition
+// ─── Auth navigation ─────────────────────────────────────────────────────────
 export const AUTH_NAVIGATION = [
     {
         name: 'Dashboard',
@@ -137,7 +135,7 @@ export const AUTH_NAVIGATION = [
         name: 'Users Management',
         href: '/users',
         icon: Users,
-        roles: [ROLES.ADMIN, ROLES.MANAGER],       // header only for Admin/Manager
+        roles: [ROLES.ADMIN, ROLES.MANAGER],
         showInHeader: true,
     },
     {
@@ -153,6 +151,12 @@ export const AUTH_NAVIGATION = [
         roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.HR, ROLES.FINANCE],
     },
     {
+        name: 'Recruitment',
+        href: '/recruitment',
+        icon: Briefcase,
+        roles: [ROLES.ADMIN, ROLES.HR, ROLES.MANAGER],
+    },
+    {
         name: 'Notifications',
         href: '/notifications',
         icon: Bell,
@@ -164,26 +168,9 @@ export const AUTH_NAVIGATION = [
         icon: Settings,
         roles: Object.values(ROLES),
     },
-
-    // ── Department extras ────────────────────────────────────────────────
-    {
-        name: 'Recruitment',
-        href: '/recruitment',
-        icon: Briefcase,
-        roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.HR],
-        department: ['HR'],                  // also visible for any HR dept member
-        showInHeader: true,
-    },
-    {
-        name: 'Marketing Tools',
-        href: '/marketing',
-        icon: Briefcase,
-        roles: [ROLES.MANAGER, ROLES.EMPLOYEE],
-        department: ['Marketing'],
-    },
 ];
 
-// ─── Footer links (sidebar) ───────────────────────────────────────────────────
+// ─── Footer links ────────────────────────────────────────────────────────────
 export const FOOTER_LINKS = [
     {
         section: 'Legal',
@@ -202,7 +189,7 @@ export const FOOTER_LINKS = [
     },
 ];
 
-// ─── Utility: filter navigation for a user ────────────────────────────────────
+// ─── Utility ─────────────────────────────────────────────────────────────────
 export function filterNavigation(navItems, userRoles = [], department = '') {
     return navItems.filter(item =>
         item.roles?.some(role => userRoles.includes(role)) ||
