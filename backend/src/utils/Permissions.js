@@ -7,7 +7,7 @@ const PERMISSIONS = {
     LIST_USERS: ['Admin', 'HR', 'Manager', 'Finance'],
     VIEW_USER_PROFILE: ['Admin', 'HR', 'Manager', 'Finance', 'Employee'],
     CREATE_USER: ['Admin', 'HR'],
-    UPDATE_USER: ['Admin', 'HR', 'Manager', 'Finance'],
+    UPDATE_USER: ['Admin', 'HR', 'Manager', 'Finance', 'Employee'],
     DELETE_USER: ['Admin'],
     ASSIGN_MANAGER: ['Admin', 'HR'],
     VIEW_DEPARTMENT: ['Admin', 'HR', 'Manager', 'Finance'],
