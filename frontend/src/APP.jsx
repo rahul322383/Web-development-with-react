@@ -270,6 +270,10 @@ import CompanyPage from "./company/CompanyPage";
 import PayrollDashboard from "./pyaroll/PayrollDashboard";
 import ShiftManagement from "./pages/ShiftManagement";
 
+import { RecruitmentModule, CareersPage } from './recruitment/RecruitmentModule';
+
+
+
 // Public Pages
 import HomePage from "./pages/home";
 import Features from "./Public/Features";
@@ -333,6 +337,8 @@ function AppRoutes() {
           {/* ── PASSWORD RESET (public, no auth needed) ─────────── */}
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/recruitment/*" element={<RecruitmentModule />} />
+          <Route path="/careers"        element={<CareersPage />} />  
 
           {/* change-password requires auth — user must be logged in */}
           <Route path="/change-password" element={
@@ -415,7 +421,7 @@ function AppRoutes() {
           } />
 
           <Route path="/analytics" element={
-            <ProtectedRoute roles={["Admin", "HR", "Finance"]}>
+            <ProtectedRoute roles={["Admin", "HR", "Finance", "Manager", "Employee"]}>
               <AnalyticsDashboard />
             </ProtectedRoute>
           } />
