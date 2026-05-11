@@ -1,663 +1,244 @@
-// 'use strict';
+'use strict';
 
-// // ─── node-fetch fallback (safe for Node 16 and below) ────────
-// const _fetch = typeof fetch !== 'undefined'
-//     ? fetch
-//     : (...args) => import('node-fetch').then(m => m.default(...args));
-
-// const logger = require('../../config/logger');
-// const { LeaveRequest, LeaveBalance, Payroll, User, Attendance } = require('../../database/initModels');
-// const { Op } = require('sequelize');
-
-// // ─────────────────────────────────────────────────────────────
-// // GEMINI CONFIG
-// // FREE tier: 1,500 req/day — no credit card needed
-// // Get key: https://aistudio.google.com/app/apikey
-// // ─────────────────────────────────────────────────────────────
-
-// const GEMINI_MODEL = 'gemini-2.0-flash-lite';
-// const GEMINI_URL = () =>
-//     `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${process.env.GEMINI_API_KEY}`;
-
-// // ─────────────────────────────────────────────────────────────
-// // SYSTEM PROMPT
-// // ─────────────────────────────────────────────────────────────
-
-// const today = new Date().toISOString().slice(0, 10);
-// const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
-
-// const SYSTEM_PROMPT = `
-// You are an AI HR Assistant embedded inside an HRMS application.
-// Understand the employee's message and return a structured JSON intent.
-
-// Available actions:
-// - get_leave_balance   → check remaining leave days
-// - get_my_leaves       → list user's leave requests
-// - apply_leave         → apply for leave (REQUIRES: startDate, endDate, reason — all mandatory)
-// - get_payslip         → get latest payslip
-// - get_attendance      → get attendance summary (last 30 days)
-// - get_team_leaves     → pending team leaves (managers only)
-// - general_answer      → answer HR policy question
-// - clarify             → ask a follow-up if any required field is missing
-
-// Rules:
-// 1. Respond ONLY with valid JSON. No markdown, no code fences, no extra text outside the JSON.
-// 2. Today is ${today}. Tomorrow is ${tomorrow}. Resolve relative dates.
-// 3. For apply_leave, ALL three fields (startDate, endDate, reason) are required. If ANY is missing → set action to "clarify".
-// 4. Dates must be YYYY-MM-DD format.
-// 5. For general_answer, write a helpful "reply".
-
-// Response format (always return this exact structure):
-// {
-//   "action": "<action_name>",
-//   "params": {},
-//   "reply": "<short message shown while loading>",
-//   "question": "<only when action=clarify>"
-// }
-
-// Examples:
-// User: "leave balance"
-// → {"action":"get_leave_balance","params":{},"reply":"Checking your leave balance..."}
-
-// User: "apply leave May 1 to May 3 family function"
-// → {"action":"apply_leave","params":{"startDate":"2026-05-01","endDate":"2026-05-03","reason":"family function"},"reply":"Applying your leave request..."}
-
-// User: "apply leave tomorrow"
-// → {"action":"clarify","params":{},"question":"How many days do you need, and what is the reason for the leave?"}
-
-// User: "payslip"
-// → {"action":"get_payslip","params":{},"reply":"Fetching your latest payslip..."}
-
-// User: "leave policy"
-// → {"action":"general_answer","params":{},"reply":"Employees get 21 days of annual paid leave, split across Sick (7), Casual (7), and Paid (14) categories. Apply at least 1 day in advance. Manager approval is required."}
-// `.trim();
-
-// // ─────────────────────────────────────────────────────────────
-// // PARAM VALIDATION — prevents prompt injection
-// // ─────────────────────────────────────────────────────────────
-
-// const validateParams = (action, params = {}) => {
-//     if (action !== 'apply_leave') return;
-
-//     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-
-//     if (!params.startDate || !dateRegex.test(params.startDate))
-//         throw new Error('Invalid or missing start date');
-//     if (!params.endDate || !dateRegex.test(params.endDate))
-//         throw new Error('Invalid or missing end date');
-//     if (!params.reason || typeof params.reason !== 'string' || params.reason.trim().length < 2)
-//         throw new Error('Please provide a valid reason for leave');
-
-//     const start = new Date(params.startDate);
-//     const end = new Date(params.endDate);
-//     const today = new Date();
-//     today.setHours(0, 0, 0, 0);
-
-//     const maxFuture = new Date();
-//     maxFuture.setFullYear(maxFuture.getFullYear() + 1);
-
-//     if (start < today) throw new Error('Leave cannot start in the past');
-//     if (end < start) throw new Error('End date cannot be before start date');
-//     if (end > maxFuture) throw new Error('Leave date cannot be more than 1 year in the future');
-
-//     const diffDays = (end - start) / 86400000 + 1;
-//     if (diffDays > 60) throw new Error('Leave duration cannot exceed 60 days');
-// };
-
-// // ─────────────────────────────────────────────────────────────
-// // WORKING DAYS CALCULATOR — excludes weekends
-// // ─────────────────────────────────────────────────────────────
-
-// const calculateWorkingDays = (startDate, endDate) => {
-//     const start = new Date(startDate);
-//     const end = new Date(endDate);
-//     let count = 0;
-//     const current = new Date(start);
-
-//     while (current <= end) {
-//         const day = current.getDay();
-//         if (day !== 0 && day !== 6) count++;   // 0=Sun, 6=Sat
-//         current.setDate(current.getDate() + 1);
-//     }
-
-//     return count;
-// };
-
-// // ─────────────────────────────────────────────────────────────
-// // CALL GEMINI API
-// // ─────────────────────────────────────────────────────────────
-
-// const parseIntent = async (userMessage, conversationHistory = []) => {
-//     if (!process.env.GEMINI_API_KEY) {
-//         const err = new Error('GEMINI_API_KEY is not configured');
-//         err.code = 'CONFIG_ERROR';
-//         throw err;
-//     }
-
-//     // Build multi-turn contents — Gemini uses "user" / "model" roles
-//     const contents = [];
-
-//     for (const msg of conversationHistory.slice(-6)) {
-//         contents.push({
-//             role: msg.role === 'assistant' ? 'model' : 'user',
-//             parts: [{ text: msg.content }],
-//         });
-//     }
-
-//     contents.push({ role: 'user', parts: [{ text: userMessage }] });
-
-//     // Inject system prompt as first turn
-//     const bodyContents = [
-//         { role: 'user', parts: [{ text: SYSTEM_PROMPT }] },
-//         { role: 'model', parts: [{ text: 'Understood. I will respond only with valid JSON.' }] },
-//         ...contents,
-//     ];
-
-//     const body = {
-//         contents: bodyContents,
-//         generationConfig: { temperature: 0.1, maxOutputTokens: 512 },
-//     };
-
-//     const response = await _fetch(GEMINI_URL(), {
-//         method: 'POST',
-//         headers: { 'Content-Type': 'application/json' },
-//         body: JSON.stringify(body),
-//     });
-
-//     // 429 Rate limit
-//     if (response.status === 429) {
-//         const errData = await response.json().catch(() => ({}));
-//         const retryDelay = errData?.error?.details
-//             ?.find(d => d.retryDelay)
-//             ?.retryDelay?.replace('s', '') || 60;
-
-//         const err = new Error('RATE_LIMITED');
-//         err.code = 'RATE_LIMITED';
-//         err.retryAfter = Math.ceil(Number(retryDelay));
-//         throw err;
-//     }
-
-//     // Other HTTP errors
-//     if (!response.ok) {
-//         const errText = await response.text();
-//         logger.error({ event: 'GEMINI_API_ERROR', status: response.status, body: errText });
-//         throw new Error(`Gemini API ${response.status}: ${errText}`);
-//     }
-
-//     const data = await response.json();
-
-//     // Empty / blocked response
-//     if (!data?.candidates?.length) {
-//         const err = new Error('Gemini returned no candidates');
-//         err.code = 'SAFETY_BLOCKED';
-//         throw err;
-//     }
-
-//     const raw = data.candidates[0]?.content?.parts?.[0]?.text;
-
-//     if (!raw?.trim()) throw new Error('Gemini returned an empty response');
-
-//     // Parse JSON
-//     try {
-//         const cleaned = raw.replace(/```json|```/g, '').trim();
-//         return JSON.parse(cleaned);
-//     } catch {
-//         logger.warn({ event: 'AI_JSON_PARSE_FAILED', raw });
-//         return {
-//             action: 'general_answer',
-//             params: {},
-//             reply: "I'm having trouble understanding that. Could you rephrase your question?",
-//         };
-//     }
-// };
-
-// // ─────────────────────────────────────────────────────────────
-// // INTENT HANDLERS
-// // ─────────────────────────────────────────────────────────────
-
-// const handlers = {
-
-//     // ── Leave balance ───────────────────────────────────────────
-//     get_leave_balance: async (user) => {
-//         const year = new Date().getFullYear();
-//         const balance = await LeaveBalance.findOne({
-//             where: { employeeId: user.id, year },
-//         });
-
-//         if (!balance) {
-//             return { text: `No leave balance record found for ${year}. Please contact HR.` };
-//         }
-
-//         // ✅ Show per-type breakdown if columns exist
-//         const hasTypes = balance.sickTotal !== undefined;
-
-//         const lines = [
-//             `📊 Your leave balance for ${year}:`,
-//             `• Total Annual : ${balance.totalAnnual} days`,
-//             `• Used         : ${balance.used} days`,
-//             `• Remaining    : ${balance.remaining} days`,
-//         ];
-
-//         if (hasTypes) {
-//             lines.push('');
-//             lines.push('Per type:');
-//             lines.push(`  🤒 Sick    — ${balance.sickRemaining}/${balance.sickTotal} remaining`);
-//             lines.push(`  🏖️  Casual  — ${balance.casualRemaining}/${balance.casualTotal} remaining`);
-//             lines.push(`  💼 Paid    — ${balance.paidRemaining}/${balance.paidTotal} remaining`);
-//         }
-
-//         return { text: lines.join('\n'), data: balance };
-//     },
-
-//     // ── My leaves ───────────────────────────────────────────────
-//     get_my_leaves: async (user) => {
-//         const leaves = await LeaveRequest.findAll({
-//             where: { employeeId: user.id },
-//             order: [['createdAt', 'DESC']],
-//             limit: 10,
-//         });
-
-//         if (!leaves.length) return { text: 'You have no leave requests yet.' };
-
-//         const lines = leaves.map(l =>
-//             `• ${l.startDate} → ${l.endDate}  (${l.daysRequested}d)  [${l.status}]  ${l.reason}`
-//         );
-
-//         return {
-//             text: `📋 Your recent leave requests:\n${lines.join('\n')}`,
-//             data: leaves,
-//         };
-//     },
-
-//     // ── Apply leave ─────────────────────────────────────────────
-//     apply_leave: async (user, params) => {
-//         const { startDate, endDate, reason } = params;
-
-//         // ✅ FIXED: use working days, not calendar days
-//         const daysRequested = calculateWorkingDays(startDate, endDate);
-
-//         if (daysRequested === 0) {
-//             return { text: '❌ The selected dates fall entirely on weekends. Please choose working days.' };
-//         }
-
-//         // Check leave balance
-//         const year = new Date(startDate).getFullYear();
-//         const balance = await LeaveBalance.findOne({
-//             where: { employeeId: user.id, year },
-//         });
-
-//         if (balance && balance.remaining < daysRequested) {
-//             return {
-//                 text: [
-//                     '❌ Insufficient leave balance.',
-//                     `• Remaining : ${balance.remaining} days`,
-//                     `• Requested : ${daysRequested} working days`,
-//                     'Please contact HR to request additional leave.',
-//                 ].join('\n'),
-//             };
-//         }
-
-//         // Check for overlapping leave
-//         const overlap = await LeaveRequest.findOne({
-//             where: {
-//                 employeeId: user.id,
-//                 status: { [Op.notIn]: ['Rejected'] },
-//                 startDate: { [Op.lte]: endDate },
-//                 endDate: { [Op.gte]: startDate },
-//             },
-//         });
-
-//         if (overlap) {
-//             return {
-//                 text: [
-//                     '❌ You already have a leave request overlapping these dates.',
-//                     `• Existing : ${overlap.startDate} → ${overlap.endDate}  [${overlap.status}]`,
-//                     'Please choose different dates.',
-//                 ].join('\n'),
-//             };
-//         }
-
-//         // Create leave request
-//         const leave = await LeaveRequest.create({
-//             employeeId: user.id,
-//             managerId: user.managerId || null,
-//             startDate,
-//             endDate,
-//             reason: reason.trim(),
-//             daysRequested,
-//             status: 'Pending',
-//         });
-
-//         return {
-//             text: [
-//                 '✅ Leave applied successfully!',
-//                 `• Dates   : ${startDate} → ${endDate}`,
-//                 `• Days    : ${daysRequested} working day(s)`,
-//                 `• Reason  : ${reason}`,
-//                 '• Status  : Pending (awaiting manager approval)',
-//             ].join('\n'),
-//             data: leave,
-//         };
-//     },
-
-//     // ── Payslip ─────────────────────────────────────────────────
-//     get_payslip: async (user) => {
-//         const payroll = await Payroll.findOne({
-//             where: { employeeId: user.id },
-//             order: [['createdAt', 'DESC']],
-//         });
-
-//         if (!payroll) return { text: 'No payroll records found. Please contact HR.' };
-
-//         const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
-
-//         return {
-//             text: [
-//                 '💰 Your latest payslip:',
-//                 `• Month       : ${payroll.month || 'N/A'}`,
-//                 `• Base Salary : ${fmt(payroll.baseSalary)}`,
-//                 `• Net Pay     : ${fmt(payroll.netSalary ?? payroll.netPay)}`,  // ✅ handle both field names
-//                 `• Status      : ${payroll.status || 'N/A'}`,
-//             ].join('\n'),
-//             data: payroll,
-//         };
-//     },
-
-//     // ── Attendance ──────────────────────────────────────────────
-//     get_attendance: async (user) => {
-//         const thirtyDaysAgo = new Date();
-//         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-//         // ✅ FIXED: filter by `date` column (DATEONLY), not `createdAt`
-//         const records = await Attendance.findAll({
-//             where: {
-//                 employeeId: user.id,
-//                 date: { [Op.gte]: thirtyDaysAgo },  // ✅ was createdAt — wrong column
-//             },
-//             order: [['date', 'DESC']],
-//             limit: 31,
-//         });
-
-//         if (!records.length) {
-//             return { text: 'No attendance records found for the last 30 days.' };
-//         }
-
-//         // ✅ FIXED: match exact status values from your ENUM
-//         const present = records.filter(r => r.status === 'present').length;
-//         const absent = records.filter(r => r.status === 'absent').length;
-//         const late = records.filter(r => r.status === 'late').length;
-//         const halfDay = records.filter(r => r.status === 'half_day').length;
-//         const onLeave = records.filter(r => r.status === 'on_leave').length;
-
-//         const attendancePct = records.length
-//             ? ((present + late) / records.length * 100).toFixed(1)
-//             : 0;
-
-//         return {
-//             text: [
-//                 '🕐 Your attendance (last 30 days):',
-//                 `• Present      : ${present} days`,
-//                 `• Late         : ${late} days`,
-//                 `• Half Day     : ${halfDay} days`,
-//                 `• On Leave     : ${onLeave} days`,
-//                 `• Absent       : ${absent} days`,
-//                 `• Total        : ${records.length} records`,
-//                 `• Attendance % : ${attendancePct}%`,
-//             ].join('\n'),
-//             data: { present, late, halfDay, onLeave, absent, total: records.length, attendancePct },
-//         };
-//     },
-
-//     // ── Team leaves ─────────────────────────────────────────────
-//     get_team_leaves: async (user) => {
-//         const role = (user.primaryRole || user.role || '').toLowerCase();
-
-//         if (!['manager', 'hr', 'admin'].includes(role)) {
-//             return { text: '🚫 You do not have permission to view team leaves.' };
-//         }
-
-//         const pending = await LeaveRequest.findAll({
-//             where: {
-//                 managerId: user.id,
-//                 status: 'Pending',
-//             },
-//             include: [{
-//                 model: User,
-//                 as: 'employee',
-//                 attributes: ['firstName', 'lastName', 'department'],
-//             }],
-//             order: [['createdAt', 'DESC']],
-//         });
-
-//         if (!pending.length) {
-//             return { text: '✅ No pending leave requests from your team.' };
-//         }
-
-//         const lines = pending.map(l => {
-//             const name = l.employee
-//                 ? `${l.employee.firstName} ${l.employee.lastName}`
-//                 : `Employee #${l.employeeId}`;
-//             return `• ${name}  |  ${l.startDate} → ${l.endDate}  (${l.daysRequested}d)  |  ${l.reason}`;
-//         });
-
-//         return {
-//             text: `👥 Pending team leave requests (${pending.length}):\n${lines.join('\n')}`,
-//             data: pending,
-//         };
-//     },
-
-//     // ── General answer / clarify ────────────────────────────────
-//     general_answer: async (_user, _params, intent) => ({
-//         text: intent.reply ||
-//             'I can help with leave balance, applying leave, payslips, attendance, and team leaves. What would you like to know?',
-//     }),
-
-//     clarify: async (_user, _params, intent) => ({
-//         text: intent.question || 'Could you provide more details so I can help you better?',
-//     }),
-// };
-
-// // ─────────────────────────────────────────────────────────────
-// // MAIN EXPORT
-// // ─────────────────────────────────────────────────────────────
-
-// const chat = async (user, message, history = []) => {
-//     try {
-//         const intent = await parseIntent(message, history);
-
-//         logger.info({ event: 'AI_INTENT', userId: user.id, action: intent.action });
-
-//         // Validate params before touching the DB
-//         try {
-//             validateParams(intent.action, intent.params);
-//         } catch (validationErr) {
-//             return {
-//                 success: true,
-//                 reply: `⚠️ ${validationErr.message}`,
-//                 action: 'validation_error',
-//                 data: null,
-//             };
-//         }
-
-//         const handler = handlers[intent.action];
-
-//         if (!handler) {
-//             return {
-//                 success: true,
-//                 reply: "I'm not sure how to help with that. Try asking about your leave balance, payslip, or attendance.",
-//                 action: intent.action,
-//                 data: null,
-//             };
-//         }
-
-//         const result = await handler(user, intent.params || {}, intent);
-
-//         return {
-//             success: true,
-//             reply: result.text,
-//             action: intent.action,
-//             data: result.data || null,
-//         };
-
-//     } catch (error) {
-//         logger.error({ event: 'AI_CHAT_FAILED', userId: user.id, error: error.message });
-
-//         if (error.code === 'RATE_LIMITED' || error.message === 'RATE_LIMITED') {
-//             const wait = error.retryAfter || 60;
-//             return {
-//                 success: true,
-//                 reply: `⏳ I'm a bit busy right now. Please try again in ${wait} seconds.`,
-//                 action: 'rate_limited',
-//                 data: null,
-//             };
-//         }
-
-//         if (error.code === 'CONFIG_ERROR') {
-//             return {
-//                 success: false,
-//                 reply: '⚙️ AI service is not configured. Please contact your system administrator.',
-//                 action: 'config_error',
-//                 data: null,
-//             };
-//         }
-
-//         if (error.code === 'SAFETY_BLOCKED') {
-//             return {
-//                 success: true,
-//                 reply: "I can't help with that request. Try asking about your leave balance, payslip, or attendance.",
-//                 action: 'blocked',
-//                 data: null,
-//             };
-//         }
-
-//         return {
-//             success: false,
-//             reply: '❌ Something went wrong. Please try again in a moment.',
-//             action: 'error',
-//             data: null,
-//         };
-//     }
-// };
-
-// module.exports = { chat };
-
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 // IMPORTS
-// ─────────────────────────────────────────────
-const logger = require('../../config/logger');
-const { LeaveRequest, LeaveBalance, Payroll, User, Attendance } = require('../../database/initModels');
-const { Op } = require('sequelize');
+// ─────────────────────────────────────────────────────────────────────────────
+const dayjs = require('dayjs');
 const { OpenAI } = require('openai');
-const { Sequelize } = require('sequelize');
+const { Op, Sequelize } = require('sequelize');
 
-// ─────────────────────────────────────────────
+const logger = require('../../config/logger');
+const {
+    LeaveRequest,
+    LeaveBalance,
+    Payroll,
+    User,
+    Attendance,
+    AuditLog,       // ensure this model exists — see schema note at bottom
+    JobPosting,     // for recruitment AI
+    Candidate,      // for recruitment AI
+} = require('../../database/initModels');
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GROQ CLIENT
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 const groq = new OpenAI({
     apiKey: process.env.GROQ_API_KEY,
     baseURL: 'https://api.groq.com/openai/v1',
 });
 
-// ─────────────────────────────────────────────
-// SYSTEM PROMPT
-// ─────────────────────────────────────────────
-const today = new Date().toISOString().slice(0, 10);
-const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
-const currentYear = new Date().getFullYear();
-const currentMonth = new Date().toLocaleString('default', { month: 'long' });
+const GROQ_MODEL = 'llama-3.3-70b-versatile';
 
-const SYSTEM_PROMPT = `
+// ─────────────────────────────────────────────────────────────────────────────
+// SECURITY: ACTION WHITELIST  ← FIX #1
+// Only actions listed here will ever be dispatched, regardless of what the
+// LLM returns. A hallucinated "delete_all_users" action can never execute.
+// ─────────────────────────────────────────────────────────────────────────────
+const ALLOWED_ACTIONS = new Set([
+    // ── Employee ──────────────────────────────
+    'get_leave_balance',
+    'get_my_leaves',
+    'apply_leave',
+    'cancel_leave',
+    'get_payslip',
+    'get_attendance',
+    'get_holidays',
+    'get_profile',
+    'get_monthly_summary',      // NEW: AI smart insights
+
+    // ── Manager ───────────────────────────────
+    'get_team_leaves',
+    'approve_leave',
+    'reject_leave',
+    'who_on_leave_tomorrow',
+    'get_late_employees',
+    'get_burnout_report',
+    'get_leave_predictions',
+    'get_attrition_predictions', // NEW: attrition AI
+    'get_performance_insights',  // NEW: performance AI
+
+    // ── Recruitment (HR/Admin) ─────────────────
+    'screen_resume',             // NEW
+    'rank_candidates',           // NEW
+    'generate_jd',               // NEW
+    'get_open_positions',        // NEW
+
+    // ── General ───────────────────────────────
+    'general_answer',
+    'clarify',
+    'policy_search',            // NEW: RAG over HR policy docs
+]);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SECURITY: RBAC — which roles can call which action groups  ← FIX #2
+// ─────────────────────────────────────────────────────────────────────────────
+const MANAGER_ACTIONS = new Set([
+    'get_team_leaves',
+    'approve_leave',
+    'reject_leave',
+    'who_on_leave_tomorrow',
+    'get_late_employees',
+    'get_burnout_report',
+    'get_leave_predictions',
+    'get_attrition_predictions',
+    'get_performance_insights',
+]);
+
+const HR_ADMIN_ACTIONS = new Set([
+    'screen_resume',
+    'rank_candidates',
+    'generate_jd',
+    'get_open_positions',
+]);
+
+const isAuthorised = (user, action) => {
+    if (MANAGER_ACTIONS.has(action)) {
+        return ['Manager', 'Admin', 'HR'].includes(user.role);
+    }
+    if (HR_ADMIN_ACTIONS.has(action)) {
+        return ['Admin', 'HR'].includes(user.role);
+    }
+    return true; // employee actions
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LEAVE BALANCE FIELD MAP  ← FIX #3 (balanceKey was fragile)
+// ─────────────────────────────────────────────────────────────────────────────
+const LEAVE_BALANCE_MAP = {
+    Sick: 'sickRemaining',
+    Casual: 'casualRemaining',
+    Paid: 'paidRemaining',
+    Maternity: 'maternityRemaining',
+    Paternity: 'paternityRemaining',
+    Bereavement: 'bereavementRemaining',
+    Unpaid: null, // no cap — auto-approved
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DATES — dayjs everywhere  ← FIX #4
+// ─────────────────────────────────────────────────────────────────────────────
+const today = () => dayjs().format('YYYY-MM-DD');
+const tomorrow = () => dayjs().add(1, 'day').format('YYYY-MM-DD');
+const nDaysAgo = (n) => dayjs().subtract(n, 'day').toDate();
+const currentYear = () => dayjs().year();
+const currentMonth = () => dayjs().format('MMMM');
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AUDIT LOG HELPER  ← NEW
+// ─────────────────────────────────────────────────────────────────────────────
+const writeAuditLog = async (userId, action, params, result) => {
+    try {
+        await AuditLog.create({
+            userId,
+            action,
+            params: JSON.stringify(params || {}),
+            resultSummary: String(result?.text || '').slice(0, 255),
+            source: 'AI_ASSISTANT',
+            createdAt: new Date(),
+        });
+    } catch (err) {
+        // Audit failure must never crash the main flow
+        logger.warn({ event: 'AUDIT_LOG_FAILED', message: err.message });
+    }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// IN-MEMORY POLICY STORE (replace with pgvector / Pinecone in production)
+// ─────────────────────────────────────────────────────────────────────────────
+// Each entry = { topic, content }. Loaded once at startup.
+// In production: embed each chunk → store in vector DB → cosine-search at query time.
+const HR_POLICY_CHUNKS = [
+    {
+        topic: 'leave policy',
+        content: 'Annual entitlement: 21 days — Sick: 7, Casual: 7, Paid: 14. Maternity: 90 days, Paternity: 15 days, Bereavement: 5 days. Minimum 1 working day advance notice for Casual/Paid. Sick leave same day; medical cert required for 3+ consecutive days. Leaves do not carry over except Paid (max 10 days).',
+    },
+    {
+        topic: 'working hours',
+        content: 'Standard: 9:00 AM – 6:00 PM Mon–Fri. Late if check-in after 9:15 AM. Early leave if check-out before 5:45 PM. Half-day absent if absent less than 4 hours. Overtime not calculated through this system.',
+    },
+    {
+        topic: 'payroll',
+        content: 'Monthly pay cycle. Disbursed on last working day of the month. Components: Basic, HRA, Transport Allowance, Medical, Bonus, Deductions (PF, TDS). Credited to registered bank account.',
+    },
+    {
+        topic: 'attendance',
+        content: 'Minimum 70% attendance per month required. Below 70% triggers HR review. Weekly off: Saturday & Sunday. Valid statuses: Present, Absent, Late, Early Leave, WFH, Holiday.',
+    },
+    {
+        topic: 'remote work wfh',
+        content: 'WFH must be pre-approved by manager via official channel. No limit specified, but manager discretion applies.',
+    },
+    {
+        topic: 'probation notice period',
+        content: 'Probation: 3 months for new employees; limited leave during probation. Notice period: 30 days for employees, 30–90 days for managers depending on grade.',
+    },
+    {
+        topic: 'reimbursement expenses',
+        content: 'Travel reimbursements require manager approval and original bills within 30 days. Medical reimbursements processed monthly with payroll. Claim form to be submitted via HR portal.',
+    },
+];
+
+const searchPolicy = (query) => {
+    const q = query.toLowerCase();
+    const scored = HR_POLICY_CHUNKS.map(chunk => {
+        const words = q.split(/\s+/);
+        const hits = words.filter(w => chunk.topic.includes(w) || chunk.content.toLowerCase().includes(w));
+        return { chunk, score: hits.length };
+    }).filter(r => r.score > 0).sort((a, b) => b.score - a.score);
+    return scored.slice(0, 3).map(r => r.chunk.content).join('\n\n');
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SYSTEM PROMPT — updated with all new actions
+// ─────────────────────────────────────────────────────────────────────────────
+const buildSystemPrompt = (user) => `
 You are an intelligent HR Assistant embedded inside an HRMS application.
 Understand the employee's intent and return a structured JSON response.
+
+━━━ EMPLOYEE CONTEXT ━━━
+Name: ${user.name || 'Employee'}
+Department: ${user.department || 'N/A'}
+Designation: ${user.designation || 'N/A'}
+Role: ${user.role || 'Employee'}
 
 ━━━ AVAILABLE ACTIONS ━━━
 
 EMPLOYEE ACTIONS:
-- get_leave_balance   → check remaining leave days (sick, casual, paid)
-- get_my_leaves       → list user's leave requests (recent / by status / by type)
-- apply_leave         → apply for leave (REQUIRES: startDate, endDate, leaveType, reason)
-- cancel_leave        → cancel a pending leave request (REQUIRES: leaveId)
-- get_payslip         → get payslip (optional param: month as YYYY-MM, defaults to latest)
-- get_attendance      → get attendance summary (optional: last N days, default 30)
-- get_holidays        → list upcoming public holidays for the year
-- get_profile         → view own employee profile details
-- general_answer      → answer HR policy questions helpfully
-- clarify             → ask a follow-up if any required field is missing
+- get_leave_balance      → check remaining leave days
+- get_my_leaves          → list user's leave requests
+- apply_leave            → apply for leave (REQUIRES: startDate, endDate, leaveType, reason)
+- cancel_leave           → cancel a pending leave (REQUIRES: leaveId)
+- get_payslip            → get payslip (optional: month as YYYY-MM)
+- get_attendance         → attendance summary (optional: days, default 30)
+- get_holidays           → upcoming public holidays
+- get_profile            → view own profile
+- get_monthly_summary    → AI-generated monthly insights (attendance trends, leave usage, suggestions)
+- policy_search          → search HR policy docs (REQUIRES: query)
+- general_answer         → answer HR policy questions
+- clarify                → ask follow-up if required field is missing
 
-MANAGER-ONLY ACTIONS:
-- get_team_leaves     → list pending leave requests from team members
-- approve_leave       → approve a team member's leave (REQUIRES: leaveId)
-- reject_leave        → reject a team member's leave (REQUIRES: leaveId, rejectionReason)
-- who_on_leave_tomorrow → list team members on leave tomorrow
-- get_late_employees  → list team members who were late this week (params: days optional, default 7)
-- get_burnout_report  → analyze team burnout risk based on overtime, late logins, leave patterns
-- get_leave_predictions → predict which team members are likely to take leave soon
+MANAGER ACTIONS (role: Manager/Admin/HR only):
+- get_team_leaves        → pending team leave requests
+- approve_leave          → approve team leave (REQUIRES: leaveId)
+- reject_leave           → reject team leave (REQUIRES: leaveId, rejectionReason)
+- who_on_leave_tomorrow  → team members on leave tomorrow
+- get_late_employees     → late arrivals this week (optional: days)
+- get_burnout_report     → team burnout risk analysis
+- get_leave_predictions  → predict team leave likelihood
+- get_attrition_predictions → predict which employees may resign soon
+- get_performance_insights  → team performance risk based on attendance + KPI signals
+
+HR/ADMIN ACTIONS (role: Admin/HR only):
+- screen_resume          → screen a candidate resume vs a job (REQUIRES: candidateId, jobId)
+- rank_candidates        → rank all candidates for a job (REQUIRES: jobId)
+- generate_jd            → generate a job description (REQUIRES: role, department, optional: requirements[])
+- get_open_positions     → list all open job postings
 
 ━━━ LEAVE TYPES ━━━
-Valid values for leaveType: "Sick", "Casual", "Paid", "Maternity", "Paternity", "Bereavement", "Unpaid"
-
-━━━ HR POLICY KNOWLEDGE ━━━
-
-LEAVE POLICY:
-- Annual entitlement: 21 days total — Sick: 7, Casual: 7, Paid: 14
-  (Maternity: 90 days, Paternity: 15 days, Bereavement: 5 days)
-- Minimum 1 working day advance notice required for Casual/Paid leave
-- Sick leave can be applied same day; medical certificate required for 3+ consecutive sick days
-- Unpaid leave is auto-approved if balance is zero; affects monthly payroll
-- Leaves do not carry over to the next year except Paid leave (max 10 days carry-over)
-- Half-day leaves are not supported in this system
-
-WORKING HOURS:
-- Standard hours: 9:00 AM – 6:00 PM (Mon–Fri)
-- Late arrival: marked as "Late" if check-in after 9:15 AM
-- Early departure: marked "Early Leave" if check-out before 5:45 PM
-- Half-day absent policy: absent for less than 4 hours counts as half-day
-- Overtime is not calculated through this system
-
-PAYROLL:
-- Pay cycle: monthly, disbursed on the last working day of each month
-- Current month: ${currentMonth} ${currentYear}
-- Payslip components: Basic, HRA, Transport Allowance, Medical, Bonus, Deductions (PF, TDS)
-- Salary is credited to the registered bank account on file
-
-ATTENDANCE:
-- Present, Absent, Late, Early Leave, Work From Home, Holiday are valid statuses
-- Weekly off: Saturday & Sunday
-- Minimum 70% attendance required per month; below triggers HR review
-
-GENERAL:
-- Probation period: 3 months for new employees; limited leave during probation
-- Notice period: 30 days for employees, 30–90 days based on grade for managers
-- Remote/WFH must be pre-approved by manager via official channel
-
-BURNOUT SIGNALS (for analysis):
-- High risk: 3+ late logins in a week, consecutive sick leaves, attendance < 70%, sudden spike in leave requests
-- Medium risk: 2 late logins in a week, WFH > 60% of days, declining attendance trend
-- Low risk: normal patterns, stable attendance above 80%
-
-LEAVE PREDICTION SIGNALS:
-- Employee has low leave balance remaining (< 3 days) → likely to take Unpaid/Sick
-- History of leaves around specific months → pattern-based prediction
-- Multiple sick leaves recently → likely upcoming sick leave
-- High stress indicators (late, absent spikes) → leave likely in next 2 weeks
-
-━━━ RULES ━━━
-1. Respond ONLY with valid JSON. No markdown, no code fences, no text outside JSON.
-2. Today is ${today}. Tomorrow is ${tomorrow}. Current year: ${currentYear}. Resolve all relative dates.
-3. For apply_leave: startDate, endDate, leaveType, reason are ALL mandatory. Missing any → action = "clarify".
-4. For cancel_leave: leaveId is mandatory. If user says "cancel my last leave" → ask for confirmation.
-5. For reject_leave: rejectionReason is mandatory.
-6. Dates must be YYYY-MM-DD. Month params must be YYYY-MM.
-7. For general_answer: write a clear, policy-accurate "reply".
-8. Detect if the user is asking a status filter: params may include status or leaveType.
-9. If user asks about "team" or "my reportees" actions → use manager actions.
-10. "who is on leave tomorrow" / "tomorrow's leaves" → who_on_leave_tomorrow
-11. "late employees" / "who came late" → get_late_employees
-12. "burnout" / "stress report" / "team health" → get_burnout_report
-13. "leave prediction" / "who might take leave" / "predict leaves" → get_leave_predictions
-14. Be concise, friendly, and professional in all reply/question fields.
+Valid leaveType values: "Sick", "Casual", "Paid", "Maternity", "Paternity", "Bereavement", "Unpaid"
 
 ━━━ RESPONSE FORMAT ━━━
+Respond ONLY with valid JSON. No markdown, no code fences.
 {
   "action": "<action_name>",
   "params": {},
@@ -665,75 +246,35 @@ LEAVE PREDICTION SIGNALS:
   "question": "<only when action=clarify>"
 }
 
-━━━ EXAMPLES ━━━
-
-User: "who is on leave tomorrow"
-→ {"action":"who_on_leave_tomorrow","params":{},"reply":"Checking who's on leave tomorrow..."}
-
-User: "show late employees this week"
-→ {"action":"get_late_employees","params":{"days":7},"reply":"Fetching late arrivals this week..."}
-
-User: "burnout report for my team"
-→ {"action":"get_burnout_report","params":{},"reply":"Analyzing team burnout risk..."}
-
-User: "who might take leave soon"
-→ {"action":"get_leave_predictions","params":{},"reply":"Running leave prediction analysis..."}
-
-User: "leave balance"
-→ {"action":"get_leave_balance","params":{},"reply":"Checking your leave balance..."}
-
-User: "apply sick leave from May 5 to May 7 I have fever"
-→ {"action":"apply_leave","params":{"startDate":"${currentYear}-05-05","endDate":"${currentYear}-05-07","leaveType":"Sick","reason":"fever"},"reply":"Applying your sick leave..."}
-
-User: "apply leave tomorrow"
-→ {"action":"clarify","params":{},"question":"Sure! Could you tell me: the end date, leave type (Sick/Casual/Paid), and reason?"}
-
-User: "show pending leaves"
-→ {"action":"get_my_leaves","params":{"status":"Pending"},"reply":"Fetching your pending leaves..."}
-
-User: "payslip for March"
-→ {"action":"get_payslip","params":{"month":"${currentYear}-03"},"reply":"Fetching your March payslip..."}
-
-User: "attendance last 7 days"
-→ {"action":"get_attendance","params":{"days":7},"reply":"Fetching your attendance for the last 7 days..."}
-
-User: "what is the notice period"
-→ {"action":"general_answer","params":{},"reply":"Notice period is 30 days for employees. For managers, it ranges from 30 to 90 days depending on grade."}
-
-User: "can I work from home"
-→ {"action":"general_answer","params":{},"reply":"Yes! WFH is allowed but must be pre-approved by your manager through the official channel."}
-
-User: "what happens if attendance is low"
-→ {"action":"general_answer","params":{},"reply":"If your attendance falls below 70% in a month, it triggers an HR review. Try to maintain at least 70% monthly attendance."}
-
-User: "when is salary credited"
-→ {"action":"general_answer","params":{},"reply":"Salary is credited on the last working day of every month, directly to your registered bank account."}
+━━━ KEY RULES ━━━
+1. Today is ${today()}. Tomorrow is ${tomorrow()}. Year: ${currentYear()}. Month: ${currentMonth()}.
+2. Resolve all relative dates (today, tomorrow, next Monday) to YYYY-MM-DD.
+3. apply_leave: startDate, endDate, leaveType, reason are ALL mandatory. Any missing → action = "clarify".
+4. reject_leave: rejectionReason is mandatory.
+5. policy_search: extract the search query from the user's question.
+6. general_answer: write a clear, policy-accurate "reply".
+7. Be concise, friendly, professional.
 `.trim();
 
-// ─────────────────────────────────────────────
-// GROQ MODEL
-// ─────────────────────────────────────────────
-const GROQ_MODEL = "llama-3.3-70b-versatile";
-
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 // PARSE INTENT
-// ─────────────────────────────────────────────
-const parseIntent = async (userMessage, conversationHistory = []) => {
+// ─────────────────────────────────────────────────────────────────────────────
+const parseIntent = async (user, userMessage, conversationHistory = []) => {
     if (!process.env.GROQ_API_KEY) {
-        const err = new Error("GROQ_API_KEY is not configured");
-        err.code = "CONFIG_ERROR";
+        const err = new Error('GROQ_API_KEY is not configured');
+        err.code = 'CONFIG_ERROR';
         throw err;
     }
 
     const response = await groq.chat.completions.create({
         model: GROQ_MODEL,
         messages: [
-            { role: "system", content: SYSTEM_PROMPT },
+            { role: 'system', content: buildSystemPrompt(user) },
             ...conversationHistory.slice(-8).map(m => ({
-                role: m.role === "assistant" ? "assistant" : "user",
+                role: m.role === 'assistant' ? 'assistant' : 'user',
                 content: m.content,
             })),
-            { role: "user", content: userMessage },
+            { role: 'user', content: userMessage },
         ],
         temperature: 0.1,
         max_tokens: 512,
@@ -742,42 +283,92 @@ const parseIntent = async (userMessage, conversationHistory = []) => {
     const raw = response.choices?.[0]?.message?.content;
 
     if (!raw) {
-        const err = new Error("Empty response from Groq");
-        err.code = "SAFETY_BLOCKED";
+        const err = new Error('Empty response from Groq');
+        err.code = 'SAFETY_BLOCKED';
         throw err;
     }
 
     try {
-        const cleaned = raw.replace(/```json|```/g, "").trim();
+        const cleaned = raw.replace(/```json|```/g, '').trim();
         return JSON.parse(cleaned);
     } catch {
         return {
-            action: "general_answer",
+            action: 'general_answer',
             params: {},
             reply: "Sorry, I couldn't understand that. Could you rephrase?",
         };
     }
 };
 
-// ─────────────────────────────────────────────
-// WORKING DAYS
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// PARAM VALIDATION
+// ─────────────────────────────────────────────────────────────────────────────
+const validateParams = (action, params = {}) => {
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+
+    if (action === 'apply_leave') {
+        if (!params.startDate || !dateRegex.test(params.startDate))
+            return { success: false, message: 'Invalid or missing start date' };
+        if (!params.endDate || !dateRegex.test(params.endDate))
+            return { success: false, message: 'Invalid or missing end date' };
+        if (!params.reason || params.reason.trim().length < 2)
+            return { success: false, message: 'Reason is required' };
+        if (!params.leaveType)
+            return { success: false, message: 'Leave type is required' };
+        if (dayjs(params.endDate).isBefore(dayjs(params.startDate)))
+            return { success: false, message: 'End date cannot be before start date' };
+    }
+
+    if (action === 'cancel_leave' && !params.leaveId)
+        return { success: false, message: 'Leave ID is required to cancel' };
+
+    if (action === 'approve_leave' && !params.leaveId)
+        return { success: false, message: 'Leave ID is required to approve' };
+
+    if (action === 'reject_leave') {
+        if (!params.leaveId)
+            return { success: false, message: 'Leave ID is required to reject' };
+        if (!params.rejectionReason || params.rejectionReason.trim().length < 3)
+            return { success: false, message: 'Rejection reason is required' };
+    }
+
+    if (action === 'screen_resume') {
+        if (!params.candidateId) return { success: false, message: 'candidateId is required' };
+        if (!params.jobId) return { success: false, message: 'jobId is required' };
+    }
+
+    if (action === 'rank_candidates' && !params.jobId)
+        return { success: false, message: 'jobId is required' };
+
+    if (action === 'generate_jd') {
+        if (!params.role) return { success: false, message: 'role is required' };
+        if (!params.department) return { success: false, message: 'department is required' };
+    }
+
+    if (action === 'policy_search' && !params.query)
+        return { success: false, message: 'query is required for policy search' };
+
+    return { success: true };
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UTILITIES
+// ─────────────────────────────────────────────────────────────────────────────
 const calculateWorkingDays = (startDate, endDate) => {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
     let count = 0;
-    const current = new Date(start);
-    while (current <= end) {
-        const day = current.getDay();
-        if (day !== 0 && day !== 6) count++;
-        current.setDate(current.getDate() + 1);
+    let current = dayjs(startDate);
+    const end = dayjs(endDate);
+    while (current.isBefore(end) || current.isSame(end, 'day')) {
+        const dow = current.day();
+        if (dow !== 0 && dow !== 6) count++;
+        current = current.add(1, 'day');
     }
     return count;
 };
 
-// ─────────────────────────────────────────────
-// BURNOUT SCORE CALCULATOR
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// BURNOUT SCORE
+// ─────────────────────────────────────────────────────────────────────────────
 const calcBurnoutScore = (attendance, leaveHistory) => {
     let score = 0;
     const flags = [];
@@ -793,150 +384,135 @@ const calcBurnoutScore = (attendance, leaveHistory) => {
     if (attendancePct < 70) { score += 30; flags.push(`${attendancePct}% attendance`); }
     else if (attendancePct < 80) { score += 15; flags.push(`${attendancePct}% attendance`); }
 
-    const recentSickLeaves = leaveHistory.filter(l =>
-        l.leaveType === 'Sick' && l.status === 'Approved' &&
-        new Date(l.startDate) > new Date(Date.now() - 30 * 86400000)
+    const thirtyDaysAgo = dayjs().subtract(30, 'day').toDate();
+    const recentSick = leaveHistory.filter(l =>
+        l.leaveType === 'Sick' &&
+        l.status === 'Approved' &&
+        new Date(l.startDate) > thirtyDaysAgo
     ).length;
-
-    if (recentSickLeaves >= 2) { score += 25; flags.push(`${recentSickLeaves} sick leaves (30d)`); }
-    else if (recentSickLeaves === 1) { score += 10; flags.push(`${recentSickLeaves} sick leave (30d)`); }
+    if (recentSick >= 2) { score += 25; flags.push(`${recentSick} sick leaves (30d)`); }
+    else if (recentSick === 1) { score += 10; flags.push(`${recentSick} sick leave (30d)`); }
 
     const totalLeaveRequests = leaveHistory.filter(l =>
-        new Date(l.createdAt) > new Date(Date.now() - 30 * 86400000)
+        new Date(l.createdAt) > thirtyDaysAgo
     ).length;
     if (totalLeaveRequests >= 3) { score += 10; flags.push(`${totalLeaveRequests} leave requests (30d)`); }
 
     score = Math.min(score, 100);
-
-    let risk = 'Low';
-    if (score >= 60) risk = 'High';
-    else if (score >= 30) risk = 'Medium';
-
+    const risk = score >= 60 ? 'High' : score >= 30 ? 'Medium' : 'Low';
     return { score, risk, flags, attendancePct, lateCount };
 };
 
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 // LEAVE PREDICTION SCORE
-// ─────────────────────────────────────────────
-const calcLeavePrediction = (employee, balance, leaveHistory, attendance) => {
+// ─────────────────────────────────────────────────────────────────────────────
+const calcLeavePrediction = (member, balance, leaveHistory, attendance) => {
     let score = 0;
     const reasons = [];
 
-    // Low balance → likely to exhaust soon or take unpaid
     const remaining = balance?.remaining ?? 21;
     if (remaining <= 2) { score += 40; reasons.push('Very low leave balance'); }
     else if (remaining <= 5) { score += 20; reasons.push('Low leave balance'); }
 
-    // Recent sick leaves → health issue pattern
     const recentSick = leaveHistory.filter(l =>
         l.leaveType === 'Sick' &&
-        new Date(l.startDate) > new Date(Date.now() - 14 * 86400000)
+        new Date(l.startDate) > dayjs().subtract(14, 'day').toDate()
     ).length;
     if (recentSick >= 1) { score += 30; reasons.push('Recent sick leave pattern'); }
 
-    // High absenteeism
     const absentCount = attendance.filter(a => a.status === 'Absent').length;
     if (absentCount >= 3) { score += 20; reasons.push('Frequent absences'); }
 
-    // Historical pattern — same month last year
-    const thisMonth = new Date().getMonth() + 1;
+    const thisMonth = dayjs().month() + 1;
     const sameMonthLastYear = leaveHistory.filter(l =>
-        new Date(l.startDate).getMonth() + 1 === thisMonth &&
-        new Date(l.startDate).getFullYear() < new Date().getFullYear()
+        dayjs(l.startDate).month() + 1 === thisMonth &&
+        dayjs(l.startDate).year() < dayjs().year()
     ).length;
     if (sameMonthLastYear >= 1) { score += 15; reasons.push('Historical leave in this month'); }
 
-    // Burnout signals
     const lateCount = attendance.filter(a => a.status === 'Late').length;
     if (lateCount >= 3) { score += 10; reasons.push('High stress indicators'); }
 
     score = Math.min(score, 100);
-
-    let likelihood = 'Low';
-    if (score >= 60) likelihood = 'High';
-    else if (score >= 30) likelihood = 'Medium';
-
+    const likelihood = score >= 60 ? 'High' : score >= 30 ? 'Medium' : 'Low';
     return { score, likelihood, reasons };
 };
 
-// ─────────────────────────────────────────────
-// VALIDATION
-// ─────────────────────────────────────────────
-const validateParams = (action, params = {}) => {
-    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+// ─────────────────────────────────────────────────────────────────────────────
+// ATTRITION SCORE  ← NEW
+// ─────────────────────────────────────────────────────────────────────────────
+const calcAttritionScore = (member, burnout, leaveHistory, balance) => {
+    let score = 0;
+    const reasons = [];
 
-    if (action === 'apply_leave') {
-        if (!params.startDate || !dateRegex.test(params.startDate)) {
-            return { success: false, message: 'Invalid start date' };
-        }
+    // High burnout = attrition risk
+    if (burnout.score >= 60) { score += 35; reasons.push('High burnout score'); }
+    else if (burnout.score >= 30) { score += 15; reasons.push('Medium burnout score'); }
 
-        if (!params.endDate || !dateRegex.test(params.endDate)) {
-            return { success: false, message: 'Invalid end date' };
-        }
-
-        if (!params.reason || params.reason.trim().length < 2) {
-            return { success: false, message: 'Reason is required' };
-        }
-
-        if (!params.leaveType) {
-            return { success: false, message: 'Leave type is required' };
-        }
-
-        const start = new Date(params.startDate);
-        const end = new Date(params.endDate);
-
-        if (end < start) {
-            return { success: false, message: 'End date cannot be before start date' };
-        }
+    // Tenure: newer employees with stress leave sooner
+    const joiningDate = member.joiningDate ? dayjs(member.joiningDate) : null;
+    const tenureMonths = joiningDate ? dayjs().diff(joiningDate, 'month') : 99;
+    if (tenureMonths < 6 && burnout.score >= 30) {
+        score += 20; reasons.push('Short tenure with stress signals');
     }
 
-    if (action === 'cancel_leave') {
-        if (!params.leaveId) {
-            return { success: false, message: 'Leave ID is required to cancel' };
-        }
-    }
+    // Exhausted leave balance
+    const remaining = balance?.remaining ?? 21;
+    if (remaining === 0) { score += 15; reasons.push('Zero leave balance'); }
 
-    if (action === 'approve_leave') {
-        if (!params.leaveId) {
-            return { success: false, message: 'Leave ID is required to approve' };
-        }
-    }
+    // Many rejected/cancelled leaves (frustration signal)
+    const rejectedLeaves = leaveHistory.filter(l => l.status === 'Rejected').length;
+    if (rejectedLeaves >= 2) { score += 20; reasons.push(`${rejectedLeaves} rejected leave requests`); }
 
-    if (action === 'reject_leave') {
-        if (!params.leaveId) {
-            return { success: false, message: 'Leave ID is required to reject' };
-        }
-
-        if (!params.rejectionReason || params.rejectionReason.trim().length < 3) {
-            return { success: false, message: 'Rejection reason is required' };
-        }
-    }
-
-    return { success: true };
+    score = Math.min(score, 100);
+    const risk = score >= 60 ? 'High' : score >= 35 ? 'Medium' : 'Low';
+    return { score, risk, reasons };
 };
 
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// RESUME SKILL EXTRACTOR (lightweight keyword-based; swap for LLM call in prod)
+// ─────────────────────────────────────────────────────────────────────────────
+const TECH_KEYWORDS = [
+    'node', 'react', 'python', 'java', 'aws', 'sql', 'mongodb', 'docker',
+    'kubernetes', 'typescript', 'graphql', 'rest', 'api', 'redis', 'git',
+    'ci/cd', 'agile', 'scrum', 'html', 'css', 'express', 'django', 'spring',
+    'machine learning', 'tensorflow', 'pytorch', 'data analysis', 'tableau',
+];
+
+const extractSkillsFromText = (text = '') => {
+    const lower = text.toLowerCase();
+    return TECH_KEYWORDS.filter(k => lower.includes(k));
+};
+
+const scoreResumeAgainstJD = (resumeText = '', jdText = '') => {
+    const resumeSkills = extractSkillsFromText(resumeText);
+    const jdSkills = extractSkillsFromText(jdText);
+    if (!jdSkills.length) return { score: 50, matched: [], missing: [] };
+    const matched = resumeSkills.filter(s => jdSkills.includes(s));
+    const missing = jdSkills.filter(s => !resumeSkills.includes(s));
+    const score = Math.round((matched.length / jdSkills.length) * 100);
+    return { score, matched, missing };
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // HANDLERS
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 const handlers = {
 
+    // ── Leave balance ────────────────────────────────────────────────────────
     get_leave_balance: async (user) => {
         const balance = await LeaveBalance.findOne({
-            where: { employeeId: user.id, year: new Date().getFullYear() },
+            where: { employeeId: user.id, year: currentYear() },
         });
         if (!balance) return { text: 'No leave balance record found for this year.', data: null };
 
-        const remaining = balance.remaining ?? 0;
-        const sick = balance.sickRemaining ?? 0;
-        const casual = balance.casualRemaining ?? 0;
-        const paid = balance.paidRemaining ?? 0;
-
         return {
-            text: `You have ${remaining} days remaining — Sick: ${sick}, Casual: ${casual}, Paid: ${paid}`,
+            text: `You have ${balance.remaining ?? 0} days remaining — Sick: ${balance.sickRemaining ?? 0}, Casual: ${balance.casualRemaining ?? 0}, Paid: ${balance.paidRemaining ?? 0}`,
             data: { type: 'leave_balance', balance },
         };
     },
 
+    // ── My leaves ────────────────────────────────────────────────────────────
     get_my_leaves: async (user, params) => {
         const where = { employeeId: user.id };
         if (params.status) where.status = params.status;
@@ -949,42 +525,38 @@ const handlers = {
         });
 
         return {
-            text: leaves.length
-                ? `Found ${leaves.length} leave request(s)`
-                : 'No leave requests found',
+            text: leaves.length ? `Found ${leaves.length} leave request(s)` : 'No leave requests found',
             data: { type: 'leave_list', leaves },
         };
     },
 
+    // ── Apply leave ──────────────────────────────────────────────────────────
     apply_leave: async (user, params) => {
         const days = calculateWorkingDays(params.startDate, params.endDate);
-
-        const balance = await LeaveBalance.findOne({
-            where: { employeeId: user.id, year: new Date().getFullYear() },
-        });
-
         const leaveType = params.leaveType || 'Casual';
-        const balanceKey = `${leaveType.toLowerCase()}Remaining`;
+        const balanceField = LEAVE_BALANCE_MAP[leaveType];  // ← FIX #3
 
-        if (balance && balance[balanceKey] !== undefined && balance[balanceKey] < days) {
-            return {
-                text: `Insufficient ${leaveType} leave balance. You have ${balance[balanceKey]} day(s) remaining but requested ${days}.`,
-                data: null,
-            };
+        // Check balance (skip for Unpaid — no cap)
+        if (balanceField !== null) {
+            const balance = await LeaveBalance.findOne({
+                where: { employeeId: user.id, year: currentYear() },
+            });
+            if (balance && balance[balanceField] !== undefined && balance[balanceField] < days) {
+                return {
+                    text: `Insufficient ${leaveType} balance. You have ${balance[balanceField]} day(s) but requested ${days}.`,
+                    data: null,
+                };
+            }
         }
 
-        // 🔥 IMPORTANT FIX
         if (!user.managerId) {
-            return {
-                text: 'You are not assigned to any manager. Please contact HR.',
-                data: null,
-            };
+            return { text: 'You are not assigned to any manager. Please contact HR.', data: null };
         }
 
         const leave = await LeaveRequest.create({
-            companyId: user.company_id, // ✅ FIXED
+            companyId: user.company_id,
             employeeId: user.id,
-            managerId: user.managerId,  // ✅ FIXED (no null)
+            managerId: user.managerId,
             startDate: params.startDate,
             endDate: params.endDate,
             leaveType,
@@ -998,37 +570,35 @@ const handlers = {
             data: { type: 'leave_applied', leave },
         };
     },
+
+    // ── Cancel leave ─────────────────────────────────────────────────────────
     cancel_leave: async (user, params) => {
         const leave = await LeaveRequest.findOne({
             where: { id: params.leaveId, employeeId: user.id },
         });
-
         if (!leave) return { text: `Leave ID ${params.leaveId} not found.`, data: null };
-        if (leave.status !== 'Pending') {
+        if (leave.status !== 'Pending')
             return { text: `Cannot cancel leave that is already ${leave.status}.`, data: null };
-        }
 
         await leave.update({ status: 'Cancelled' });
         return {
-            text: `Leave ${params.leaveId} has been cancelled successfully.`,
+            text: `Leave ${params.leaveId} cancelled successfully.`,
             data: { type: 'leave_cancelled', leave },
         };
     },
 
+    // ── Payslip ──────────────────────────────────────────────────────────────
     get_payslip: async (user, params) => {
         const where = { employeeId: user.id };
-
         if (params.month) {
             const [year, month] = params.month.split('-');
             where.year = parseInt(year);
             where.month = parseInt(month);
         }
-
         const payslip = await Payroll.findOne({
             where,
             order: [['year', 'DESC'], ['month', 'DESC']],
         });
-
         if (!payslip) return { text: 'No payslip found for the requested period.', data: null };
 
         return {
@@ -1037,20 +607,36 @@ const handlers = {
         };
     },
 
+    // ── Attendance ───────────────────────────────────────────────────────────
     get_attendance: async (user, params) => {
         const days = params.days || 30;
-        const fromDate = new Date();
-        fromDate.setDate(fromDate.getDate() - days);
 
-        const records = await Attendance.findAll({
-            where: { employeeId: user.id, date: { [Op.gte]: fromDate } },
-            order: [['date', 'DESC']],
-        });
+        // SQL aggregation for counts instead of in-memory filter  ← FIX #5
+        const [records, summary] = await Promise.all([
+            Attendance.findAll({
+                where: { employeeId: user.id, date: { [Op.gte]: nDaysAgo(days) } },
+                order: [['date', 'DESC']],
+            }),
+            Attendance.findAll({
+                attributes: [
+                    'status',
+                    [Sequelize.fn('COUNT', Sequelize.col('id')), 'count'],
+                ],
+                where: { employeeId: user.id, date: { [Op.gte]: nDaysAgo(days) } },
+                group: ['status'],
+                raw: true,
+            }),
+        ]);
 
-        const present = records.filter(r => r.status === 'Present').length;
-        const absent = records.filter(r => r.status === 'Absent').length;
-        const late = records.filter(r => r.status === 'Late').length;
-        const wfh = records.filter(r => r.status === 'Work From Home').length;
+        const countMap = summary.reduce((acc, r) => {
+            acc[r.status] = parseInt(r.count);
+            return acc;
+        }, {});
+
+        const present = countMap['Present'] || 0;
+        const absent = countMap['Absent'] || 0;
+        const late = countMap['Late'] || 0;
+        const wfh = countMap['Work From Home'] || 0;
         const total = records.length;
         const pct = total > 0 ? Math.round((present / total) * 100) : 0;
 
@@ -1060,10 +646,10 @@ const handlers = {
         };
     },
 
+    // ── Holidays ─────────────────────────────────────────────────────────────
     get_holidays: async (_user, params) => {
-        const year = params.year || new Date().getFullYear();
-
-        const holidays = [
+        const year = params.year || currentYear();
+        const all = [
             { date: `${year}-01-26`, name: 'Republic Day' },
             { date: `${year}-03-17`, name: 'Holi' },
             { date: `${year}-04-14`, name: 'Dr. Ambedkar Jayanti' },
@@ -1073,20 +659,20 @@ const handlers = {
             { date: `${year}-10-20`, name: 'Dussehra' },
             { date: `${year}-11-05`, name: 'Diwali' },
             { date: `${year}-12-25`, name: 'Christmas Day' },
-        ].filter(h => new Date(h.date) >= new Date());
+        ].filter(h => dayjs(h.date).isAfter(dayjs()) || dayjs(h.date).isSame(dayjs(), 'day'));
 
         return {
-            text: `${holidays.length} upcoming public holiday(s) in ${year}`,
-            data: { type: 'holidays', holidays },
+            text: `${all.length} upcoming public holiday(s) in ${year}`,
+            data: { type: 'holidays', holidays: all },
         };
     },
 
+    // ── Profile ──────────────────────────────────────────────────────────────
     get_profile: async (user) => {
         const profile = await User.findOne({
             where: { id: user.id },
-            attributes: ['id', 'name', 'email', 'designation', 'department', 'joiningDate', 'employeeCode', 'managerId'],
+            attributes: ['id', 'name', 'email', 'designation', 'department', 'joiningDate', 'employeeCode', 'managerId', 'role'],
         });
-
         if (!profile) return { text: 'Profile not found.', data: null };
 
         return {
@@ -1095,44 +681,104 @@ const handlers = {
         };
     },
 
-    get_team_leaves: async (user, params) => {
-        const where = { managerId: user.id, status: params.status || 'Pending' };
+    // ── Monthly AI summary  ← NEW ────────────────────────────────────────────
+    get_monthly_summary: async (user) => {
+        const daysInMonth = dayjs().daysInMonth();
 
+        const [attendanceSummary, leaveHistory, payslip, balance] = await Promise.all([
+            Attendance.findAll({
+                attributes: [
+                    'status',
+                    [Sequelize.fn('COUNT', Sequelize.col('id')), 'count'],
+                ],
+                where: { employeeId: user.id, date: { [Op.gte]: nDaysAgo(daysInMonth) } },
+                group: ['status'],
+                raw: true,
+            }),
+            LeaveRequest.findAll({
+                where: { employeeId: user.id, createdAt: { [Op.gte]: nDaysAgo(daysInMonth) } },
+            }),
+            Payroll.findOne({
+                where: { employeeId: user.id, year: currentYear(), month: dayjs().month() + 1 },
+            }),
+            LeaveBalance.findOne({
+                where: { employeeId: user.id, year: currentYear() },
+            }),
+        ]);
+
+        const countMap = attendanceSummary.reduce((acc, r) => { acc[r.status] = parseInt(r.count); return acc; }, {});
+        const present = countMap['Present'] || 0;
+        const absent = countMap['Absent'] || 0;
+        const late = countMap['Late'] || 0;
+        const total = Object.values(countMap).reduce((s, v) => s + v, 0);
+        const pct = total > 0 ? Math.round((present / total) * 100) : 0;
+        const remaining = balance?.remaining ?? 0;
+
+        // Generate AI suggestions
+        const suggestions = [];
+        if (pct < 70) suggestions.push('⚠ Attendance dropped below 70% — HR review may be triggered.');
+        if (late >= 3) suggestions.push(`⚠ You had ${late} late arrivals this month. Consider adjusting your schedule.`);
+        if (remaining <= 3) suggestions.push(`⚠ Only ${remaining} leave day(s) remaining for the year.`);
+        if (remaining >= 10 && dayjs().month() >= 9)
+            suggestions.push(`💡 You have ${remaining} unused leave days. Consider planning time off before year-end.`);
+        if (absent === 0) suggestions.push('✓ Perfect attendance this month! Great work.');
+        if (suggestions.length === 0) suggestions.push('✓ Everything looks healthy this month. Keep it up!');
+
+        return {
+            text: `Monthly summary for ${currentMonth()} ${currentYear()}: ${pct}% attendance, ${leaveHistory.length} leave request(s), ${remaining} leave days remaining.`,
+            data: {
+                type: 'monthly_summary',
+                attendance: { present, absent, late, total, pct },
+                leaves: leaveHistory.length,
+                payslip: payslip ? { net: payslip.netSalary, month: payslip.month, year: payslip.year } : null,
+                balance: balance ? { remaining, sick: balance.sickRemaining, casual: balance.casualRemaining, paid: balance.paidRemaining } : null,
+                suggestions,
+            },
+        };
+    },
+
+    // ── Policy search (RAG-lite)  ← NEW ─────────────────────────────────────
+    policy_search: async (_user, params) => {
+        const results = searchPolicy(params.query || '');
+        if (!results) {
+            return { text: 'No relevant policy found. Please contact HR directly.', data: null };
+        }
+        return {
+            text: results,
+            data: { type: 'policy_results', query: params.query, results },
+        };
+    },
+
+    // ── Team leaves ──────────────────────────────────────────────────────────
+    get_team_leaves: async (user, params) => {
         const leaves = await LeaveRequest.findAll({
-            where,
+            where: { managerId: user.id, status: params.status || 'Pending' },
             include: [{ model: User, as: 'employee', attributes: ['name', 'designation'] }],
             order: [['createdAt', 'ASC']],
         });
 
         return {
-            text: leaves.length
-                ? `${leaves.length} pending leave request(s) from your team`
-                : 'No pending team leaves',
+            text: leaves.length ? `${leaves.length} leave request(s) from your team` : 'No pending team leaves',
             data: { type: 'team_leave_list', leaves },
         };
     },
 
+    // ── Approve leave ────────────────────────────────────────────────────────
     approve_leave: async (user, params) => {
-        const leave = await LeaveRequest.findOne({
-            where: { id: params.leaveId, managerId: user.id },
-        });
-
+        const leave = await LeaveRequest.findOne({ where: { id: params.leaveId, managerId: user.id } });
         if (!leave) return { text: `Leave ${params.leaveId} not found in your team.`, data: null };
         if (leave.status !== 'Pending') return { text: `Leave is already ${leave.status}.`, data: null };
 
         await leave.update({ status: 'Approved', approvedAt: new Date(), approvedBy: user.id });
-
         return {
             text: `Leave ${params.leaveId} approved successfully.`,
             data: { type: 'leave_approved', leave },
         };
     },
 
+    // ── Reject leave ─────────────────────────────────────────────────────────
     reject_leave: async (user, params) => {
-        const leave = await LeaveRequest.findOne({
-            where: { id: params.leaveId, managerId: user.id },
-        });
-
+        const leave = await LeaveRequest.findOne({ where: { id: params.leaveId, managerId: user.id } });
         if (!leave) return { text: `Leave ${params.leaveId} not found in your team.`, data: null };
         if (leave.status !== 'Pending') return { text: `Leave is already ${leave.status}.`, data: null };
 
@@ -1142,143 +788,110 @@ const handlers = {
             rejectedBy: user.id,
             rejectionReason: params.rejectionReason,
         });
-
         return {
             text: `Leave ${params.leaveId} rejected.`,
             data: { type: 'leave_rejected', leave },
         };
     },
 
-    // ─────────────────────────────────────────────
-    // NEW: WHO IS ON LEAVE TOMORROW
-    // ─────────────────────────────────────────────
+    // ── Who on leave tomorrow ────────────────────────────────────────────────
     who_on_leave_tomorrow: async (user) => {
-        const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        tomorrow.setHours(0, 0, 0, 0);
+        const tmr = dayjs().add(1, 'day').startOf('day').toDate();
 
         const leaves = await LeaveRequest.findAll({
             where: {
                 managerId: user.id,
                 status: 'Approved',
-                startDate: { [Op.lte]: tomorrow },
-                endDate: { [Op.gte]: tomorrow },
+                startDate: { [Op.lte]: tmr },
+                endDate: { [Op.gte]: tmr },
             },
-            include: [
-                {
-                    model: User,
-                    as: 'employee',
-                    attributes: ['first_name','last_name', 'designation', 'department'],
-                },
-            ],
+            include: [{ model: User, as: 'employee', attributes: ['first_name', 'last_name', 'designation', 'department'] }],
         });
 
         return {
             text: leaves.length
                 ? `${leaves.length} team member(s) on leave tomorrow`
-                : `No one from your team is on leave tomorrow`,
-            data: { type: 'on_leave_tomorrow', leaves, date: tomorrow },
+                : 'No one from your team is on leave tomorrow',
+            data: { type: 'on_leave_tomorrow', leaves, date: tmr },
         };
     },
 
-    // ─────────────────────────────────────────────
-    // NEW: GET LATE EMPLOYEES
-    // ─────────────────────────────────────────────
+    // ── Late employees  (SQL aggregation)  ← FIX #5 ─────────────────────────
     get_late_employees: async (user, params) => {
         const days = params.days || 7;
-        const fromDate = new Date();
-        fromDate.setDate(fromDate.getDate() - days);
 
-        // Get all team members
         const teamMembers = await User.findAll({
             where: { managerId: user.id },
             attributes: ['id', 'first_name', 'last_name', 'designation'],
         });
-
-        if (!teamMembers.length) {
-            return { text: 'No team members found under your supervision.', data: null };
-        }
+        if (!teamMembers.length) return { text: 'No team members found.', data: null };
 
         const teamIds = teamMembers.map(m => m.id);
 
-        const lateRecords = await Attendance.findAll({
+        // Aggregate in SQL — much faster than loading all rows
+        const lateCounts = await Attendance.findAll({
+            attributes: [
+                'employeeId',
+                [Sequelize.fn('COUNT', Sequelize.col('id')), 'lateCount'],
+            ],
             where: {
                 employeeId: { [Op.in]: teamIds },
                 status: 'Late',
-                date: { [Op.gte]: fromDate },
+                date: { [Op.gte]: nDaysAgo(days) },
             },
-            include: [{ model: User, as: 'employee', attributes: ['first_name', 'last_name', 'designation'] }],
-            order: [['date', 'DESC']],
+            group: ['employeeId'],
+            raw: true,
         });
 
-        // Group by employee
-        const grouped = lateRecords.reduce((acc, rec) => {
-            const id = rec.employeeId;
-            if (!acc[id]) {
-                acc[id] = {
-                    employee: rec.employee,
-                    count: 0,
-                    dates: [],
-                };
-            }
-            acc[id].count++;
-            acc[id].dates.push(rec.date);
+        const countById = lateCounts.reduce((acc, r) => {
+            acc[r.employeeId] = parseInt(r.lateCount);
             return acc;
         }, {});
 
-        const summary = Object.values(grouped).sort((a, b) => b.count - a.count);
+        const summary = teamMembers
+            .filter(m => countById[m.id])
+            .map(m => ({
+                employee: { id: m.id, name: `${m.first_name} ${m.last_name}`, designation: m.designation },
+                count: countById[m.id],
+            }))
+            .sort((a, b) => b.count - a.count);
 
         return {
             text: summary.length
                 ? `${summary.length} team member(s) had late arrivals in the last ${days} days`
-                : `No late arrivals recorded in your team in the last ${days} days`,
+                : `No late arrivals in your team in the last ${days} days`,
             data: { type: 'late_employees', employees: summary, days },
         };
     },
 
-    // ─────────────────────────────────────────────
-    // NEW: BURNOUT DETECTION
-    // ─────────────────────────────────────────────
+    // ── Burnout report  (SQL aggregation)  ← FIX #5 ─────────────────────────
     get_burnout_report: async (user) => {
         const teamMembers = await User.findAll({
-            where: { manager_id: user.id }, 
-            attributes: [
-                'id',
-                'designation',
-                'department',
-                ['first_name', 'firstName'],
-                ['last_name', 'lastName'],
-            ],
+            where: { managerId: user.id },
+            attributes: ['id', 'designation', 'department',
+                [Sequelize.literal("CONCAT(first_name, ' ', last_name)"), 'name']],
         });
-        if (!teamMembers.length) {
-            return { text: 'No team members found under your supervision.', data: null };
-        }
+        if (!teamMembers.length) return { text: 'No team members found.', data: null };
 
         const teamIds = teamMembers.map(m => m.id);
-        const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000);
+        const thirtyAgo = nDaysAgo(30);
 
-        // Fetch attendance & leave history for all team members
         const [allAttendance, allLeaves] = await Promise.all([
             Attendance.findAll({
-                where: { employeeId: { [Op.in]: teamIds }, date: { [Op.gte]: thirtyDaysAgo } },
+                where: { employeeId: { [Op.in]: teamIds }, date: { [Op.gte]: thirtyAgo } },
             }),
             LeaveRequest.findAll({
-                where: { employeeId: { [Op.in]: teamIds }, createdAt: { [Op.gte]: thirtyDaysAgo } },
+                where: { employeeId: { [Op.in]: teamIds }, createdAt: { [Op.gte]: thirtyAgo } },
             }),
         ]);
 
         const results = teamMembers.map(member => {
-            const attendance = allAttendance.filter(a => a.employeeId === member.id);
-            const leaveHistory = allLeaves.filter(l => l.employeeId === member.id);
-            const { score, risk, flags, attendancePct, lateCount } = calcBurnoutScore(attendance, leaveHistory);
-
+            const att = allAttendance.filter(a => a.employeeId === member.id);
+            const leaves = allLeaves.filter(l => l.employeeId === member.id);
+            const { score, risk, flags, attendancePct, lateCount } = calcBurnoutScore(att, leaves);
             return {
-                employee: { id: member.id, name: member.name, designation: member.designation },
-                score,
-                risk,
-                flags,
-                attendancePct,
-                lateCount,
+                employee: { id: member.id, name: member.get('name'), designation: member.designation },
+                score, risk, flags, attendancePct, lateCount,
             };
         }).sort((a, b) => b.score - a.score);
 
@@ -1286,108 +899,308 @@ const handlers = {
         const mediumRisk = results.filter(r => r.risk === 'Medium').length;
 
         return {
-            text: `Team burnout report: ${highRisk} high risk, ${mediumRisk} medium risk out of ${results.length} members`,
+            text: `Burnout report: ${highRisk} high risk, ${mediumRisk} medium risk out of ${results.length} members`,
             data: { type: 'burnout_report', employees: results, summary: { highRisk, mediumRisk, total: results.length } },
         };
     },
 
- 
+    // ── Leave predictions ────────────────────────────────────────────────────
     get_leave_predictions: async (user) => {
         const teamMembers = await User.findAll({
-            where: { manager_id: user.id }, // ✅ fixed
-            attributes: [
-                'id',
-                'designation',
-                'department',
-                [Sequelize.literal("CONCAT(first_name, ' ', last_name)"), 'name'] // ✅ fixed
-            ],
+            where: { managerId: user.id },
+            attributes: ['id', 'designation', 'department',
+                [Sequelize.literal("CONCAT(first_name, ' ', last_name)"), 'name']],
         });
-
-        if (!teamMembers.length) {
-            return { text: 'No team members found under your supervision.', data: null };
-        }
+        if (!teamMembers.length) return { text: 'No team members found.', data: null };
 
         const teamIds = teamMembers.map(m => m.id);
-        const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000);
-
         const [allAttendance, allLeaves, allBalances] = await Promise.all([
-            Attendance.findAll({
-                where: { employeeId: { [Op.in]: teamIds }, date: { [Op.gte]: thirtyDaysAgo } },
-            }),
-            LeaveRequest.findAll({
-                where: { employeeId: { [Op.in]: teamIds } },
-            }),
-            LeaveBalance.findAll({
-                where: { employeeId: { [Op.in]: teamIds }, year: new Date().getFullYear() },
-            }),
+            Attendance.findAll({ where: { employeeId: { [Op.in]: teamIds }, date: { [Op.gte]: nDaysAgo(30) } } }),
+            LeaveRequest.findAll({ where: { employeeId: { [Op.in]: teamIds } } }),
+            LeaveBalance.findAll({ where: { employeeId: { [Op.in]: teamIds }, year: currentYear() } }),
         ]);
 
         const results = teamMembers.map(member => {
-            const attendance = allAttendance.filter(a => a.employeeId === member.id);
-            const leaveHistory = allLeaves.filter(l => l.employeeId === member.id);
+            const att = allAttendance.filter(a => a.employeeId === member.id);
+            const leaves = allLeaves.filter(l => l.employeeId === member.id);
             const balance = allBalances.find(b => b.employeeId === member.id);
-
-            const { score, likelihood, reasons } =
-                calcLeavePrediction(member, balance, leaveHistory, attendance);
-
+            const { score, likelihood, reasons } = calcLeavePrediction(member, balance, leaves, att);
             return {
-                employee: {
-                    id: member.id,
-                    name: member.get('name'), // ✅ important for literal
-                    designation: member.designation
-                },
-                score,
-                likelihood,
-                reasons,
+                employee: { id: member.id, name: member.get('name'), designation: member.designation },
+                score, likelihood, reasons,
                 remainingDays: balance?.remaining ?? 'N/A',
             };
         }).sort((a, b) => b.score - a.score);
 
-        const highLikelihood = results.filter(r => r.likelihood === 'High').length;
-
+        const high = results.filter(r => r.likelihood === 'High').length;
         return {
-            text: `Leave predictions: ${highLikelihood} team member(s) likely to take leave soon`,
+            text: `Leave predictions: ${high} team member(s) likely to take leave soon`,
             data: { type: 'leave_predictions', employees: results },
         };
     },
 
+    // ── Attrition predictions  ← NEW ─────────────────────────────────────────
+    get_attrition_predictions: async (user) => {
+        const teamMembers = await User.findAll({
+            where: { managerId: user.id },
+            attributes: ['id', 'designation', 'department', 'joiningDate',
+                [Sequelize.literal("CONCAT(first_name, ' ', last_name)"), 'name']],
+        });
+        if (!teamMembers.length) return { text: 'No team members found.', data: null };
+
+        const teamIds = teamMembers.map(m => m.id);
+        const [allAttendance, allLeaves, allBalances] = await Promise.all([
+            Attendance.findAll({ where: { employeeId: { [Op.in]: teamIds }, date: { [Op.gte]: nDaysAgo(30) } } }),
+            LeaveRequest.findAll({ where: { employeeId: { [Op.in]: teamIds } } }),
+            LeaveBalance.findAll({ where: { employeeId: { [Op.in]: teamIds }, year: currentYear() } }),
+        ]);
+
+        const results = teamMembers.map(member => {
+            const att = allAttendance.filter(a => a.employeeId === member.id);
+            const leaves = allLeaves.filter(l => l.employeeId === member.id);
+            const balance = allBalances.find(b => b.employeeId === member.id);
+            const burnout = calcBurnoutScore(att, leaves);
+            const { score, risk, reasons } = calcAttritionScore(member, burnout, leaves, balance);
+            return {
+                employee: { id: member.id, name: member.get('name'), designation: member.designation },
+                score, risk, reasons, burnoutScore: burnout.score,
+            };
+        }).sort((a, b) => b.score - a.score);
+
+        const highRisk = results.filter(r => r.risk === 'High').length;
+        return {
+            text: `Attrition risk: ${highRisk} team member(s) at high risk of leaving`,
+            data: { type: 'attrition_predictions', employees: results },
+        };
+    },
+
+    // ── Performance insights  ← NEW ──────────────────────────────────────────
+    get_performance_insights: async (user) => {
+        const teamMembers = await User.findAll({
+            where: { managerId: user.id },
+            attributes: ['id', 'designation', 'department',
+                [Sequelize.literal("CONCAT(first_name, ' ', last_name)"), 'name']],
+        });
+        if (!teamMembers.length) return { text: 'No team members found.', data: null };
+
+        const teamIds = teamMembers.map(m => m.id);
+
+        // SQL aggregation for attendance stats per employee
+        const attendanceStats = await Attendance.findAll({
+            attributes: [
+                'employeeId',
+                'status',
+                [Sequelize.fn('COUNT', Sequelize.col('id')), 'count'],
+            ],
+            where: {
+                employeeId: { [Op.in]: teamIds },
+                date: { [Op.gte]: nDaysAgo(30) },
+            },
+            group: ['employeeId', 'status'],
+            raw: true,
+        });
+
+        // Build per-employee stat map
+        const statMap = {};
+        for (const row of attendanceStats) {
+            if (!statMap[row.employeeId]) statMap[row.employeeId] = {};
+            statMap[row.employeeId][row.status] = parseInt(row.count);
+        }
+
+        const results = teamMembers.map(member => {
+            const stats = statMap[member.id] || {};
+            const present = stats['Present'] || 0;
+            const absent = stats['Absent'] || 0;
+            const late = stats['Late'] || 0;
+            const total = Object.values(stats).reduce((s, v) => s + v, 0) || 1;
+            const pct = Math.round((present / total) * 100);
+
+            let performanceRisk = 'Low';
+            const flags = [];
+            if (pct < 70) { performanceRisk = 'High'; flags.push(`${pct}% attendance`); }
+            else if (pct < 80) { performanceRisk = 'Medium'; flags.push(`${pct}% attendance`); }
+            if (late >= 3) { flags.push(`${late} late arrivals`); }
+            if (absent >= 5) { performanceRisk = 'High'; flags.push(`${absent} absences`); }
+
+            return {
+                employee: { id: member.id, name: member.get('name'), designation: member.designation },
+                attendancePct: pct, lateCount: late, absentCount: absent,
+                performanceRisk, flags,
+            };
+        }).sort((a, b) => a.attendancePct - b.attendancePct);
+
+        const highRisk = results.filter(r => r.performanceRisk === 'High').length;
+        return {
+            text: `Performance insights: ${highRisk} team member(s) at performance risk`,
+            data: { type: 'performance_insights', employees: results },
+        };
+    },
+
+    // ── Screen resume  ← NEW ─────────────────────────────────────────────────
+    screen_resume: async (_user, params) => {
+        const [candidate, job] = await Promise.all([
+            Candidate.findByPk(params.candidateId),
+            JobPosting.findByPk(params.jobId),
+        ]);
+
+        if (!candidate) return { text: `Candidate ${params.candidateId} not found.`, data: null };
+        if (!job) return { text: `Job posting ${params.jobId} not found.`, data: null };
+
+        const { score, matched, missing } = scoreResumeAgainstJD(
+            candidate.resumeText || '',
+            job.description || '',
+        );
+
+        // Persist score
+        await candidate.update({ fitScore: score, screenedAt: new Date(), screenedForJob: params.jobId });
+
+        let verdict = 'Weak fit';
+        if (score >= 70) verdict = 'Strong fit';
+        else if (score >= 45) verdict = 'Moderate fit';
+
+        return {
+            text: `${candidate.name}: ${verdict} (${score}/100). Matched: ${matched.join(', ') || 'none'}. Missing: ${missing.join(', ') || 'none'}.`,
+            data: { type: 'resume_screening', candidate: candidate.name, job: job.title, score, matched, missing, verdict },
+        };
+    },
+
+    // ── Rank candidates  ← NEW ──────────────────────────────────────────────
+    rank_candidates: async (_user, params) => {
+        const job = await JobPosting.findByPk(params.jobId);
+        if (!job) return { text: `Job posting ${params.jobId} not found.`, data: null };
+
+        const candidates = await Candidate.findAll({
+            where: { screenedForJob: params.jobId },
+            order: [['fitScore', 'DESC']],
+        });
+
+        if (!candidates.length) {
+            return { text: 'No screened candidates found for this position. Run screen_resume first.', data: null };
+        }
+
+        const ranked = candidates.map((c, i) => ({
+            rank: i + 1, name: c.name, email: c.email,
+            score: c.fitScore, verdict: c.fitScore >= 70 ? 'Strong' : c.fitScore >= 45 ? 'Moderate' : 'Weak',
+        }));
+
+        return {
+            text: `${ranked.length} candidate(s) ranked for ${job.title}. Top: ${ranked[0].name} (${ranked[0].score}/100)`,
+            data: { type: 'candidate_ranking', job: job.title, candidates: ranked },
+        };
+    },
+
+    // ── Generate JD  ← NEW ──────────────────────────────────────────────────
+    generate_jd: async (_user, params) => {
+        const requirements = Array.isArray(params.requirements)
+            ? params.requirements.join(', ')
+            : params.requirements || 'standard requirements for this role';
+
+        // Use Groq to generate the JD
+        const response = await groq.chat.completions.create({
+            model: GROQ_MODEL,
+            messages: [{
+                role: 'user',
+                content: `Write a professional job description for a ${params.role} in the ${params.department} department. Requirements: ${requirements}. Include: Role summary, Key responsibilities (5 bullets), Required qualifications (4 bullets), Nice-to-have (3 bullets), and a brief about-company paragraph. Keep it under 400 words. Plain text only.`,
+            }],
+            temperature: 0.7,
+            max_tokens: 600,
+        });
+
+        const jdText = response.choices?.[0]?.message?.content || 'Could not generate JD. Please try again.';
+
+        return {
+            text: `Job description generated for ${params.role} (${params.department}).`,
+            data: { type: 'generated_jd', role: params.role, department: params.department, jd: jdText },
+        };
+    },
+
+    // ── Open positions  ← NEW ───────────────────────────────────────────────
+    get_open_positions: async () => {
+        const jobs = await JobPosting.findAll({
+            where: { status: 'Open' },
+            attributes: ['id', 'title', 'department', 'location', 'createdAt'],
+            order: [['createdAt', 'DESC']],
+        });
+        return {
+            text: jobs.length ? `${jobs.length} open position(s)` : 'No open positions currently.',
+            data: { type: 'open_positions', jobs },
+        };
+    },
+
+    // ── General answer ───────────────────────────────────────────────────────
     general_answer: async (_u, _p, intent) => ({
         text: intent.reply || 'I can help with HR queries. Ask me about leave, payslip, attendance, or policies.',
         data: null,
     }),
 
+    // ── Clarify ──────────────────────────────────────────────────────────────
     clarify: async (_u, _p, intent) => ({
         text: intent.question || 'Could you provide more details?',
         data: null,
     }),
 };
 
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 // MAIN CHAT FUNCTION
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 const chat = async (user, message, history = []) => {
     const startTime = Date.now();
 
     try {
-        const intent = await parseIntent(message, history);
+        // 1. Parse intent (with user context injected into system prompt)
+        const intent = await parseIntent(user, message, history);
 
         logger.info({ event: 'AI_INTENT', userId: user.id, action: intent.action, params: intent.params });
 
-        validateParams(intent.action, intent.params);
+        // 2. Security: whitelist check  ← FIX #1
+        if (!ALLOWED_ACTIONS.has(intent.action)) {
+            logger.warn({ event: 'AI_INVALID_ACTION', userId: user.id, action: intent.action });
+            return {
+                success: false,
+                reply: 'Invalid AI action detected. Please rephrase your request.',
+                action: 'invalid_action',
+                data: null,
+            };
+        }
 
+        // 3. Security: RBAC check  ← FIX #2
+        if (!isAuthorised(user, intent.action)) {
+            logger.warn({ event: 'AI_UNAUTHORISED', userId: user.id, action: intent.action, role: user.role });
+            return {
+                success: false,
+                reply: 'You are not authorised to perform this action.',
+                action: 'unauthorised',
+                data: null,
+            };
+        }
+
+        // 4. Param validation
+        const validation = validateParams(intent.action, intent.params);
+        if (!validation.success) {
+            return {
+                success: false,
+                reply: `Validation error: ${validation.message}`,
+                action: 'validation_error',
+                data: null,
+            };
+        }
+
+        // 5. Dispatch to handler
         const handler = handlers[intent.action];
-
         if (!handler) {
-            logger.warn({ event: 'AI_HANDLER_NOT_FOUND', userId: user.id, action: intent.action });
+            logger.warn({ event: 'AI_HANDLER_NOT_FOUND', action: intent.action });
             return {
                 success: true,
-                reply: `I don't know how to handle "${intent.action}" yet. Try asking about leaves, payslip, or attendance.`,
+                reply: `I don't know how to handle "${intent.action}" yet.`,
                 action: intent.action,
                 data: null,
             };
         }
 
         const result = await handler(user, intent.params || {}, intent);
+
+        // 6. Audit log  ← NEW
+        await writeAuditLog(user.id, intent.action, intent.params, result);
 
         logger.info({ event: 'AI_SUCCESS', userId: user.id, action: intent.action, durationMs: Date.now() - startTime });
 
@@ -1399,23 +1212,39 @@ const chat = async (user, message, history = []) => {
         };
 
     } catch (error) {
-       
-        if (error.parent) {
-            
-        }
-
-        throw error;
-    
+        // ── FIX #6: properly structured catch — dead code removed ────────────
+        logger.error({
+            event: 'AI_ERROR',
+            userId: user?.id,
+            message: error.message,
+            stack: error.stack,
+            code: error.code,
+        });
 
         if (error.code === 'CONFIG_ERROR') {
-            return { success: false, reply: 'AI assistant is not configured. Contact your administrator.', action: 'config_error' };
+            return {
+                success: false,
+                reply: 'AI assistant is not configured. Contact your administrator.',
+                action: 'config_error',
+                data: null,
+            };
         }
 
-        if (error.message.includes('Invalid') || error.message.includes('required')) {
-            return { success: false, reply: `Validation error: ${error.message}`, action: 'validation_error' };
+        if (error.message?.includes('Invalid') || error.message?.includes('required')) {
+            return {
+                success: false,
+                reply: `Validation error: ${error.message}`,
+                action: 'validation_error',
+                data: null,
+            };
         }
 
-        return { success: false, reply: 'Something went wrong. Please try again.', action: 'error' };
+        return {
+            success: false,
+            reply: 'Something went wrong. Please try again.',
+            action: 'error',
+            data: null,
+        };
     }
 };
 
