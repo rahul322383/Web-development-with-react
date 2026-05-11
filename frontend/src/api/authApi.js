@@ -26,5 +26,10 @@ export const authApi = {
       refreshToken
     });
     return res.data;
+  },  
+
+  updateProfile: async (profileData) => {
+    const res = await axiosInstance.patch("/auth/profile", profileData);
+    return res.data;
   }
 };
