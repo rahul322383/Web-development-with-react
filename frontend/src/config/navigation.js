@@ -123,7 +123,7 @@ export const AUTH_NAVIGATION = [
         name: 'Expenses',
         href: '/expenses',
         icon: Receipt,
-        roles: [ROLES.ADMIN, ROLES.HR, ROLES.MANAGER, ROLES.FINANCE],
+        roles: [ROLES.ADMIN, ROLES.HR, ROLES.MANAGER, ROLES.FINANCE ,ROLES.EMPLOYEE] ,
     },
     {
         name: 'Audit Logs',
