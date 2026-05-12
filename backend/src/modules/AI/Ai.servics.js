@@ -128,17 +128,34 @@ const currentMonth = () => dayjs().format('MMMM');
 // ─────────────────────────────────────────────────────────────────────────────
 const writeAuditLog = async (userId, action, params, result) => {
     try {
+
+        const ACTION_MAP = {
+            get_profile: 'PROFILE_VIEW',
+            apply_leave: 'LEAVE_APPLY',
+            cancel_leave: 'LEAVE_CANCEL',
+            policy_search: 'POLICY_SEARCH',
+        };
+
         await AuditLog.create({
             userId,
-            action,
-            params: JSON.stringify(params || {}),
-            resultSummary: String(result?.text || '').slice(0, 255),
-            source: 'AI_ASSISTANT',
+            moduleName: 'AI',
+            actionType: ACTION_MAP[action] || 'CHAT',
+
+            newData: {
+                action,
+                params,
+                reply: result?.text,
+            },
+
+            timestamp: new Date(),
             createdAt: new Date(),
         });
+
     } catch (err) {
-        // Audit failure must never crash the main flow
-        logger.warn({ event: 'AUDIT_LOG_FAILED', message: err.message });
+        logger.warn({
+            event: 'AUDIT_LOG_FAILED',
+            message: err.message,
+        });
     }
 };
 
@@ -671,13 +688,32 @@ const handlers = {
     get_profile: async (user) => {
         const profile = await User.findOne({
             where: { id: user.id },
-            attributes: ['id', 'name', 'email', 'designation', 'department', 'joiningDate', 'employeeCode', 'managerId', 'role'],
+            attributes: [
+                'id',
+                'email',
+                'designation',
+                'department',
+                ['employee_code', 'employeeCode'],
+                ['manager_id', 'managerId'],
+                ['first_name', 'firstName'],
+                ['last_name', 'lastName'],
+                ['role_id', 'roleId'],
+            ],
         });
-        if (!profile) return { text: 'Profile not found.', data: null };
+
+        if (!profile) {
+            return {
+                text: 'Profile not found.',
+                data: null
+            };
+        }
 
         return {
-            text: `Profile: ${profile.name} — ${profile.designation}, ${profile.department}`,
-            data: { type: 'profile', profile },
+            text: `Profile: ${profile.firstName} ${profile.lastName} — ${profile.designation}, ${profile.department}`,
+            data: {
+                type: 'profile',
+                profile,
+            },
         };
     },
 
@@ -753,7 +789,15 @@ const handlers = {
     get_team_leaves: async (user, params) => {
         const leaves = await LeaveRequest.findAll({
             where: { managerId: user.id, status: params.status || 'Pending' },
-            include: [{ model: User, as: 'employee', attributes: ['name', 'designation'] }],
+            include: [{
+                model: User,
+                as: 'employee',
+                attributes: [
+                    'designation',
+                    ['first_name', 'firstName'],
+                    ['last_name', 'lastName']
+                ]
+            }],
             order: [['createdAt', 'ASC']],
         });
 
@@ -943,7 +987,7 @@ const handlers = {
     get_attrition_predictions: async (user) => {
         const teamMembers = await User.findAll({
             where: { managerId: user.id },
-            attributes: ['id', 'designation', 'department', 'joiningDate',
+            attributes: ['id', 'designation', 'department',
                 [Sequelize.literal("CONCAT(first_name, ' ', last_name)"), 'name']],
         });
         if (!teamMembers.length) return { text: 'No team members found.', data: null };
