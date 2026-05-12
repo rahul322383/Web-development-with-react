@@ -22,6 +22,7 @@
     "cloudinary": "^2.9.0",
     "compression": "^1.8.1",
     "cors": "^2.8.6",
+    "dayjs": "^1.11.20",
     "dotenv": "^16.6.1",
     "express": "^4.22.1",
     "express-rate-limit": "^7.5.1",
