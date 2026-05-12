@@ -7,40 +7,72 @@ module.exports = (sequelize, DataTypes) => {
         primaryKey: true,
         autoIncrement: true
       },
+
       userId: {
         type: DataTypes.BIGINT.UNSIGNED,
-        allowNull: false
+        allowNull: false,
+        field: 'user_id'
       },
+
       moduleName: {
         type: DataTypes.STRING(80),
-        allowNull: false
+        allowNull: false,
+        field: 'module_name'
       },
+
       actionType: {
-        type: DataTypes.ENUM('CREATE', 'UPDATE', 'DELETE', 'APPROVE'),
-        allowNull: false
+        type: DataTypes.ENUM(
+          'CREATE',
+          'UPDATE',
+          'DELETE',
+          'APPROVE',
+          'CHAT',
+          'VIEW',
+          'PROFILE_VIEW',
+          'LEAVE_APPLY',
+          'LEAVE_CANCEL',
+          'POLICY_SEARCH',
+          'AI_REQUEST'
+        ),
+        allowNull: false,
+        field: 'action_type'
       },
+
       oldData: {
         type: DataTypes.JSON,
-        allowNull: true
+        allowNull: true,
+        field: 'old_data'
       },
+
       newData: {
         type: DataTypes.JSON,
-        allowNull: true
+        allowNull: true,
+        field: 'new_data'
       },
+
       timestamp: {
         type: DataTypes.DATE,
         allowNull: false,
-        defaultValue: DataTypes.NOW
+        defaultValue: DataTypes.NOW,
+        field: 'timestamp'
       },
+
       ipAddress: {
         type: DataTypes.STRING(45),
-        allowNull: true
+        allowNull: true,
+        field: 'ip_address'
+      },
+
+      createdAt: {
+        type: DataTypes.DATE,
+        field: 'created_at'
       }
     },
     {
       tableName: 'audit_logs',
       paranoid: false,
       updatedAt: false,
+
       indexes: [
         { fields: ['user_id'] },
         { fields: ['module_name', 'action_type'] },
