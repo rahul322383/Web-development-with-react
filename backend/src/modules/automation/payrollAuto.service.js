@@ -4,22 +4,9 @@ const { Payroll, Attendance, LeaveRequest, User } = require('../../database/init
 const { Op } = require('sequelize');
 const sequelize = require('../../database/sequelize');
 const { notify, templates } = require('./notification.service');
-const logger = require('../../config/logger');
 
 const WORKING_DAYS_PER_MONTH = 26;
 
-/**
- * Calculate net salary for one employee for a given month/year.
- *
- * Formula:
- *   perDaySalary = baseSalary / WORKING_DAYS_PER_MONTH
- *   presentDays  = days with status in (present, late, half_day, on_leave)
- *   half_day     = 0.5 day
- *   on_leave     = full day (approved leave)
- *   absent       = deduction
- *   overtime     = overtimeMinutes / 60 * (perDaySalary / 8)  hourly rate
- *   lateDeduction= if late > 3 times → 0.5 day deduction per extra late
- */
 const calculateNetSalary = ({ baseSalary, attendanceRecords }) => {
     const perDay = Number(baseSalary) / WORKING_DAYS_PER_MONTH;
     const perHour = perDay / 8;
@@ -41,11 +28,11 @@ const calculateNetSalary = ({ baseSalary, attendanceRecords }) => {
                 effectiveDays += 0.5;
                 break;
             case 'on_leave':
-                effectiveDays += 1; // paid leave
+                effectiveDays += 1;
                 break;
             case 'absent':
             default:
-                break; // deduction by not counting
+                break;
         }
 
         if (rec.overtimeMinutes > 0) {
@@ -53,7 +40,6 @@ const calculateNetSalary = ({ baseSalary, attendanceRecords }) => {
         }
     }
 
-    // Late deduction: first 3 lates are free, after that 0.5 day each
     const latePenaltyDays = Math.max(0, lateCount - 3) * 0.5;
     effectiveDays -= latePenaltyDays;
 
@@ -69,14 +55,9 @@ const calculateNetSalary = ({ baseSalary, attendanceRecords }) => {
     };
 };
 
-/**
- * Auto-generate payroll for ALL active employees for a given month/year.
- * Skips employees who already have a Processed/Locked payroll for that period.
- * Creates Draft records — HR must review and lock.
- */
 const autoGeneratePayroll = async ({ month, year, actorId = null }) => {
     const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
-    const endDate = new Date(year, month, 0).toISOString().slice(0, 10); // last day
+    const endDate = new Date(year, month, 0).toISOString().slice(0, 10);
 
     const employees = await User.findAll({ where: { isActive: true } });
 
@@ -87,7 +68,6 @@ const autoGeneratePayroll = async ({ month, year, actorId = null }) => {
 
     for (const emp of employees) {
         try {
-            // Skip if payroll already exists and isn't a Draft
             const existing = await Payroll.findOne({
                 where: { employeeId: emp.id, month, year },
             });
@@ -97,7 +77,6 @@ const autoGeneratePayroll = async ({ month, year, actorId = null }) => {
                 continue;
             }
 
-            // Pull attendance for the month
             const attendanceRecords = await Attendance.findAll({
                 where: {
                     employeeId: emp.id,
@@ -125,7 +104,6 @@ const autoGeneratePayroll = async ({ month, year, actorId = null }) => {
             totalAmount += netSalary;
             generated++;
 
-            // Notify employee their payslip draft is ready
             const name = `${emp.firstName} ${emp.lastName}`;
             const tmpl = templates.salarySlip({ name, month, year, netSalary });
 
@@ -145,11 +123,8 @@ const autoGeneratePayroll = async ({ month, year, actorId = null }) => {
             });
         } catch (err) {
             errors.push({ employeeId: emp.id, error: err.message });
-            logger.error({ event: 'PAYROLL_AUTO_ERROR', employeeId: emp.id, error: err.message });
         }
     }
-
-    logger.info({ event: 'PAYROLL_AUTO_GENERATED', month, year, generated, skipped, totalAmount });
 
     return { success: true, generated, skipped, totalAmount, errors };
 };
