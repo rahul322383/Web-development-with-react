@@ -36,7 +36,7 @@ const envSchema = Joi.object({
   REDIS_PORT: Joi.number().required(),
   REDIS_PASSWORD: Joi.string().allow('').optional(),
   REDIS_DB: Joi.number().default(0),
-  OPENAI_API_KEY: Joi.number().default(0),
+  OPENAI_API_KEY: Joi.string().allow('').optional(),
 
   CORS_ORIGIN: Joi.string().required(),
 
