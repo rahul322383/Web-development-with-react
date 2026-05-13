@@ -1,27 +1,20 @@
 'use strict';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// IMPORTS
-// ─────────────────────────────────────────────────────────────────────────────
 const dayjs = require('dayjs');
 const { OpenAI } = require('openai');
 const { Op, Sequelize } = require('sequelize');
 
-const logger = require('../../config/logger');
 const {
     LeaveRequest,
     LeaveBalance,
     Payroll,
     User,
     Attendance,
-    AuditLog,       // ensure this model exists — see schema note at bottom
-    JobPosting,     // for recruitment AI
-    Candidate,      // for recruitment AI
+    AuditLog,
+    JobPosting,
+    Candidate,
 } = require('../../database/initModels');
 
-// ─────────────────────────────────────────────────────────────────────────────
-// GROQ CLIENT
-// ─────────────────────────────────────────────────────────────────────────────
 const groq = new OpenAI({
     apiKey: process.env.GROQ_API_KEY,
     baseURL: 'https://api.groq.com/openai/v1',
@@ -29,13 +22,7 @@ const groq = new OpenAI({
 
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SECURITY: ACTION WHITELIST  ← FIX #1
-// Only actions listed here will ever be dispatched, regardless of what the
-// LLM returns. A hallucinated "delete_all_users" action can never execute.
-// ─────────────────────────────────────────────────────────────────────────────
 const ALLOWED_ACTIONS = new Set([
-    // ── Employee ──────────────────────────────
     'get_leave_balance',
     'get_my_leaves',
     'apply_leave',
@@ -44,9 +31,7 @@ const ALLOWED_ACTIONS = new Set([
     'get_attendance',
     'get_holidays',
     'get_profile',
-    'get_monthly_summary',      // NEW: AI smart insights
-
-    // ── Manager ───────────────────────────────
+    'get_monthly_summary',
     'get_team_leaves',
     'approve_leave',
     'reject_leave',
@@ -54,24 +39,17 @@ const ALLOWED_ACTIONS = new Set([
     'get_late_employees',
     'get_burnout_report',
     'get_leave_predictions',
-    'get_attrition_predictions', // NEW: attrition AI
-    'get_performance_insights',  // NEW: performance AI
-
-    // ── Recruitment (HR/Admin) ─────────────────
-    'screen_resume',             // NEW
-    'rank_candidates',           // NEW
-    'generate_jd',               // NEW
-    'get_open_positions',        // NEW
-
-    // ── General ───────────────────────────────
+    'get_attrition_predictions',
+    'get_performance_insights',
+    'screen_resume',
+    'rank_candidates',
+    'generate_jd',
+    'get_open_positions',
     'general_answer',
     'clarify',
-    'policy_search',            // NEW: RAG over HR policy docs
+    'policy_search',
 ]);
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SECURITY: RBAC — which roles can call which action groups  ← FIX #2
-// ─────────────────────────────────────────────────────────────────────────────
 const MANAGER_ACTIONS = new Set([
     'get_team_leaves',
     'approve_leave',
@@ -98,12 +76,9 @@ const isAuthorised = (user, action) => {
     if (HR_ADMIN_ACTIONS.has(action)) {
         return ['Admin', 'HR'].includes(user.role);
     }
-    return true; // employee actions
+    return true;
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// LEAVE BALANCE FIELD MAP  ← FIX #3 (balanceKey was fragile)
-// ─────────────────────────────────────────────────────────────────────────────
 const LEAVE_BALANCE_MAP = {
     Sick: 'sickRemaining',
     Casual: 'casualRemaining',
@@ -111,24 +86,17 @@ const LEAVE_BALANCE_MAP = {
     Maternity: 'maternityRemaining',
     Paternity: 'paternityRemaining',
     Bereavement: 'bereavementRemaining',
-    Unpaid: null, // no cap — auto-approved
+    Unpaid: null,
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// DATES — dayjs everywhere  ← FIX #4
-// ─────────────────────────────────────────────────────────────────────────────
 const today = () => dayjs().format('YYYY-MM-DD');
 const tomorrow = () => dayjs().add(1, 'day').format('YYYY-MM-DD');
 const nDaysAgo = (n) => dayjs().subtract(n, 'day').toDate();
 const currentYear = () => dayjs().year();
 const currentMonth = () => dayjs().format('MMMM');
 
-// ─────────────────────────────────────────────────────────────────────────────
-// AUDIT LOG HELPER  ← NEW
-// ─────────────────────────────────────────────────────────────────────────────
 const writeAuditLog = async (userId, action, params, result) => {
     try {
-
         const ACTION_MAP = {
             get_profile: 'PROFILE_VIEW',
             apply_leave: 'LEAVE_APPLY',
@@ -140,30 +108,19 @@ const writeAuditLog = async (userId, action, params, result) => {
             userId,
             moduleName: 'AI',
             actionType: ACTION_MAP[action] || 'CHAT',
-
             newData: {
                 action,
                 params,
                 reply: result?.text,
             },
-
             timestamp: new Date(),
             createdAt: new Date(),
         });
-
     } catch (err) {
-        logger.warn({
-            event: 'AUDIT_LOG_FAILED',
-            message: err.message,
-        });
+        // silent
     }
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// IN-MEMORY POLICY STORE (replace with pgvector / Pinecone in production)
-// ─────────────────────────────────────────────────────────────────────────────
-// Each entry = { topic, content }. Loaded once at startup.
-// In production: embed each chunk → store in vector DB → cosine-search at query time.
 const HR_POLICY_CHUNKS = [
     {
         topic: 'leave policy',
@@ -205,9 +162,6 @@ const searchPolicy = (query) => {
     return scored.slice(0, 3).map(r => r.chunk.content).join('\n\n');
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SYSTEM PROMPT — updated with all new actions
-// ─────────────────────────────────────────────────────────────────────────────
 const buildSystemPrompt = (user) => `
 You are an intelligent HR Assistant embedded inside an HRMS application.
 Understand the employee's intent and return a structured JSON response.
@@ -273,9 +227,6 @@ Respond ONLY with valid JSON. No markdown, no code fences.
 7. Be concise, friendly, professional.
 `.trim();
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PARSE INTENT
-// ─────────────────────────────────────────────────────────────────────────────
 const parseIntent = async (user, userMessage, conversationHistory = []) => {
     if (!process.env.GROQ_API_KEY) {
         const err = new Error('GROQ_API_KEY is not configured');
@@ -317,9 +268,6 @@ const parseIntent = async (user, userMessage, conversationHistory = []) => {
     }
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PARAM VALIDATION
-// ─────────────────────────────────────────────────────────────────────────────
 const validateParams = (action, params = {}) => {
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -368,9 +316,6 @@ const validateParams = (action, params = {}) => {
     return { success: true };
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// UTILITIES
-// ─────────────────────────────────────────────────────────────────────────────
 const calculateWorkingDays = (startDate, endDate) => {
     let count = 0;
     let current = dayjs(startDate);
@@ -383,9 +328,6 @@ const calculateWorkingDays = (startDate, endDate) => {
     return count;
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// BURNOUT SCORE
-// ─────────────────────────────────────────────────────────────────────────────
 const calcBurnoutScore = (attendance, leaveHistory) => {
     let score = 0;
     const flags = [];
@@ -420,9 +362,6 @@ const calcBurnoutScore = (attendance, leaveHistory) => {
     return { score, risk, flags, attendancePct, lateCount };
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// LEAVE PREDICTION SCORE
-// ─────────────────────────────────────────────────────────────────────────────
 const calcLeavePrediction = (member, balance, leaveHistory, attendance) => {
     let score = 0;
     const reasons = [];
@@ -455,29 +394,22 @@ const calcLeavePrediction = (member, balance, leaveHistory, attendance) => {
     return { score, likelihood, reasons };
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ATTRITION SCORE  ← NEW
-// ─────────────────────────────────────────────────────────────────────────────
 const calcAttritionScore = (member, burnout, leaveHistory, balance) => {
     let score = 0;
     const reasons = [];
 
-    // High burnout = attrition risk
     if (burnout.score >= 60) { score += 35; reasons.push('High burnout score'); }
     else if (burnout.score >= 30) { score += 15; reasons.push('Medium burnout score'); }
 
-    // Tenure: newer employees with stress leave sooner
     const joiningDate = member.joiningDate ? dayjs(member.joiningDate) : null;
     const tenureMonths = joiningDate ? dayjs().diff(joiningDate, 'month') : 99;
     if (tenureMonths < 6 && burnout.score >= 30) {
         score += 20; reasons.push('Short tenure with stress signals');
     }
 
-    // Exhausted leave balance
     const remaining = balance?.remaining ?? 21;
     if (remaining === 0) { score += 15; reasons.push('Zero leave balance'); }
 
-    // Many rejected/cancelled leaves (frustration signal)
     const rejectedLeaves = leaveHistory.filter(l => l.status === 'Rejected').length;
     if (rejectedLeaves >= 2) { score += 20; reasons.push(`${rejectedLeaves} rejected leave requests`); }
 
@@ -486,9 +418,6 @@ const calcAttritionScore = (member, burnout, leaveHistory, balance) => {
     return { score, risk, reasons };
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// RESUME SKILL EXTRACTOR (lightweight keyword-based; swap for LLM call in prod)
-// ─────────────────────────────────────────────────────────────────────────────
 const TECH_KEYWORDS = [
     'node', 'react', 'python', 'java', 'aws', 'sql', 'mongodb', 'docker',
     'kubernetes', 'typescript', 'graphql', 'rest', 'api', 'redis', 'git',
@@ -511,12 +440,8 @@ const scoreResumeAgainstJD = (resumeText = '', jdText = '') => {
     return { score, matched, missing };
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// HANDLERS
-// ─────────────────────────────────────────────────────────────────────────────
 const handlers = {
 
-    // ── Leave balance ────────────────────────────────────────────────────────
     get_leave_balance: async (user) => {
         const balance = await LeaveBalance.findOne({
             where: { employeeId: user.id, year: currentYear() },
@@ -529,7 +454,6 @@ const handlers = {
         };
     },
 
-    // ── My leaves ────────────────────────────────────────────────────────────
     get_my_leaves: async (user, params) => {
         const where = { employeeId: user.id };
         if (params.status) where.status = params.status;
@@ -547,13 +471,11 @@ const handlers = {
         };
     },
 
-    // ── Apply leave ──────────────────────────────────────────────────────────
     apply_leave: async (user, params) => {
         const days = calculateWorkingDays(params.startDate, params.endDate);
         const leaveType = params.leaveType || 'Casual';
-        const balanceField = LEAVE_BALANCE_MAP[leaveType];  // ← FIX #3
+        const balanceField = LEAVE_BALANCE_MAP[leaveType];
 
-        // Check balance (skip for Unpaid — no cap)
         if (balanceField !== null) {
             const balance = await LeaveBalance.findOne({
                 where: { employeeId: user.id, year: currentYear() },
@@ -588,7 +510,6 @@ const handlers = {
         };
     },
 
-    // ── Cancel leave ─────────────────────────────────────────────────────────
     cancel_leave: async (user, params) => {
         const leave = await LeaveRequest.findOne({
             where: { id: params.leaveId, employeeId: user.id },
@@ -604,7 +525,6 @@ const handlers = {
         };
     },
 
-    // ── Payslip ──────────────────────────────────────────────────────────────
     get_payslip: async (user, params) => {
         const where = { employeeId: user.id };
         if (params.month) {
@@ -624,11 +544,9 @@ const handlers = {
         };
     },
 
-    // ── Attendance ───────────────────────────────────────────────────────────
     get_attendance: async (user, params) => {
         const days = params.days || 30;
 
-        // SQL aggregation for counts instead of in-memory filter  ← FIX #5
         const [records, summary] = await Promise.all([
             Attendance.findAll({
                 where: { employeeId: user.id, date: { [Op.gte]: nDaysAgo(days) } },
@@ -663,7 +581,6 @@ const handlers = {
         };
     },
 
-    // ── Holidays ─────────────────────────────────────────────────────────────
     get_holidays: async (_user, params) => {
         const year = params.year || currentYear();
         const all = [
@@ -684,7 +601,6 @@ const handlers = {
         };
     },
 
-    // ── Profile ──────────────────────────────────────────────────────────────
     get_profile: async (user) => {
         const profile = await User.findOne({
             where: { id: user.id },
@@ -702,22 +618,15 @@ const handlers = {
         });
 
         if (!profile) {
-            return {
-                text: 'Profile not found.',
-                data: null
-            };
+            return { text: 'Profile not found.', data: null };
         }
 
         return {
             text: `Profile: ${profile.firstName} ${profile.lastName} — ${profile.designation}, ${profile.department}`,
-            data: {
-                type: 'profile',
-                profile,
-            },
+            data: { type: 'profile', profile },
         };
     },
 
-    // ── Monthly AI summary  ← NEW ────────────────────────────────────────────
     get_monthly_summary: async (user) => {
         const daysInMonth = dayjs().daysInMonth();
 
@@ -750,7 +659,6 @@ const handlers = {
         const pct = total > 0 ? Math.round((present / total) * 100) : 0;
         const remaining = balance?.remaining ?? 0;
 
-        // Generate AI suggestions
         const suggestions = [];
         if (pct < 70) suggestions.push('⚠ Attendance dropped below 70% — HR review may be triggered.');
         if (late >= 3) suggestions.push(`⚠ You had ${late} late arrivals this month. Consider adjusting your schedule.`);
@@ -773,7 +681,6 @@ const handlers = {
         };
     },
 
-    // ── Policy search (RAG-lite)  ← NEW ─────────────────────────────────────
     policy_search: async (_user, params) => {
         const results = searchPolicy(params.query || '');
         if (!results) {
@@ -785,7 +692,6 @@ const handlers = {
         };
     },
 
-    // ── Team leaves ──────────────────────────────────────────────────────────
     get_team_leaves: async (user, params) => {
         const leaves = await LeaveRequest.findAll({
             where: { managerId: user.id, status: params.status || 'Pending' },
@@ -795,8 +701,8 @@ const handlers = {
                 attributes: [
                     'designation',
                     ['first_name', 'firstName'],
-                    ['last_name', 'lastName']
-                ]
+                    ['last_name', 'lastName'],
+                ],
             }],
             order: [['createdAt', 'ASC']],
         });
@@ -807,7 +713,6 @@ const handlers = {
         };
     },
 
-    // ── Approve leave ────────────────────────────────────────────────────────
     approve_leave: async (user, params) => {
         const leave = await LeaveRequest.findOne({ where: { id: params.leaveId, managerId: user.id } });
         if (!leave) return { text: `Leave ${params.leaveId} not found in your team.`, data: null };
@@ -820,7 +725,6 @@ const handlers = {
         };
     },
 
-    // ── Reject leave ─────────────────────────────────────────────────────────
     reject_leave: async (user, params) => {
         const leave = await LeaveRequest.findOne({ where: { id: params.leaveId, managerId: user.id } });
         if (!leave) return { text: `Leave ${params.leaveId} not found in your team.`, data: null };
@@ -838,7 +742,6 @@ const handlers = {
         };
     },
 
-    // ── Who on leave tomorrow ────────────────────────────────────────────────
     who_on_leave_tomorrow: async (user) => {
         const tmr = dayjs().add(1, 'day').startOf('day').toDate();
 
@@ -860,7 +763,6 @@ const handlers = {
         };
     },
 
-    // ── Late employees  (SQL aggregation)  ← FIX #5 ─────────────────────────
     get_late_employees: async (user, params) => {
         const days = params.days || 7;
 
@@ -872,7 +774,6 @@ const handlers = {
 
         const teamIds = teamMembers.map(m => m.id);
 
-        // Aggregate in SQL — much faster than loading all rows
         const lateCounts = await Attendance.findAll({
             attributes: [
                 'employeeId',
@@ -908,7 +809,6 @@ const handlers = {
         };
     },
 
-    // ── Burnout report  (SQL aggregation)  ← FIX #5 ─────────────────────────
     get_burnout_report: async (user) => {
         const teamMembers = await User.findAll({
             where: { managerId: user.id },
@@ -948,7 +848,6 @@ const handlers = {
         };
     },
 
-    // ── Leave predictions ────────────────────────────────────────────────────
     get_leave_predictions: async (user) => {
         const teamMembers = await User.findAll({
             where: { managerId: user.id },
@@ -983,7 +882,6 @@ const handlers = {
         };
     },
 
-    // ── Attrition predictions  ← NEW ─────────────────────────────────────────
     get_attrition_predictions: async (user) => {
         const teamMembers = await User.findAll({
             where: { managerId: user.id },
@@ -1018,7 +916,6 @@ const handlers = {
         };
     },
 
-    // ── Performance insights  ← NEW ──────────────────────────────────────────
     get_performance_insights: async (user) => {
         const teamMembers = await User.findAll({
             where: { managerId: user.id },
@@ -1029,7 +926,6 @@ const handlers = {
 
         const teamIds = teamMembers.map(m => m.id);
 
-        // SQL aggregation for attendance stats per employee
         const attendanceStats = await Attendance.findAll({
             attributes: [
                 'employeeId',
@@ -1044,7 +940,6 @@ const handlers = {
             raw: true,
         });
 
-        // Build per-employee stat map
         const statMap = {};
         for (const row of attendanceStats) {
             if (!statMap[row.employeeId]) statMap[row.employeeId] = {};
@@ -1080,7 +975,6 @@ const handlers = {
         };
     },
 
-    // ── Screen resume  ← NEW ─────────────────────────────────────────────────
     screen_resume: async (_user, params) => {
         const [candidate, job] = await Promise.all([
             Candidate.findByPk(params.candidateId),
@@ -1095,7 +989,6 @@ const handlers = {
             job.description || '',
         );
 
-        // Persist score
         await candidate.update({ fitScore: score, screenedAt: new Date(), screenedForJob: params.jobId });
 
         let verdict = 'Weak fit';
@@ -1108,7 +1001,6 @@ const handlers = {
         };
     },
 
-    // ── Rank candidates  ← NEW ──────────────────────────────────────────────
     rank_candidates: async (_user, params) => {
         const job = await JobPosting.findByPk(params.jobId);
         if (!job) return { text: `Job posting ${params.jobId} not found.`, data: null };
@@ -1133,13 +1025,11 @@ const handlers = {
         };
     },
 
-    // ── Generate JD  ← NEW ──────────────────────────────────────────────────
     generate_jd: async (_user, params) => {
         const requirements = Array.isArray(params.requirements)
             ? params.requirements.join(', ')
             : params.requirements || 'standard requirements for this role';
 
-        // Use Groq to generate the JD
         const response = await groq.chat.completions.create({
             model: GROQ_MODEL,
             messages: [{
@@ -1158,7 +1048,6 @@ const handlers = {
         };
     },
 
-    // ── Open positions  ← NEW ───────────────────────────────────────────────
     get_open_positions: async () => {
         const jobs = await JobPosting.findAll({
             where: { status: 'Open' },
@@ -1171,34 +1060,22 @@ const handlers = {
         };
     },
 
-    // ── General answer ───────────────────────────────────────────────────────
     general_answer: async (_u, _p, intent) => ({
         text: intent.reply || 'I can help with HR queries. Ask me about leave, payslip, attendance, or policies.',
         data: null,
     }),
 
-    // ── Clarify ──────────────────────────────────────────────────────────────
     clarify: async (_u, _p, intent) => ({
         text: intent.question || 'Could you provide more details?',
         data: null,
     }),
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MAIN CHAT FUNCTION
-// ─────────────────────────────────────────────────────────────────────────────
 const chat = async (user, message, history = []) => {
-    const startTime = Date.now();
-
     try {
-        // 1. Parse intent (with user context injected into system prompt)
         const intent = await parseIntent(user, message, history);
 
-        logger.info({ event: 'AI_INTENT', userId: user.id, action: intent.action, params: intent.params });
-
-        // 2. Security: whitelist check  ← FIX #1
         if (!ALLOWED_ACTIONS.has(intent.action)) {
-            logger.warn({ event: 'AI_INVALID_ACTION', userId: user.id, action: intent.action });
             return {
                 success: false,
                 reply: 'Invalid AI action detected. Please rephrase your request.',
@@ -1207,9 +1084,7 @@ const chat = async (user, message, history = []) => {
             };
         }
 
-        // 3. Security: RBAC check  ← FIX #2
         if (!isAuthorised(user, intent.action)) {
-            logger.warn({ event: 'AI_UNAUTHORISED', userId: user.id, action: intent.action, role: user.role });
             return {
                 success: false,
                 reply: 'You are not authorised to perform this action.',
@@ -1218,7 +1093,6 @@ const chat = async (user, message, history = []) => {
             };
         }
 
-        // 4. Param validation
         const validation = validateParams(intent.action, intent.params);
         if (!validation.success) {
             return {
@@ -1229,10 +1103,8 @@ const chat = async (user, message, history = []) => {
             };
         }
 
-        // 5. Dispatch to handler
         const handler = handlers[intent.action];
         if (!handler) {
-            logger.warn({ event: 'AI_HANDLER_NOT_FOUND', action: intent.action });
             return {
                 success: true,
                 reply: `I don't know how to handle "${intent.action}" yet.`,
@@ -1243,10 +1115,7 @@ const chat = async (user, message, history = []) => {
 
         const result = await handler(user, intent.params || {}, intent);
 
-        // 6. Audit log  ← NEW
         await writeAuditLog(user.id, intent.action, intent.params, result);
-
-        logger.info({ event: 'AI_SUCCESS', userId: user.id, action: intent.action, durationMs: Date.now() - startTime });
 
         return {
             success: true,
@@ -1256,15 +1125,6 @@ const chat = async (user, message, history = []) => {
         };
 
     } catch (error) {
-        // ── FIX #6: properly structured catch — dead code removed ────────────
-        logger.error({
-            event: 'AI_ERROR',
-            userId: user?.id,
-            message: error.message,
-            stack: error.stack,
-            code: error.code,
-        });
-
         if (error.code === 'CONFIG_ERROR') {
             return {
                 success: false,
