@@ -54,7 +54,7 @@ router.post('/', createJob);
 
 router.get('/jobs', listJobs);
 
-// router.get('/:id', getJob);
+router.get('/jobs/:id', getJob);
 
 router.patch('/:id', updateJob);
 
