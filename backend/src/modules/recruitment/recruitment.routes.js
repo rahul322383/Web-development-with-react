@@ -52,9 +52,9 @@ router.get('/stats', getStats);
 // Jobs
 router.post('/', createJob);
 
-router.get('/', listJobs);
+router.get('/jobs', listJobs);
 
-router.get('/:id', getJob);
+// router.get('/:id', getJob);
 
 router.patch('/:id', updateJob);
 
