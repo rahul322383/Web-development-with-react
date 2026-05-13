@@ -1,503 +1,1031 @@
+
+
 'use strict';
 
-const { Op } = require('sequelize');
-const { Attendance, User, Role } = require('../../database/initModels');
+const { Op, fn, col, literal } = require('sequelize');
+
+const {
+  Attendance,
+  User,
+} = require('../../database/initModels');
+
 const eventBus = require('../../utils/Eventbus');
 const logger = require('../../config/logger');
 
 // ─────────────────────────────────────────────────────────────
-// Constants (fallback defaults when no shift assigned)
+// DEFAULT SHIFT CONFIG
 // ─────────────────────────────────────────────────────────────
 
 const DEFAULT_SHIFT = {
   startTime: '09:00',
   endTime: '18:00',
   graceMins: 15,
+  fullDayMins: 8 * 60,
+  halfDayMins: 4 * 60,
 };
 
-const STANDARD_MINS = 9 * 60; // 9 hours
-
 // ─────────────────────────────────────────────────────────────
-// Helpers
+// HELPERS
 // ─────────────────────────────────────────────────────────────
 
-const toMins = (t) => {
-  const [h, m] = (t || '00:00').split(':').map(Number);
-  return h * 60 + m;
+const makeError = (message, statusCode = 400) => {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
 };
+
 const todayISO = () => {
-  return new Date().toLocaleDateString('en-CA');
+  return new Date().toISOString().slice(0, 10);
 };
-const makeError = (msg, code = 400) => {
-  const e = new Error(msg);
-  e.statusCode = code;
-  return e;
+
+const safeNumber = (value, fallback = 0) => {
+  const n = Number(value);
+  return Number.isNaN(n) ? fallback : n;
+};
+
+const toMinutes = (time) => {
+  if (!time) return 0;
+
+  const [h, m] = time.split(':').map(Number);
+
+  return (h * 60) + m;
+};
+
+const normalizeDate = (date) => {
+  return new Date(date).toISOString().slice(0, 10);
+};
+
+const getClientIp = (reqIp) => {
+  if (!reqIp) return null;
+
+  if (reqIp.includes(',')) {
+    return reqIp.split(',')[0].trim();
+  }
+
+  return reqIp;
 };
 
 // ─────────────────────────────────────────────────────────────
-// Resolve employee's shift (with fallback to defaults)
+// SHIFT RESOLVER
 // ─────────────────────────────────────────────────────────────
 
 const resolveShift = async (employeeId) => {
   try {
     const user = await User.findByPk(employeeId, {
-      include: [{ association: 'shift', required: false }],
+      include: [
+        {
+          association: 'shift',
+          required: false,
+        },
+      ],
     });
 
     const shift = user?.shift;
-    if (!shift) return DEFAULT_SHIFT;
+
+    if (!shift) {
+      return DEFAULT_SHIFT;
+    }
 
     return {
-      startTime: shift.startTime ?? DEFAULT_SHIFT.startTime,
-      endTime: shift.endTime ?? DEFAULT_SHIFT.endTime,
+      startTime: shift.startTime || DEFAULT_SHIFT.startTime,
+      endTime: shift.endTime || DEFAULT_SHIFT.endTime,
       graceMins: shift.graceMins ?? DEFAULT_SHIFT.graceMins,
+      fullDayMins: shift.fullDayMins || DEFAULT_SHIFT.fullDayMins,
+      halfDayMins: shift.halfDayMins || DEFAULT_SHIFT.halfDayMins,
     };
-  } catch {
+  } catch (err) {
+    logger.error({
+      event: 'SHIFT_RESOLVE_ERROR',
+      employeeId,
+      error: err.message,
+    });
+
     return DEFAULT_SHIFT;
   }
 };
 
 // ─────────────────────────────────────────────────────────────
-// Metrics calculation (shift-aware)
+// ATTENDANCE METRICS
 // ─────────────────────────────────────────────────────────────
 
-const calcMetricsWithShift = (checkInTime, checkOutTime, shift) => {
-  const cinM = toMins(checkInTime);
-  const coutM = toMins(checkOutTime);
+const calcMetricsWithShift = ({
+  checkIn,
+  checkOut,
+  shift,
+}) => {
 
-  let workedMinutes;
-  if (coutM < cinM) {
-    // overnight shift
-    workedMinutes = (1440 - cinM) + coutM;
-  } else {
-    workedMinutes = coutM - cinM;
+  if (!checkIn || !checkOut) {
+    return {
+      workedMinutes: 0,
+      overtimeMinutes: 0,
+      lateMinutes: 0,
+      isLate: false,
+      hasOvertime: false,
+      status: 'absent',
+    };
   }
 
-  const shiftStartM = toMins(shift.startTime);
-  const shiftEndM = toMins(shift.endTime);
-  const standardM = shiftEndM - shiftStartM;
+  const cin = toMinutes(checkIn);
+  const cout = toMinutes(checkOut);
 
-  // const workedMinutes = coutM - cinM;
-  const isLate = cinM > shiftStartM + (shift.graceMins ?? 15);
-  const lateMinutes = isLate ? cinM - shiftStartM : 0;
-  const overtimeMinutes = Math.max(0, workedMinutes - standardM);
+  let workedMinutes;
+
+  // overnight support
+  if (cout < cin) {
+    workedMinutes = (1440 - cin) + cout;
+  } else {
+    workedMinutes = cout - cin;
+  }
+
+  workedMinutes = Math.max(0, workedMinutes);
+
+  const shiftStart = toMinutes(shift.startTime);
+
+  const graceEnd = shiftStart + shift.graceMins;
+
+  const isLate = cin > graceEnd;
+
+  // FIXED LATE CALCULATION
+  const lateMinutes = isLate
+    ? cin - graceEnd
+    : 0;
+
+  const overtimeMinutes = Math.max(
+    0,
+    workedMinutes - shift.fullDayMins
+  );
+
   const hasOvertime = overtimeMinutes > 0;
 
-  let status;
-  if (workedMinutes < standardM / 2) status = 'half_day';
-  else if (isLate) status = 'late';
-  else status = 'present';
+  let status = 'absent';
 
-  return { workedMinutes, isLate, lateMinutes, overtimeMinutes, hasOvertime, status };
+  if (workedMinutes >= shift.fullDayMins) {
+    status = isLate ? 'late' : 'present';
+  } else if (workedMinutes >= shift.halfDayMins) {
+    status = 'half_day';
+  }
+
+  return {
+    workedMinutes,
+    overtimeMinutes,
+    lateMinutes,
+    isLate,
+    hasOvertime,
+    status,
+  };
 };
 
-// Legacy wrapper (for adminRecord which doesn't need shift lookup)
-const calcMetrics = (checkInTime, checkOutTime) =>
-  calcMetricsWithShift(checkInTime, checkOutTime, DEFAULT_SHIFT);
-
 // ─────────────────────────────────────────────────────────────
-// Fetch manager + HR + admin IDs for notifications
+// NOTIFICATION HELPERS
 // ─────────────────────────────────────────────────────────────
 
 const getNotifyTargets = async (employeeId) => {
   try {
+
     const employee = await User.findByPk(employeeId, {
-      attributes: ['id', 'firstName', 'lastName', 'managerId'],
-      include: [{ association: 'role', attributes: ['name'], required: false }],
+      attributes: [
+        'id',
+        'firstName',
+        'lastName',
+        'managerId',
+      ],
+      include: [
+        {
+          association: 'role',
+          attributes: ['name'],
+          required: false,
+        },
+      ],
     });
 
-    if (!employee) return { employee: null, managerIds: [], hrAdminIds: [] };
+    if (!employee) {
+      return {
+        employee: null,
+        managerIds: [],
+        hrAdminIds: [],
+      };
+    }
 
-    // HR and Admin users
     const hrAdmins = await User.findAll({
-      include: [{
-        association: 'role',
-        where: { name: ['HR', 'Admin'] },
-        required: true,
-        attributes: ['name'],
-      }],
-      where: { isActive: true },
+      where: {
+        isActive: true,
+      },
+
+      include: [
+        {
+          association: 'role',
+          required: true,
+          where: {
+            name: ['Admin', 'HR'],
+          },
+        },
+      ],
+
       attributes: ['id'],
     });
 
-    const hrAdminIds = hrAdmins.map(u => u.id).filter(id => id !== employeeId);
+    const hrAdminIds = hrAdmins
+      .map(u => u.id)
+      .filter(id => id !== employeeId);
+
     const managerIds = employee.managerId
-      ? [employee.managerId].filter(id => !hrAdminIds.includes(id))
+      ? [employee.managerId]
       : [];
 
-    return { employee, managerIds, hrAdminIds };
-  } catch (err) {
-    logger.error({ event: 'GET_NOTIFY_TARGETS_ERROR', employeeId, error: err.message });
-    return { employee: null, managerIds: [], hrAdminIds: [] };
-  }
-};
-
-// ─────────────────────────────────────────────────────────────
-// Emit late check-in event to all relevant parties
-// ─────────────────────────────────────────────────────────────
-
-const emitLateCheckIn = async ({ employeeId, date, lateMinutes, checkInTime }) => {
-  try {
-    const { employee, managerIds, hrAdminIds } = await getNotifyTargets(employeeId);
-    if (!employee) return;
-
-    const employeeName = `${employee.firstName} ${employee.lastName}`.trim();
-
-    // 1. Notify the employee themselves
-    eventBus.emit('ATTENDANCE_CHECKED_IN_LATE', {
-      employeeId,
-      date,
-      lateMinutes,
-    });
-
-    // 2. Notify manager
-    for (const managerId of managerIds) {
-      eventBus.emit('SEND_NOTIFICATION', {
-        userId: managerId,
-        payload: {
-          type: 'TEAM_LATE_CHECKIN',
-          title: 'Team Member Late Check-In',
-          message: `${employeeName} checked in at ${checkInTime} — ${lateMinutes} min late.`,
-          employeeId,
-          date,
-          lateMinutes,
-          checkInTime,
-        },
-      });
-    }
-
-    // 3. Notify HR + Admin
-    for (const adminId of hrAdminIds) {
-      eventBus.emit('SEND_NOTIFICATION', {
-        userId: adminId,
-        payload: {
-          type: 'TEAM_LATE_CHECKIN',
-          title: 'Late Attendance Alert',
-          message: `${employeeName} was ${lateMinutes} min late on ${date}.`,
-          employeeId,
-          date,
-          lateMinutes,
-          checkInTime,
-        },
-      });
-    }
-  } catch (err) {
-    logger.error({ event: 'EMIT_LATE_CHECKIN_ERROR', employeeId, error: err.message });
-  }
-};
-
-// ─────────────────────────────────────────────────────────────
-// Emit checkout summary to manager/HR/admin (overtime / early)
-// ─────────────────────────────────────────────────────────────
-
-const emitCheckOutSummary = async ({
-  employeeId,
-  date,
-  checkOutTime,
-  workedMinutes,
-  overtimeMinutes,
-  status,
-}) => {
-  try {
-    const { employee, managerIds, hrAdminIds } = await getNotifyTargets(employeeId);
-    if (!employee) return;
-
-    const employeeName = `${employee.firstName} ${employee.lastName}`.trim();
-    const workedHours = (workedMinutes / 60).toFixed(1);
-    const otHours = (overtimeMinutes / 60).toFixed(1);
-
-    const isEarlyExit = status === 'half_day';
-    const hasOvertime = overtimeMinutes > 0;
-
-    // Only notify supervisor on half-day (early exit) or overtime
-    if (!isEarlyExit && !hasOvertime) return;
-
-    const title = isEarlyExit
-      ? `Early Exit — ${employeeName}`
-      : `Overtime Recorded — ${employeeName}`;
-
-    const message = isEarlyExit
-      ? `${employeeName} checked out at ${checkOutTime} after only ${workedHours}h on ${date}.`
-      : `${employeeName} worked ${workedHours}h (${otHours}h overtime) on ${date}.`;
-
-    const payload = {
-      type: isEarlyExit ? 'TEAM_EARLY_EXIT' : 'TEAM_OVERTIME',
-      title,
-      message,
-      employeeId,
-      date,
-      checkOutTime,
-      workedMinutes,
-      overtimeMinutes,
-      status,
+    return {
+      employee,
+      managerIds,
+      hrAdminIds,
     };
 
-    for (const id of [...managerIds, ...hrAdminIds]) {
-      eventBus.emit('SEND_NOTIFICATION', { userId: id, payload });
-    }
   } catch (err) {
-    logger.error({ event: 'EMIT_CHECKOUT_SUMMARY_ERROR', employeeId, error: err.message });
+
+    logger.error({
+      event: 'NOTIFY_TARGET_ERROR',
+      employeeId,
+      error: err.message,
+    });
+
+    return {
+      employee: null,
+      managerIds: [],
+      hrAdminIds: [],
+    };
   }
 };
 
+// ─────────────────────────────────────────────────────────────
+// CHECK IN
+// ─────────────────────────────────────────────────────────────
 
-const checkIn = async ({ employeeId, checkInTime, ip }) => {
-  if (!employeeId) throw makeError('employeeId is required.', 500);
+const checkIn = async ({
+  employeeId,
+  checkInTime,
+  ip,
+}) => {
+
+  if (!employeeId) {
+    throw makeError('employeeId is required.', 400);
+  }
+
+  if (!checkInTime) {
+    throw makeError('checkInTime is required.', 400);
+  }
 
   const user = await User.findByPk(employeeId);
-  if (!user) throw makeError('User not found.', 404);
 
-  const companyId = user.companyId; // ✅ FIX
+  if (!user) {
+    throw makeError('Employee not found.', 404);
+  }
+
+  if (!user.companyId) {
+    throw makeError(
+      'Employee company assignment missing.',
+      400
+    );
+  }
+
+  const companyId = user.companyId;
 
   const date = todayISO();
 
+  // PREVENT DUPLICATES
   const existing = await Attendance.findOne({
-    where: { employeeId, companyId, date },
+    where: {
+      employeeId,
+      date,
+    },
   });
 
   if (existing?.checkIn) {
-    throw makeError('Already checked in today.', 409);
+    throw makeError(
+      'Already checked in today.',
+      409
+    );
   }
 
   const shift = await resolveShift(employeeId);
 
-  const shiftStartM = toMins(shift.startTime);
-  const cinM = toMins(checkInTime);
+  const cin = toMinutes(checkInTime);
 
-  const grace = shift.graceMins ?? 15;
+  const shiftStart = toMinutes(shift.startTime);
 
-  const isLate = cinM > shiftStartM + grace;
-  const lateMinutes = isLate ? cinM - shiftStartM : 0;
+  const graceEnd = shiftStart + shift.graceMins;
+
+  const isLate = cin > graceEnd;
+
+  // FIXED LATE CALCULATION
+  const lateMinutes = isLate
+    ? cin - graceEnd
+    : 0;
 
   const payload = {
     employeeId,
-    companyId, // ✅ MUST INCLUDE
+    companyId,
     date,
+
     checkIn: checkInTime,
-    checkInIp: ip || null,
+
+    checkInIp: getClientIp(ip),
+
     isLate,
     lateMinutes,
-    status: isLate ? 'late' : 'present',
+
+    status: isLate
+      ? 'late'
+      : 'present',
   };
 
-  let record;
+  let attendance;
 
   if (existing) {
+
     await existing.update(payload);
-    record = await existing.reload();
+
+    attendance = await existing.reload();
+
   } else {
-    record = await Attendance.create(payload);
+
+    attendance = await Attendance.create(payload);
   }
 
-  // 🔔 async notification (non-blocking)
+  // notifications
   if (isLate) {
-    emitLateCheckIn({
-      employeeId,
-      date,
-      lateMinutes,
-      checkInTime,
-    }).catch(() => { });
+
+    eventBus.emit(
+      'ATTENDANCE_LATE',
+      {
+        employeeId,
+        lateMinutes,
+        date,
+      }
+    );
   }
 
-  return record;
+  return attendance;
 };
 
 // ─────────────────────────────────────────────────────────────
 // CHECK OUT
 // ─────────────────────────────────────────────────────────────
 
-const checkOut = async ({ employeeId, checkOutTime, ip }) => {
-  if (!employeeId) throw makeError('employeeId is required.', 500);
+const checkOut = async ({
+  employeeId,
+  checkOutTime,
+  ip,
+}) => {
+
+  if (!employeeId) {
+    throw makeError('employeeId is required.', 400);
+  }
+
+  if (!checkOutTime) {
+    throw makeError('checkOutTime is required.', 400);
+  }
 
   const date = todayISO();
-  const record = await Attendance.findOne({ where: { employeeId, date } });
 
-  if (!record) throw makeError('No check-in record found for today.', 404);
-  if (!record.checkIn) throw makeError('Cannot check out without checking in first.', 400);
-  if (record.checkOut) throw makeError('Already checked out today.', 409);
+  const attendance = await Attendance.findOne({
+    where: {
+      employeeId,
+      date,
+    },
+  });
+
+  if (!attendance) {
+    throw makeError(
+      'Attendance not found.',
+      404
+    );
+  }
+
+  if (!attendance.checkIn) {
+    throw makeError(
+      'Check-in missing.',
+      400
+    );
+  }
+
+  if (attendance.checkOut) {
+    throw makeError(
+      'Already checked out.',
+      409
+    );
+  }
 
   const shift = await resolveShift(employeeId);
-  const metrics = calcMetricsWithShift(record.checkIn, checkOutTime, shift);
 
-  await record.update({ checkOut: checkOutTime, checkOutIp: ip || null, ...metrics });
-  await record.reload();
+  const metrics = calcMetricsWithShift({
+    checkIn: attendance.checkIn,
+    checkOut: checkOutTime,
+    shift,
+  });
 
-  // Fire checkout summary notifications non-blocking
-  emitCheckOutSummary({
-    employeeId,
-    date,
-    checkOutTime,
+  await attendance.update({
+
+    checkOut: checkOutTime,
+
+    checkOutIp: getClientIp(ip),
+
     workedMinutes: metrics.workedMinutes,
-    overtimeMinutes: metrics.overtimeMinutes,
-    status: metrics.status,
-  }).catch(() => { });
 
-  return record;
+    overtimeMinutes: metrics.overtimeMinutes,
+
+    lateMinutes: metrics.lateMinutes,
+
+    isLate: metrics.isLate,
+
+    hasOvertime: metrics.hasOvertime,
+
+    status: metrics.status,
+  });
+
+  return attendance.reload();
 };
 
 // ─────────────────────────────────────────────────────────────
 // ADMIN MANUAL RECORD
 // ─────────────────────────────────────────────────────────────
 
-const adminRecord = async ({ employeeId, date, checkIn: ci, checkOut: co, status, notes, approvedBy }) => {
-  const metrics = ci && co ? calcMetrics(ci, co) : {};
-  const finalStatus = status || metrics.status || 'absent';
+const adminRecord = async ({
+  employeeId,
+  date,
+  checkIn,
+  checkOut,
+  notes,
+  approvedBy,
+}) => {
 
-  const [record, created] = await Attendance.upsert({
+  const user = await User.findByPk(employeeId);
+
+  if (!user) {
+    throw makeError(
+      'Employee not found.',
+      404
+    );
+  }
+
+  const shift = await resolveShift(employeeId);
+
+  const metrics = (
+    checkIn && checkOut
+  )
+    ? calcMetricsWithShift({
+      checkIn,
+      checkOut,
+      shift,
+    })
+    : {
+      status: 'absent',
+    };
+
+  const payload = {
+
     employeeId,
-    companyId,
-    date,
-    checkIn: ci || null,
-    checkOut: co || null,
+
+    companyId: user.companyId,
+
+    date: normalizeDate(date),
+
+    checkIn: checkIn || null,
+
+    checkOut: checkOut || null,
+
     notes: notes || null,
+
     approvedBy: approvedBy || null,
-    status: finalStatus,
-    ...metrics,
-  }, { returning: true });
 
-  return { record, created };
-};
+    workedMinutes:
+      metrics.workedMinutes || 0,
 
-// ─────────────────────────────────────────────────────────────
-// READ FUNCTIONS (unchanged from original)
-// ─────────────────────────────────────────────────────────────
+    overtimeMinutes:
+      metrics.overtimeMinutes || 0,
 
-const getTodaySummary = async () => {
-  const date = todayISO();
-  const records = await Attendance.findAll({
-    where: { date },
-    include: [{
-      model: User,
-      as: 'employee',
-      attributes: ['id', 'first_name', 'last_name', 'email'],
-    }],
-  });
+    lateMinutes:
+      metrics.lateMinutes || 0,
 
-  const summary = { present: 0, late: 0, absent: 0, half_day: 0, on_leave: 0, holiday: 0 };
-  records.forEach(r => { if (summary[r.status] !== undefined) summary[r.status]++; });
+    isLate:
+      metrics.isLate || false,
 
-  return { date, summary, records };
-};
+    hasOvertime:
+      metrics.hasOvertime || false,
 
-const getMyAttendance = async ({ employeeId, startDate, endDate, page = 1, limit = 20 }) => {
-  if (!employeeId) throw makeError('employeeId is required.', 500);
-
-  const where = { employeeId };
-  if (startDate || endDate) {
-    where.date = {};
-    if (startDate) where.date[Op.gte] = startDate;
-    if (endDate) where.date[Op.lte] = endDate;
-  }
-
-  const offset = (Number(page) - 1) * Number(limit);
-  const { count, rows } = await Attendance.findAndCountAll({
-    where,
-    order: [['date', 'DESC']],
-    limit: Number(limit),
-    offset,
-  });
-
-  const stats = {
-    totalPresent: rows.filter(r => r.status === 'present').length,
-    totalLate: rows.filter(r => r.status === 'late').length,
-    totalAbsent: rows.filter(r => r.status === 'absent').length,
-    totalOvertimeMinutes: rows.reduce((s, r) => s + (r.overtimeMinutes || 0), 0),
-    totalWorkedMinutes: rows.reduce((s, r) => s + (r.workedMinutes || 0), 0),
+    status:
+      metrics.status || 'absent',
   };
 
-  return {
-    meta: { count, page: Number(page), limit: Number(limit), totalPages: Math.ceil(count / limit) },
-    stats,
-    records: rows,
-  };
-};
-
-const getTeamReport = async ({ startDate, endDate, employeeId, status, page = 1, limit = 50 }) => {
-  const where = {};
-  if (employeeId) where.employeeId = Number(employeeId);
-  if (status) where.status = status;
-  if (startDate || endDate) {
-    where.date = {};
-    if (startDate) where.date[Op.gte] = startDate;
-    if (endDate) where.date[Op.lte] = endDate;
-  }
-
-  const offset = (Number(page) - 1) * Number(limit);
-  const { count, rows } = await Attendance.findAndCountAll({
-    where,
-    include: [{
-      model: User,
-      as: 'employee',
-      attributes: ['id', 'first_name', 'last_name', 'email'],
-    }],
-    order: [['date', 'DESC']],
-    limit: Number(limit),
-    offset,
-  });
-
-  return {
-    meta: { count, page: Number(page), limit: Number(limit), totalPages: Math.ceil(count / limit) },
-    records: rows,
-  };
-};
-
-const getOvertimeSummary = async ({ employeeId, month, year }) => {
-  const mm = String(month).padStart(2, '0');
-  const startDate = `${year}-${mm}-01`;
-  const endDate = new Date(year, Number(month), 0).toISOString().slice(0, 10);
-
-  const records = await Attendance.findAll({
+  const existing = await Attendance.findOne({
     where: {
-      employeeId: Number(employeeId),
-      date: { [Op.between]: [startDate, endDate] },
-      hasOvertime: true,
+      employeeId,
+      date: payload.date,
     },
   });
 
-  const totalOvertimeMinutes = records.reduce((s, r) => s + (r.overtimeMinutes || 0), 0);
+  let record;
 
-  return {
-    employeeId: Number(employeeId),
-    month: Number(month),
-    year: Number(year),
-    overtimeDays: records.length,
-    totalOvertimeMinutes,
-    totalOvertimeHours: +(totalOvertimeMinutes / 60).toFixed(2),
-    records,
-  };
-};
+  if (existing) {
 
-const getById = async (id) => {
-  const record = await Attendance.findByPk(id, {
-    include: [
-      { model: User, as: 'employee', attributes: ['id', 'first_name', 'last_name', 'email'] },
-      { model: User, as: 'approver', attributes: ['id', 'first_name', 'last_name'] },
-    ],
-  });
+    await existing.update(payload);
 
-  if (!record) throw makeError('Attendance record not found.', 404);
+    record = await existing.reload();
+
+  } else {
+
+    record = await Attendance.create(payload);
+  }
+
   return record;
 };
 
 // ─────────────────────────────────────────────────────────────
-// Exports
+// TODAY SUMMARY
+// ─────────────────────────────────────────────────────────────
+
+const getTodaySummary = async () => {
+
+  const date = todayISO();
+
+  const records = await Attendance.findAll({
+
+    where: { date },
+
+    include: [
+      {
+        model: User,
+        as: 'employee',
+
+        attributes: [
+          'id',
+          'first_name',
+          'last_name',
+          'email',
+        ],
+      },
+    ],
+  });
+
+  const summary = {
+    present: 0,
+    late: 0,
+    absent: 0,
+    half_day: 0,
+  };
+
+  records.forEach((r) => {
+
+    if (summary[r.status] !== undefined) {
+      summary[r.status]++;
+    }
+  });
+
+  return {
+    date,
+    summary,
+    records,
+  };
+};
+
+// ─────────────────────────────────────────────────────────────
+// MY ATTENDANCE
 // ─────────────────────────────────────────────────────────────
 
 
 
+const getMyAttendance = async ({
+  employeeId,
+  startDate,
+  endDate,
+  page = 1,
+  limit = 20,
+}) => {
 
+  // =========================
+  // VALIDATION
+  // =========================
 
+  if (!employeeId) {
+    throw makeError(
+      'employeeId is required.',
+      400
+    );
+  }
 
+  page = Math.max(
+    safeNumber(page, 1),
+    1
+  );
+
+  limit = Math.min(
+    Math.max(safeNumber(limit, 20), 1),
+    100
+  );
+
+  const offset = (page - 1) * limit;
+
+  // =========================
+  // WHERE CONDITION
+  // =========================
+
+  const where = {
+    employee_id: employeeId,
+  };
+
+  if (startDate || endDate) {
+
+    where.date = {};
+
+    if (startDate) {
+      where.date[Op.gte] =
+        normalizeDate(startDate);
+    }
+
+    if (endDate) {
+      where.date[Op.lte] =
+        normalizeDate(endDate);
+    }
+  }
+
+  // =========================
+  // FETCH RECORDS
+  // =========================
+
+  const { count, rows } =
+    await Attendance.findAndCountAll({
+
+      where,
+
+      limit,
+      offset,
+
+      order: [['date', 'DESC']],
+    });
+
+  // =========================
+  // FETCH STATS
+  // =========================
+
+  const stats =
+    await Attendance.findOne({
+
+      where,
+
+      attributes: [
+
+        [
+          fn(
+            'SUM',
+            literal(`
+              CASE
+                WHEN status = 'present'
+                THEN 1
+                ELSE 0
+              END
+            `)
+          ),
+          'present',
+        ],
+
+        [
+          fn(
+            'SUM',
+            literal(`
+              CASE
+                WHEN status = 'late'
+                THEN 1
+                ELSE 0
+              END
+            `)
+          ),
+          'late',
+        ],
+
+        [
+          fn(
+            'SUM',
+            literal(`
+              CASE
+                WHEN status = 'half_day'
+                THEN 1
+                ELSE 0
+              END
+            `)
+          ),
+          'halfDay',
+        ],
+
+        [
+          fn(
+            'SUM',
+            literal(`
+              CASE
+                WHEN status = 'absent'
+                THEN 1
+                ELSE 0
+              END
+            `)
+          ),
+          'absent',
+        ],
+
+        [
+          fn(
+            'SUM',
+            col('worked_minutes')
+          ),
+          'workedMinutes',
+        ],
+
+        [
+          fn(
+            'SUM',
+            col('overtime_minutes')
+          ),
+          'overtimeMinutes',
+        ],
+
+        [
+          fn(
+            'SUM',
+            col('late_minutes')
+          ),
+          'lateMinutes',
+        ],
+      ],
+
+      raw: true,
+    });
+
+  // =========================
+  // RESPONSE
+  // =========================
+
+  return {
+
+    meta: {
+
+      totalRecords: count,
+
+      currentPage: page,
+
+      limit,
+
+      totalPages:
+        Math.ceil(count / limit),
+    },
+
+    stats: {
+
+      present:
+        Number(stats?.present || 0),
+
+      late:
+        Number(stats?.late || 0),
+
+      halfDay:
+        Number(stats?.halfDay || 0),
+
+      absent:
+        Number(stats?.absent || 0),
+
+      workedMinutes:
+        Number(stats?.workedMinutes || 0),
+
+      overtimeMinutes:
+        Number(stats?.overtimeMinutes || 0),
+
+      lateMinutes:
+        Number(stats?.lateMinutes || 0),
+    },
+
+    records: rows,
+  };
+};
+
+// ─────────────────────────────────────────────────────────────
+// TEAM REPORT
+// ─────────────────────────────────────────────────────────────
+
+const getTeamReport = async ({
+  startDate,
+  endDate,
+  employeeId,
+  status,
+  page = 1,
+  limit = 50,
+}) => {
+
+  page = Math.max(
+    safeNumber(page, 1),
+    1
+  );
+
+  limit = Math.min(
+    Math.max(safeNumber(limit, 50), 1),
+    100
+  );
+
+  const offset = (page - 1) * limit;
+
+  const where = {};
+
+  if (employeeId) {
+    where.employeeId =
+      Number(employeeId);
+  }
+
+  if (status) {
+    where.status = status;
+  }
+
+  if (startDate || endDate) {
+
+    where.date = {};
+
+    if (startDate) {
+      where.date[Op.gte] =
+        normalizeDate(startDate);
+    }
+
+    if (endDate) {
+      where.date[Op.lte] =
+        normalizeDate(endDate);
+    }
+  }
+
+  const { count, rows } =
+    await Attendance.findAndCountAll({
+
+      where,
+
+      limit,
+      offset,
+
+      order: [['date', 'DESC']],
+
+      include: [
+        {
+          model: User,
+          as: 'employee',
+
+          attributes: [
+            'id',
+            'first_name',
+            'last_name',
+            'email',
+          ],
+        },
+      ],
+    });
+
+  return {
+    meta: {
+      count,
+      page,
+      limit,
+      totalPages:
+        Math.ceil(count / limit),
+    },
+    records: rows,
+  };
+};
+
+// ─────────────────────────────────────────────────────────────
+// OVERTIME SUMMARY
+// ─────────────────────────────────────────────────────────────
+
+const getOvertimeSummary = async ({
+  employeeId,
+  month,
+  year,
+}) => {
+
+  const mm =
+    String(month).padStart(2, '0');
+
+  const startDate =
+    `${year}-${mm}-01`;
+
+  const endDate = new Date(
+    year,
+    Number(month),
+    0
+  )
+    .toISOString()
+    .slice(0, 10);
+
+  const records =
+    await Attendance.findAll({
+
+      where: {
+
+        employeeId,
+
+        hasOvertime: true,
+
+        date: {
+          [Op.between]: [
+            startDate,
+            endDate,
+          ],
+        },
+      },
+    });
+
+  const totalMinutes =
+    records.reduce(
+      (sum, r) =>
+        sum + (r.overtimeMinutes || 0),
+      0
+    );
+
+  return {
+
+    employeeId,
+
+    month,
+
+    year,
+
+    overtimeDays:
+      records.length,
+
+    totalOvertimeMinutes:
+      totalMinutes,
+
+    totalOvertimeHours:
+      +(totalMinutes / 60).toFixed(2),
+
+    records,
+  };
+};
+
+// ─────────────────────────────────────────────────────────────
+// GET BY ID
+// ─────────────────────────────────────────────────────────────
+
+const getById = async (id) => {
+
+  const record =
+    await Attendance.findByPk(id, {
+
+      include: [
+
+        {
+          model: User,
+          as: 'employee',
+
+          attributes: [
+            'id',
+            'first_name',
+            'last_name',
+            'email',
+          ],
+        },
+
+        {
+          model: User,
+          as: 'approver',
+
+          attributes: [
+            'id',
+            'first_name',
+            'last_name',
+          ],
+        },
+      ],
+    });
+
+  if (!record) {
+    throw makeError(
+      'Attendance not found.',
+      404
+    );
+  }
+
+  return record;
+};
+
+// ─────────────────────────────────────────────────────────────
+// EXPORTS
+// ─────────────────────────────────────────────────────────────
 
 module.exports = {
+
   checkIn,
+
   checkOut,
+
   adminRecord,
+
   getTodaySummary,
+
   getMyAttendance,
+
   getTeamReport,
-  getById,
+
   getOvertimeSummary,
-  calcMetrics,
+
+  getById,
+
   calcMetricsWithShift,
 };
