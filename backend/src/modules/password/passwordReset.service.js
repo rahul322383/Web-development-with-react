@@ -5,20 +5,15 @@ const bcrypt = require('bcrypt');
 const repo = require('./passwordReset.repository');
 const { sequelize } = require('../../database/initModels');
 const { sendMail } = require('../../utils/mailer');
-const logger = require('../../config/logger');
 const env = require('../../config/env');
-
-// ─── FORGOT PASSWORD ─────────────────────────────────────────────────────────
 
 const forgotPassword = async (email) => {
     try {
         const user = await repo.findUserByEmail(email);
 
-        // always return success — never reveal if email exists or not
         if (!user) return { success: true, message: 'If that email exists, a reset link has been sent' };
         if (!user.isActive) return { success: true, message: 'If that email exists, a reset link has been sent' };
 
-        // generate secure random token
         const rawToken = crypto.randomBytes(32).toString('hex');
         const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
         const expiresAt = new Date(
@@ -50,16 +45,12 @@ const forgotPassword = async (email) => {
       `,
         });
 
-        logger.info({ event: 'PASSWORD_RESET_REQUESTED', userId: user.id, email });
         return { success: true, message: 'If that email exists, a reset link has been sent' };
 
     } catch (error) {
-        logger.error({ event: 'FORGOT_PASSWORD_FAILED', email, error: error.message });
         return { success: false, message: 'Something went wrong', statusCode: 500 };
     }
 };
-
-// ─── VERIFY TOKEN ─────────────────────────────────────────────────────────────
 
 const verifyResetToken = async (rawToken) => {
     try {
@@ -71,12 +62,9 @@ const verifyResetToken = async (rawToken) => {
 
         return { success: true, message: 'Token is valid' };
     } catch (error) {
-        logger.error({ event: 'VERIFY_TOKEN_FAILED', error: error.message });
         return { success: false, message: 'Something went wrong', statusCode: 500 };
     }
 };
-
-// ─── RESET PASSWORD ───────────────────────────────────────────────────────────
 
 const resetPassword = async (rawToken, newPassword) => {
     try {
@@ -96,7 +84,6 @@ const resetPassword = async (rawToken, newPassword) => {
             await repo.markTokenUsed(record.id, transaction);
         });
 
-        // notify user
         await sendMail({
             to: user.email,
             subject: 'Password Changed Successfully',
@@ -108,73 +95,35 @@ const resetPassword = async (rawToken, newPassword) => {
       `,
         });
 
-        logger.info({ event: 'PASSWORD_RESET_SUCCESS', userId: user.id });
         return { success: true, message: 'Password reset successfully' };
 
     } catch (error) {
-        logger.error({ event: 'RESET_PASSWORD_FAILED', error: error.message });
         return { success: false, message: 'Something went wrong', statusCode: 500 };
     }
 };
 
-// ─── CHANGE PASSWORD (authenticated) ─────────────────────────────────────────
-
-
-const changePassword = async (
-    userId,
-    currentPassword,
-    newPassword
-) => {
+const changePassword = async (userId, currentPassword, newPassword) => {
     try {
-        // ✅ Find user
         const user = await repo.findUserById(userId);
 
-
         if (!user) {
-            return {
-                success: false,
-                statusCode: 404,
-                message: 'User not found',
-            };
+            return { success: false, statusCode: 404, message: 'User not found' };
         }
 
-        // ✅ Compare current password
-        const isMatch = await bcrypt.compare(
-            currentPassword,
-            user.passwordHash
-        );
-   
+        const isMatch = await bcrypt.compare(currentPassword, user.passwordHash);
 
         if (!isMatch) {
-            return {
-                success: false,
-                statusCode: 400,
-                message: 'Current password is incorrect',
-            };
+            return { success: false, statusCode: 400, message: 'Current password is incorrect' };
         }
 
-        // ✅ Prevent same password reuse
         if (currentPassword === newPassword) {
-            return {
-                success: false,
-                statusCode: 400,
-                message:
-                    'New password must be different from current password',
-            };
+            return { success: false, statusCode: 400, message: 'New password must be different from current password' };
         }
 
-        // ✅ Hash password
-        const saltRounds = Number(env.BCRYPT_ROUNDS) || 10;
+        const passwordHash = await bcrypt.hash(newPassword, Number(env.BCRYPT_ROUNDS) || 10);
 
-        const passwordHash = await bcrypt.hash(
-            newPassword,
-            saltRounds
-        );
-
-        // ✅ Update DB
         await repo.updatePassword(userId, passwordHash);
 
-        // ✅ Send email (non-blocking)
         sendMail({
             to: user.email,
             subject: 'Password Changed Successfully',
@@ -184,43 +133,13 @@ const changePassword = async (
         <p>Your password was changed successfully.</p>
         <p>If this wasn't you, contact support immediately.</p>
       `,
-        }).catch((err) => {
-            logger.error({
-                event: 'PASSWORD_CHANGE_EMAIL_FAILED',
-                userId,
-                error: err.message,
-            });
-        });
+        }).catch(() => { });
 
-        // ✅ Audit log
-        logger.info({
-            event: 'PASSWORD_CHANGED',
-            userId,
-        });
-
-        return {
-            success: true,
-            statusCode: 200,
-            message: 'Password changed successfully',
-        };
+        return { success: true, statusCode: 200, message: 'Password changed successfully' };
 
     } catch (error) {
-
-        logger.error({
-            event: 'CHANGE_PASSWORD_FAILED',
-            userId,
-            error: error.message,
-            stack: error.stack,
-        });
-
-        return {
-            success: false,
-            statusCode: 500,
-            message: 'Something went wrong',
-        };
+        return { success: false, statusCode: 500, message: 'Something went wrong' };
     }
 };
-
-
 
 module.exports = { forgotPassword, verifyResetToken, resetPassword, changePassword };
