@@ -221,12 +221,46 @@ const listApprovedManagerLeaves = (managerId) =>
     order: [['createdAt', 'ASC']]
   });
 
+const listLeaves = async (
+  where,
+  {
+    limit = 10,
+    offset = 0,
+    order = [['createdAt', 'DESC']]
+  } = {}
+) => {
+
+  return LeaveRequest.findAndCountAll({
+
+    where,
+
+    include: [
+      {
+        model: User,
+        as: 'employee',
+        attributes: [
+          'id',
+          'firstName',
+          'lastName',
+          'email',
+          'employeeCode',
+          'department'
+        ]
+      }
+    ],
+
+    order,
+    limit,
+    offset
+  });
+};
 module.exports = {
   findEmployee,
   findLeaveBalance,
   createLeaveBalance,
   updateLeaveBalance,
   resetAllLeaveBalances,
+  listLeaves,
   createLeaveRequest,
   findLeaveRequestById,
   updateLeaveRequest,
