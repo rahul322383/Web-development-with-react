@@ -226,56 +226,106 @@ const getDepartmentStats = async ({ startDate, endDate, department } = {}) => {
     });
 };
 
-// ─────────────────────────────────────────────────────────────
-// LEAVE TRENDS
-// ─────────────────────────────────────────────────────────────
+
 
 const getLeaveTrends = async ({ startDate, endDate, department } = {}) => {
+    try {
 
-    const include = department
-        ? [{
-            model: User,
-            as: 'employee',
-            attributes: [],
-            where: { department },
-            required: true,
-        }]
-        : [];
+        // ✅ Include employee only when department filter exists
+        const include = department
+            ? [
+                {
+                    model: User,
+                    as: 'employee',
+                    attributes: [],
+                    where: { department },
+                    required: true,
+                },
+            ]
+            : [];
 
-    const rows = await LeaveRequest.findAll({
-        attributes: [
-            [fn('YEAR', col('start_date')), 'year'],
-            [fn('MONTH', col('start_date')), 'month'],
-            [fn('COUNT', col('id')), 'leaveCount'],
-            [fn('SUM', col('days_requested')), 'totalDays'],
-        ],
-        where: {
-            status: 'Approved',
-            startDate: { [Op.between]: [startDate, endDate] },
-        },
-        include,
-        group: [
-            fn('YEAR', col('start_date')),
-            fn('MONTH', col('start_date')),
-        ],
-        order: [
-            [fn('YEAR', col('start_date')), 'ASC'],
-            [fn('MONTH', col('start_date')), 'ASC'],
-        ],
-        raw: true,
-    });
+        // ✅ Main analytics query
+        const rows = await LeaveRequest.findAll({
+            attributes: [
+                [
+                    fn('YEAR', col('LeaveRequest.start_date')),
+                    'year',
+                ],
+                [
+                    fn('MONTH', col('LeaveRequest.start_date')),
+                    'month',
+                ],
+                [
+                    fn('COUNT', col('LeaveRequest.id')),
+                    'leaveCount',
+                ],
+                [
+                    fn('SUM', col('LeaveRequest.days_requested')),
+                    'totalDays',
+                ],
+            ],
 
-    const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            where: {
+                status: 'Approved',
 
-    const formatted = rows.map((r) => ({
-        year: Number(r.year),
-        month: Number(r.month),
-        monthLabel: MONTHS[Number(r.month) - 1],
-        leaveCount: Number(r.leaveCount),
-        totalDays: Number(r.totalDays),
-    }));
+                // ✅ Correct column name
+                start_date: {
+                    [Op.between]: [startDate, endDate],
+                },
+            },
 
-    return fillMissingMonths(formatted, startDate, endDate);
+            include,
+
+            // ✅ Group by fully qualified columns
+            group: [
+                fn('YEAR', col('LeaveRequest.start_date')),
+                fn('MONTH', col('LeaveRequest.start_date')),
+            ],
+
+            // ✅ Order by fully qualified columns
+            order: [
+                [fn('YEAR', col('LeaveRequest.start_date')), 'ASC'],
+                [fn('MONTH', col('LeaveRequest.start_date')), 'ASC'],
+            ],
+
+            raw: true,
+        });
+
+        // ✅ Month labels
+        const MONTHS = [
+            'Jan',
+            'Feb',
+            'Mar',
+            'Apr',
+            'May',
+            'Jun',
+            'Jul',
+            'Aug',
+            'Sep',
+            'Oct',
+            'Nov',
+            'Dec',
+        ];
+
+        // ✅ Normalize response
+        const formatted = rows.map((r) => ({
+            year: Number(r.year),
+            month: Number(r.month),
+            monthLabel: MONTHS[Number(r.month) - 1],
+            leaveCount: Number(r.leaveCount || 0),
+            totalDays: Number(r.totalDays || 0),
+        }));
+
+        // ✅ Fill empty months for charts
+        return fillMissingMonths(formatted, startDate, endDate);
+
+    } catch (error) {
+
+        console.error('Error in getLeaveTrends:', error);
+
+        // ✅ Prevent dashboard crash
+        return [];
+    }
 };
 
 const getLeaveStatusBreakdown = async ({ startDate, endDate } = {}) => {
