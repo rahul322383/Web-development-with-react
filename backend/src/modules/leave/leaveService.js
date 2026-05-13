@@ -1,16 +1,5 @@
 'use strict';
 
-// leaveService.js
-// ─────────────────────────────────────────────────────────────
-// BUG FIXES:
-//  1. company_id = 0 → now accepted as param and written to LeaveRequest.create
-//  2. leaveType / leaveUnit weren't being set on the record
-//  3. managerDecision: status comparison now handles both 'Approved'/'approved'
-//     consistently by normalising to lowercase for comparison only, keeping
-//     the original capitalised value for storage (matches ENUM definition)
-//  4. daysRequested stored as Decimal — calculateWorkingDays returns 0.5 for half-day
-// ─────────────────────────────────────────────────────────────
-
 const { Transaction } = require('sequelize');
 const sequelize = require('../../database/sequelize');
 const env = require('../../config/env');
@@ -20,14 +9,9 @@ const { logAuditEvent } = require('../../utils/auditLogger');
 const { clearCacheKeys } = require('../../utils/cache');
 const { LeaveRequest, LeaveBalance, User, Role } = require('../../database/initModels');
 const { Op } = require('sequelize');
-const logger = require('../../config/logger');
 const eventBus = require('../../utils/Eventbus');
 const { assertPermission } = require('../../utils/permissions');
 const { applyLeaveSchema, managerDecisionSchema } = require('./leaveValidation');
-
-// ─────────────────────────────────────────────────────────────
-// CONSTANTS
-// ─────────────────────────────────────────────────────────────
 
 const LEAVE_STATUS = {
   PENDING: 'Pending',
@@ -56,10 +40,6 @@ const DEFAULT_QUOTAS = {
 
 const MAX_LEAVE_DAYS = 30;
 
-// ─────────────────────────────────────────────────────────────
-// HELPERS
-// ─────────────────────────────────────────────────────────────
-
 const fail = (message, statusCode = 400, data = null) => ({
   success: false, message, statusCode, data,
 });
@@ -70,10 +50,6 @@ const checkPermission = (actor, permission) => {
   if (!granted) return fail(perm.message || 'Forbidden', perm.statusCode || 403);
   return null;
 };
-
-// ─────────────────────────────────────────────────────────────
-// WORKING DAYS CALCULATOR
-// ─────────────────────────────────────────────────────────────
 
 const calculateWorkingDays = (startDate, endDate, leaveUnit = LEAVE_UNIT.FULL_DAY, publicHolidays = []) => {
   const holidaySet = new Set(publicHolidays);
@@ -97,10 +73,6 @@ const calculateWorkingDays = (startDate, endDate, leaveUnit = LEAVE_UNIT.FULL_DA
   return count;
 };
 
-// ─────────────────────────────────────────────────────────────
-// BALANCE FIELD MAP
-// ─────────────────────────────────────────────────────────────
-
 const getBalanceFields = (leaveType) => {
   const map = {
     SICK: { total: 'sickTotal', used: 'sickUsed', remaining: 'sickRemaining' },
@@ -110,10 +82,6 @@ const getBalanceFields = (leaveType) => {
   };
   return map[leaveType] || null;
 };
-
-// ─────────────────────────────────────────────────────────────
-// ENSURE LEAVE BALANCE
-// ─────────────────────────────────────────────────────────────
 
 const ensureLeaveBalance = async (employeeId, year, transaction) => {
   let balance = await LeaveBalance.findOne({
@@ -152,7 +120,7 @@ const bustLeaveCacheKeys = (employeeId, managerId, year) =>
     `dashboard_summary:${employeeId}:${year}`,
     `dashboard_summary:${managerId}:${year}`,
     `leave_balance:${employeeId}:${year}`,
-  ]).catch((err) => logger.error({ event: 'CACHE_BUST_FAILED', error: err.message }));
+  ]).catch(() => { });
 
 const getHRTeamIds = async () => {
   try {
@@ -162,7 +130,6 @@ const getHRTeamIds = async () => {
     });
     return hrUsers.map((u) => u.id);
   } catch (error) {
-    logger.error({ event: 'GET_HR_TEAM_IDS_FAILED', error: error.message });
     return [];
   }
 };
@@ -172,20 +139,13 @@ const getTeamMembers = async (managerId) => {
     const users = await User.findAll({ where: { managerId }, attributes: ['id'] });
     return users.map((u) => u.id);
   } catch (error) {
-    logger.error({ event: 'GET_TEAM_MEMBERS_FAILED', managerId, error: error.message });
     return [];
   }
 };
 
-// ─────────────────────────────────────────────────────────────
-// APPLY FOR LEAVE
-// FIX: companyId now accepted and written to the record
-// FIX: leaveType and leaveUnit written to LeaveRequest.create
-// ─────────────────────────────────────────────────────────────
-
 const applyForLeave = async ({
   employeeId,
-  companyId,                           // ← FIX: added
+  companyId,
   startDate,
   endDate,
   reason,
@@ -233,7 +193,6 @@ const applyForLeave = async ({
       employeeData = employee;
       managerData = manager;
 
-      // Overlap check
       const overlapping = await LeaveRequest.findOne({
         where: {
           employeeId: empId,
@@ -253,7 +212,6 @@ const applyForLeave = async ({
         );
       }
 
-      // Balance check (skip for UNPAID)
       if (leaveType !== LEAVE_TYPE.UNPAID) {
         const fields = getBalanceFields(leaveType);
         const balance = await ensureLeaveBalance(empId, start.getFullYear(), transaction);
@@ -269,17 +227,16 @@ const applyForLeave = async ({
         }
       }
 
-      // ── FIX: include companyId, leaveType, leaveUnit in create ──
       return LeaveRequest.create(
         {
-          companyId: companyId || employee.companyId || 0,   // fallback chain
+          companyId: companyId || employee.companyId || 0,
           employeeId: empId,
           managerId: employee.managerId,
           startDate: start,
           endDate: end,
           reason,
-          leaveType,                                               // ← was missing
-          leaveUnit,                                               // ← was missing
+          leaveType,
+          leaveUnit,
           daysRequested,
           status: LEAVE_STATUS.PENDING,
         },
@@ -297,7 +254,7 @@ const applyForLeave = async ({
         ipAddress,
       });
     } catch (auditErr) {
-      logger.error({ event: 'AUDIT_LOG_FAILED', error: auditErr.message });
+      // silent
     }
 
     eventBus.emit('LEAVE_REQUESTED', {
@@ -320,15 +277,9 @@ const applyForLeave = async ({
     };
 
   } catch (error) {
-    logger.error({ event: 'APPLY_LEAVE_FAILED', employeeId, error: error.message, stack: error.stack });
     return fail(error.message || 'Failed to apply for leave', error.statusCode || 500);
   }
 };
-
-// ─────────────────────────────────────────────────────────────
-// MANAGER DECISION
-// FIX: status normalisation — compare lowercase, store original
-// ─────────────────────────────────────────────────────────────
 
 const managerDecision = async ({
   managerId,
@@ -347,9 +298,8 @@ const managerDecision = async ({
   const denied = checkPermission(actor, 'REVIEW_LEAVE');
   if (denied) return denied;
 
-  // Normalise for comparison; keep original capitalisation for storage
-  const normalizedStatus = status.toLowerCase();   // 'approved' | 'rejected'
-  const storedStatus =                          // 'Approved' | 'Rejected'
+  const normalizedStatus = status.toLowerCase();
+  const storedStatus =
     normalizedStatus === 'approved' ? LEAVE_STATUS.APPROVED : LEAVE_STATUS.REJECTED;
 
   try {
@@ -372,19 +322,17 @@ const managerDecision = async ({
 
       affectedEmployee = employee;
 
-      // Only the assigned manager (or Admin/HR) can decide
       if (Number(employee.managerId) !== Number(managerId) && !['Admin', 'HR'].includes(role)) {
         throw Object.assign(new Error('Not authorised to review this leave request'), { statusCode: 403 });
       }
 
       oldLeaveData = { status: req.status, decisionNote: req.decisionNote };
 
-      // ── Deduct balance on approval ─────────────────────────
       if (normalizedStatus === 'approved') {
         const year = new Date(req.startDate).getFullYear();
         const fields = getBalanceFields(req.leaveType);
 
-        if (fields) {  // null for UNPAID
+        if (fields) {
           await ensureLeaveBalance(req.employeeId, year, transaction);
 
           const balance = await LeaveBalance.findOne({
@@ -437,7 +385,7 @@ const managerDecision = async ({
         ipAddress,
       });
     } catch (auditErr) {
-      logger.error({ event: 'AUDIT_LOG_FAILED', error: auditErr.message });
+      // silent
     }
 
     bustLeaveCacheKeys(leaveRequest.employeeId, managerId, year);
@@ -458,18 +406,9 @@ const managerDecision = async ({
     };
 
   } catch (error) {
-    logger.error({
-      event: 'MANAGER_DECISION_FAILED',
-      managerId, requestId,
-      error: error.message, stack: error.stack,
-    });
     return fail(error.message || 'Failed to process leave decision', error.statusCode || 500);
   }
 };
-
-// ─────────────────────────────────────────────────────────────
-// CANCEL LEAVE
-// ─────────────────────────────────────────────────────────────
 
 const cancelLeave = async ({ requestId, employeeId, actor }) => {
   const denied = checkPermission(actor, 'APPLY_LEAVE');
@@ -506,14 +445,9 @@ const cancelLeave = async ({ requestId, employeeId, actor }) => {
     };
 
   } catch (error) {
-    logger.error({ event: 'CANCEL_LEAVE_FAILED', requestId, employeeId, error: error.message });
     return fail(error.message || 'Failed to cancel leave', error.statusCode || 500);
   }
 };
-
-// ─────────────────────────────────────────────────────────────
-// LIST FUNCTIONS
-// ─────────────────────────────────────────────────────────────
 
 const listMyLeaves = async ({ employeeId, cursor, limit, actor }) => {
   const denied = checkPermission(actor, 'VIEW_LEAVE');
@@ -525,7 +459,6 @@ const listMyLeaves = async ({ employeeId, cursor, limit, actor }) => {
     const rows = await leaveRepository.listEmployeeLeavesWithCursor({ employeeId, cursor, limit });
     return { success: true, statusCode: 200, data: cursorPaginate({ rows, limit, cursorKey: 'id' }) };
   } catch (error) {
-    logger.error({ event: 'LIST_MY_LEAVES_FAILED', employeeId, error: error.message });
     return fail(error.message || 'Failed to fetch leaves', 500);
   }
 };
@@ -577,7 +510,6 @@ const listTeamLeaves = async ({ managerId, status, limit = 20, page = 1 }) => {
       },
     };
   } catch (error) {
-    logger.error({ event: 'LIST_TEAM_LEAVES_FAILED', managerId, error: error.message });
     return fail(error.message || 'Failed to fetch team leaves', 500);
   }
 };
@@ -591,14 +523,9 @@ const findLeaveRequestById = async (id, actor) => {
     if (!data) return fail('Leave request not found', 404);
     return { success: true, statusCode: 200, data };
   } catch (error) {
-    logger.error({ event: 'FIND_LEAVE_BY_ID_FAILED', id, error: error.message });
     return fail(error.message || 'Failed to fetch leave request', 500);
   }
 };
-
-// ─────────────────────────────────────────────────────────────
-// LEAVE BALANCE
-// ─────────────────────────────────────────────────────────────
 
 const getMyLeaveBalance = async (employeeId, actor) => {
   const denied = checkPermission(actor, 'VIEW_LEAVE');
@@ -650,14 +577,9 @@ const getMyLeaveBalance = async (employeeId, actor) => {
       },
     };
   } catch (error) {
-    logger.error({ event: 'GET_LEAVE_BALANCE_FAILED', employeeId, error: error.message });
     return fail(error.message || 'Failed to fetch leave balance', 500);
   }
 };
-
-// ─────────────────────────────────────────────────────────────
-// DASHBOARD & STATS
-// ─────────────────────────────────────────────────────────────
 
 const getDashboardSummary = async ({ userId, year, actor }) => {
   const denied = checkPermission(actor, 'VIEW_LEAVE');
@@ -672,7 +594,6 @@ const getDashboardSummary = async ({ userId, year, actor }) => {
     ]);
     return { success: true, statusCode: 200, data: { leaveBalance, recentLeaves } };
   } catch (error) {
-    logger.error({ event: 'GET_DASHBOARD_FAILED', userId, error: error.message });
     return fail(error.message || 'Failed to fetch dashboard summary', 500);
   }
 };
@@ -694,14 +615,9 @@ const getLeaveStats = async ({ year, actor }) => {
     ]);
     return { success: true, statusCode: 200, data: { total, approved, pending, rejected } };
   } catch (error) {
-    logger.error({ event: 'GET_LEAVE_STATS_FAILED', error: error.message });
     return fail(error.message || 'Failed to fetch leave stats', 500);
   }
 };
-
-// ─────────────────────────────────────────────────────────────
-// YEARLY RESET
-// ─────────────────────────────────────────────────────────────
 
 const yearlyLeaveReset = async (year, actor) => {
   const denied = checkPermission(actor, 'APPROVE_LEAVE');
@@ -747,7 +663,6 @@ const yearlyLeaveReset = async (year, actor) => {
       }
     });
 
-    logger.info({ event: 'YEARLY_LEAVE_RESET', year: parsedYear, actorId: actor?.id });
     eventBus.emit('LEAVE_BALANCES_RESET', { year: parsedYear, actorId: actor?.id });
 
     return {
@@ -756,12 +671,9 @@ const yearlyLeaveReset = async (year, actor) => {
       statusCode: 200,
     };
   } catch (error) {
-    logger.error({ event: 'YEARLY_LEAVE_RESET_FAILED', year: parsedYear, error: error.message });
     return fail(error.message || 'Failed to reset leave balances', 500);
   }
 };
-
-// ─────────────────────────────────────────────────────────────
 
 module.exports = {
   applyForLeave,
