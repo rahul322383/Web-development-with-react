@@ -1,29 +1,20 @@
 'use strict';
 
 const sequelize = require('../../database/sequelize');
-const logger = require('../../config/logger');
-const { cloudinary,
-  uploadBuffer } = require('../../config/cloudinary');
+const { cloudinary, uploadBuffer } = require('../../config/cloudinary');
 const companyRepository = require('./companyRepository');
 const { User, Role } = require('../../database/initModels');
-const { sendNotification,
-  sendAuditLog,
-  sendBulkNotifications } = require('../../config/socket');
+const { sendNotification, sendAuditLog, sendBulkNotifications } = require('../../config/socket');
 const { assertPermission } = require('../../utils/permissions');
 
-// ─────────────────────────────────────────────────────────────
-// HELPERS
-// ─────────────────────────────────────────────────────────────
-
 const ok = (data = {}, message = '') => ({ success: true, message, data });
-const fail = (message, statusCode = 500) => ({ success: false, message, statusCode });
+const response = (message, statusCode = 500) => ({ success: false, message, statusCode });
 
-const safeExecute = async (fn, label) => {
+const safeExecute = async (fn) => {
   try {
     return await fn();
   } catch (err) {
-    logger.error({ event: label, message: err.message, stack: err.stack });
-    return fail(err.message || 'Internal error', err.statusCode || 500);
+    return response(err.message || 'Internal error', err.statusCode || 500);
   }
 };
 
@@ -44,7 +35,6 @@ const generateUniqueSlug = async (name) => {
 const buildAudit = (event, userId, meta = {}) => ({
   event, userId, metadata: meta, timestamp: new Date().toISOString(),
 });
-
 
 const assertCompanyAccess = (actor, companyId) => {
   if (actor.companyId && Number(actor.companyId) !== Number(companyId)) {
@@ -72,7 +62,6 @@ const validateCompanyPayload = (payload) => {
   }
 };
 
-// ✅ Subscription validator
 const checkSubscriptionStatus = (company) => {
   if (!company.subscriptionExpiresAt) {
     return { active: true, plan: company.subscriptionPlan, daysLeft: null };
@@ -88,20 +77,15 @@ const checkSubscriptionStatus = (company) => {
   };
 };
 
-// ─────────────────────────────────────────────────────────────
-// CORE
-// ─────────────────────────────────────────────────────────────
-
 const createCompany = (payload, actor) =>
   safeExecute(async () => {
     const perm = assertPermission(actor, 'CREATE_COMPANY');
-    if (!perm.allowed) return fail(perm.message, 403);
+    if (!perm.allowed) return response(perm.message, 403);
 
     const existing = await companyRepository.findCompanyByName(payload.name);
-    if (existing) return fail('Company already exists', 409);
+    if (existing) return response('Company already exists', 409);
 
     const slug = await generateUniqueSlug(payload.name);
-
 
     const company = await withTransaction((t) =>
       companyRepository.createCompany({
@@ -115,36 +99,32 @@ const createCompany = (payload, actor) =>
         annualLeaveQuota: payload.annualLeaveQuota ?? 21,
       }, t)
     );
-  
 
-    sendAuditLog(buildAudit('COMPANY_CREATED', actor?.id, {
-      companyId: company.id,
-    }));
+    sendAuditLog(buildAudit('COMPANY_CREATED', actor?.id, { companyId: company.id }));
 
     return ok({ company }, 'Company created successfully');
-  }, 'COMPANY_CREATE_FAILED');
+  });
+
 const getCompany = (companyId, actor) =>
   safeExecute(async () => {
     if (actor.companyId && Number(actor.companyId) !== Number(companyId)) {
       const perm = assertPermission(actor, 'VIEW_ANY_COMPANY');
-      if (!perm.allowed) return fail('Access denied', 403);
+      if (!perm.allowed) return response('Access denied', 403);
     }
     const company = await companyRepository.findCompanyById(companyId);
-    if (!company) return fail('Company not found', 404);
+    if (!company) return response('Company not found', 404);
     return ok({ company });
-  }, 'COMPANY_GET_FAILED');
-
-// ─────────────────────────────────────────────────────────────
+  });
 
 const updateCompany = (companyId, payload, actor) =>
   safeExecute(async () => {
     const perm = assertPermission(actor, 'UPDATE_COMPANY');
-    if (!perm.allowed) return fail(perm.message, 403);
+    if (!perm.allowed) return response(perm.message, 403);
 
-    assertCompanyAccess(actor, companyId);   // ✅ uses extracted helper
+    assertCompanyAccess(actor, companyId);
 
     const company = await companyRepository.findCompanyById(companyId);
-    if (!company) return fail('Company not found', 404);
+    if (!company) return response('Company not found', 404);
 
     const { slug, logoUrl, logoPublicId, ...safePayload } = payload;
 
@@ -159,20 +139,16 @@ const updateCompany = (companyId, payload, actor) =>
     }));
 
     return ok({ company: updated }, 'Company updated successfully');
-  }, 'COMPANY_UPDATE_FAILED');
-
-// ─────────────────────────────────────────────────────────────
-// REACTIVATE  ✅ NEW
-// ─────────────────────────────────────────────────────────────
+  });
 
 const reactivateCompany = (companyId, actor) =>
   safeExecute(async () => {
     const perm = assertPermission(actor, 'UPDATE_COMPANY');
-    if (!perm.allowed) return fail(perm.message, 403);
+    if (!perm.allowed) return response(perm.message, 403);
 
     const company = await companyRepository.findCompanyById(companyId, { includeInactive: true });
-    if (!company) return fail('Company not found', 404);
-    if (company.isActive) return fail('Company is already active', 409);
+    if (!company) return response('Company not found', 404);
+    if (company.isActive) return response('Company is already active', 409);
 
     await withTransaction((t) =>
       companyRepository.reactivateCompany(companyId, t)
@@ -181,19 +157,15 @@ const reactivateCompany = (companyId, actor) =>
     sendAuditLog(buildAudit('COMPANY_REACTIVATED', actor?.id, { companyId }));
 
     return ok({}, 'Company reactivated successfully');
-  }, 'REACTIVATE_FAILED');
-
-// ─────────────────────────────────────────────────────────────
-// DEACTIVATE
-// ─────────────────────────────────────────────────────────────
+  });
 
 const deactivateCompany = (companyId, actor) =>
   safeExecute(async () => {
     const perm = assertPermission(actor, 'DELETE_COMPANY');
-    if (!perm.allowed) return fail(perm.message, 403);
+    if (!perm.allowed) return response(perm.message, 403);
 
     const company = await companyRepository.findCompanyById(companyId);
-    if (!company) return fail('Company not found', 404);
+    if (!company) return response('Company not found', 404);
 
     await withTransaction((t) =>
       companyRepository.deactivateCompany(companyId, t)
@@ -208,21 +180,17 @@ const deactivateCompany = (companyId, actor) =>
 
     sendAuditLog(buildAudit('COMPANY_DEACTIVATED', actor?.id, { companyId }));
     return ok({}, 'Company deactivated successfully');
-  }, 'DEACTIVATE_FAILED');
-
-// ─────────────────────────────────────────────────────────────
-// LOGO
-// ─────────────────────────────────────────────────────────────
+  });
 
 const uploadCompanyLogo = (companyId, fileBuffer, actor) =>
   safeExecute(async () => {
     const perm = assertPermission(actor, 'UPDATE_COMPANY');
-    if (!perm.allowed) return fail(perm.message, 403);
+    if (!perm.allowed) return response(perm.message, 403);
 
     assertCompanyAccess(actor, companyId);
 
     const company = await companyRepository.findCompanyById(companyId);
-    if (!company) return fail('Company not found', 404);
+    if (!company) return response('Company not found', 404);
 
     const result = await uploadBuffer(fileBuffer, `hrms/company/${companyId}`);
     await companyRepository.updateLogo(companyId, {
@@ -236,42 +204,34 @@ const uploadCompanyLogo = (companyId, fileBuffer, actor) =>
 
     sendAuditLog(buildAudit('COMPANY_LOGO_UPDATED', actor?.id, { companyId }));
     return ok({ logoUrl: result.secure_url, width: result.width, height: result.height });
-  }, 'LOGO_UPLOAD_FAILED');
-
-// ─────────────────────────────────────────────────────────────
+  });
 
 const deleteCompanyLogo = (companyId, actor) =>
   safeExecute(async () => {
     const perm = assertPermission(actor, 'UPDATE_COMPANY');
-    if (!perm.allowed) return fail(perm.message, 403);
+    if (!perm.allowed) return response(perm.message, 403);
 
     const publicId = await companyRepository.getLogoPublicId(companyId);
     if (publicId) await cloudinary.uploader.destroy(publicId);
 
     await companyRepository.updateLogo(companyId, { logoUrl: null, logoPublicId: null });
     return ok({}, 'Logo deleted successfully');
-  }, 'LOGO_DELETE_FAILED');
-
-// ─────────────────────────────────────────────────────────────
-// SETTINGS  ✅ getCompanySettings NEW
-// ─────────────────────────────────────────────────────────────
+  });
 
 const getCompanySettings = (companyId, actor) =>
   safeExecute(async () => {
     assertCompanyAccess(actor, companyId);
 
     const settings = await companyRepository.findCompanySettings(companyId);
-    if (!settings) return fail('Company not found', 404);
+    if (!settings) return response('Company not found', 404);
 
     return ok({ settings });
-  }, 'GET_SETTINGS_FAILED');
-
-// ─────────────────────────────────────────────────────────────
+  });
 
 const updateCompanySettings = (companyId, settings, actor) =>
   safeExecute(async () => {
     const perm = assertPermission(actor, 'UPDATE_COMPANY');
-    if (!perm.allowed) return fail(perm.message, 403);
+    if (!perm.allowed) return response(perm.message, 403);
 
     assertCompanyAccess(actor, companyId);
 
@@ -286,7 +246,7 @@ const updateCompanySettings = (companyId, settings, actor) =>
     );
 
     if (!Object.keys(filtered).length) {
-      return fail('No valid settings fields provided', 400);
+      return response('No valid settings fields provided', 400);
     }
 
     await companyRepository.updateCompany(companyId, filtered);
@@ -296,16 +256,12 @@ const updateCompanySettings = (companyId, settings, actor) =>
     }));
 
     return ok({ settings: filtered }, 'Settings updated successfully');
-  }, 'SETTINGS_UPDATE_FAILED');
-
-// ─────────────────────────────────────────────────────────────
-// USERS  ✅ ALL NEW
-// ─────────────────────────────────────────────────────────────
+  });
 
 const getCompanyUsers = (companyId, query, actor) =>
   safeExecute(async () => {
     const perm = assertPermission(actor, 'LIST_USERS');
-    if (!perm.allowed) return fail(perm.message, 403);
+    if (!perm.allowed) return response(perm.message, 403);
 
     assertCompanyAccess(actor, companyId);
 
@@ -317,34 +273,29 @@ const getCompanyUsers = (companyId, query, actor) =>
     });
 
     return ok(result);
-  }, 'GET_COMPANY_USERS_FAILED');
-
-// ─────────────────────────────────────────────────────────────
+  });
 
 const addUserToCompany = (companyId, userId, actor) =>
   safeExecute(async () => {
     const perm = assertPermission(actor, 'ADD_COMPANY_USER');
-    
-    if (!perm.allowed) return fail(perm.message, 403);
+    if (!perm.allowed) return response(perm.message, 403);
 
     assertCompanyAccess(actor, companyId);
 
     const company = await companyRepository.findCompanyById(companyId);
-  
-    if (!company) return fail('Company not found', 404);
+    if (!company) return response('Company not found', 404);
 
     const user = await User.findByPk(userId);
-    if (!user) return fail('User not found', 404);
+    if (!user) return response('User not found', 404);
 
     if (user.companyId && Number(user.companyId) === Number(companyId)) {
-      return fail('User already belongs to this company', 409);
+      return response('User already belongs to this company', 409);
     }
 
     await withTransaction((t) =>
       companyRepository.assignUserToCompany(userId, companyId, t)
     );
 
-    // Notify the user they were added
     sendNotification(userId, {
       type: 'ADDED_TO_COMPANY',
       title: 'Welcome to the team',
@@ -359,19 +310,17 @@ const addUserToCompany = (companyId, userId, actor) =>
     });
 
     return ok({ user: updated }, 'User added to company successfully');
-  }, 'ADD_USER_TO_COMPANY_FAILED');
-
-// ─────────────────────────────────────────────────────────────
+  });
 
 const removeUserFromCompany = (companyId, userId, actor) =>
   safeExecute(async () => {
     const perm = assertPermission(actor, 'UPDATE_USER_ROLE');
-    if (!perm.allowed) return fail(perm.message, 403);
+    if (!perm.allowed) return response(perm.message, 403);
 
     assertCompanyAccess(actor, companyId);
 
     const user = await User.findOne({ where: { id: userId, companyId } });
-    if (!user) return fail('User not found in this company', 404);
+    if (!user) return response('User not found in this company', 404);
 
     await withTransaction((t) =>
       companyRepository.removeUserFromCompany(userId, companyId, t)
@@ -386,22 +335,20 @@ const removeUserFromCompany = (companyId, userId, actor) =>
 
     sendAuditLog(buildAudit('USER_REMOVED_FROM_COMPANY', actor?.id, { companyId, userId }));
     return ok({}, 'User removed from company successfully');
-  }, 'REMOVE_USER_FROM_COMPANY_FAILED');
-
-// ─────────────────────────────────────────────────────────────
+  });
 
 const updateUserRoleInCompany = (companyId, userId, roleId, actor) =>
   safeExecute(async () => {
     const perm = assertPermission(actor, 'UPDATE_USER');
-    if (!perm.allowed) return fail(perm.message, 403);
+    if (!perm.allowed) return response(perm.message, 403);
 
     assertCompanyAccess(actor, companyId);
 
     const user = await User.findOne({ where: { id: userId, companyId } });
-    if (!user) return fail('User not found in this company', 404);
+    if (!user) return response('User not found in this company', 404);
 
     const role = await Role.findByPk(roleId);
-    if (!role) return fail('Role not found', 404);
+    if (!role) return response('Role not found', 404);
 
     await withTransaction((t) =>
       companyRepository.updateUserRole(userId, companyId, roleId, t)
@@ -412,25 +359,14 @@ const updateUserRoleInCompany = (companyId, userId, roleId, actor) =>
     }));
 
     return ok({}, `User role updated to ${role.name}`);
-  }, 'UPDATE_USER_ROLE_FAILED');
-
-// ─────────────────────────────────────────────────────────────
-// STATS + DASHBOARD
-// ─────────────────────────────────────────────────────────────
+  });
 
 const getCompanyStats = (companyId, actor) =>
   safeExecute(async () => {
     const perm = assertPermission(actor, 'VIEW_DASHBOARD');
-    if (!perm.allowed) return fail(perm.message, 403);
+    if (!perm.allowed) return response(perm.message, 403);
 
-    const [
-      company,
-      stats,
-      employees,
-      departments,
-      leaveStats,
-      payrollStats
-    ] = await Promise.all([
+    const [company, stats, employees, departments, leaveStats, payrollStats] = await Promise.all([
       companyRepository.findCompanyById(companyId),
       companyRepository.getCompanyStats(companyId),
       companyRepository.getEmployees(companyId),
@@ -439,7 +375,7 @@ const getCompanyStats = (companyId, actor) =>
       companyRepository.getPayrollStats(companyId),
     ]);
 
-    if (!company) return fail('Company not found', 404);
+    if (!company) return response('Company not found', 404);
 
     return ok({
       company: {
@@ -454,34 +390,23 @@ const getCompanyStats = (companyId, actor) =>
         plan: company.subscriptionPlan,
         createdAt: company.createdAt,
       },
-
       stats,
-
-      employees: {
-        total: employees.length,
-        list: employees,
-      },
-
+      employees: { total: employees.length, list: employees },
       departments,
-
       leave: leaveStats,
-
       payroll: payrollStats,
     });
-  }, 'STATS_FAILED');
+  });
 
-// ─────────────────────────────────────────────────────────────
-
-// ✅ NEW
 const getCompanyDashboard = (companyId, query, actor) =>
   safeExecute(async () => {
     const perm = assertPermission(actor, 'VIEW_DASHBOARD');
-    if (!perm.allowed) return fail(perm.message, 403);
+    if (!perm.allowed) return response(perm.message, 403);
 
     assertCompanyAccess(actor, companyId);
 
     const company = await companyRepository.findCompanyById(companyId);
-    if (!company) return fail('Company not found', 404);
+    if (!company) return response('Company not found', 404);
 
     const year = Number(query?.year) || new Date().getFullYear();
     const dashboard = await companyRepository.getCompanyDashboard(companyId, year);
@@ -491,24 +416,20 @@ const getCompanyDashboard = (companyId, query, actor) =>
       year,
       dashboard,
     });
-  }, 'DASHBOARD_FAILED');
-
-// ─────────────────────────────────────────────────────────────
-// SUBSCRIPTION  ✅ NEW
-// ─────────────────────────────────────────────────────────────
+  });
 
 const updateSubscription = (companyId, payload, actor) =>
   safeExecute(async () => {
     const perm = assertPermission(actor, 'UPDATE_COMPANY');
-    if (!perm.allowed) return fail(perm.message, 403);
+    if (!perm.allowed) return response(perm.message, 403);
 
     const validPlans = ['free', 'starter', 'pro', 'enterprise'];
     if (!validPlans.includes(payload.plan)) {
-      return fail(`Invalid plan. Must be one of: ${validPlans.join(', ')}`, 400);
+      return response(`Invalid plan. Must be one of: ${validPlans.join(', ')}`, 400);
     }
 
     const company = await companyRepository.findCompanyById(companyId);
-    if (!company) return fail('Company not found', 404);
+    if (!company) return response('Company not found', 404);
 
     const updated = await withTransaction((t) =>
       companyRepository.updateSubscription(companyId, {
@@ -526,11 +447,8 @@ const updateSubscription = (companyId, payload, actor) =>
       subscriptionExpiresAt: updated.subscriptionExpiresAt,
       status: checkSubscriptionStatus(updated),
     }, 'Subscription updated successfully');
-  }, 'SUBSCRIPTION_UPDATE_FAILED');
+  });
 
-// ─────────────────────────────────────────────────────────────
-
-// ✅ NEW
 const getSubscriptionStatus = (companyId, actor) =>
   safeExecute(async () => {
     assertCompanyAccess(actor, companyId);
@@ -539,34 +457,29 @@ const getSubscriptionStatus = (companyId, actor) =>
       attributes: ['id', 'subscriptionPlan', 'subscriptionExpiresAt'],
     });
 
-    if (!company) return fail('Company not found', 404);
+    if (!company) return response('Company not found', 404);
 
     return ok({ status: checkSubscriptionStatus(company) });
-  }, 'SUBSCRIPTION_STATUS_FAILED');
-
-// ─────────────────────────────────────────────────────────────
-// COMPANY-WIDE NOTIFICATION  ✅ NEW
-// ─────────────────────────────────────────────────────────────
+  });
 
 const sendCompanyWideNotification = (companyId, payload, actor) =>
   safeExecute(async () => {
     const perm = assertPermission(actor, 'UPDATE_COMPANY');
-    if (!perm.allowed) return fail(perm.message, 403);
+    if (!perm.allowed) return response(perm.message, 403);
 
     assertCompanyAccess(actor, companyId);
 
     if (!payload.title || !payload.message) {
-      return fail('title and message are required', 400);
+      return response('title and message are required', 400);
     }
 
-    // Fetch all active user IDs in this company
     const users = await User.findAll({
       where: { companyId, isActive: true },
       attributes: ['id'],
     });
     const userIds = users.map((u) => u.id);
 
-    if (!userIds.length) return fail('No active users in this company', 404);
+    if (!userIds.length) return response('No active users in this company', 404);
 
     sendBulkNotifications(userIds, {
       type: payload.type || 'COMPANY_ANNOUNCEMENT',
@@ -581,16 +494,12 @@ const sendCompanyWideNotification = (companyId, payload, actor) =>
     }));
 
     return ok({ recipientCount: userIds.length }, 'Notification sent to all company users');
-  }, 'COMPANY_NOTIFICATION_FAILED');
-
-// ─────────────────────────────────────────────────────────────
-// LIST
-// ─────────────────────────────────────────────────────────────
+  });
 
 const listCompanies = (query = {}, actor) =>
   safeExecute(async () => {
     const perm = assertPermission(actor, 'LIST_COMPANIES');
-    if (!perm.allowed) return fail(perm.message, 403);
+    if (!perm.allowed) return response(perm.message, 403);
 
     const result = await companyRepository.listCompanies({
       page: query.page,
@@ -599,39 +508,30 @@ const listCompanies = (query = {}, actor) =>
       isActive: query.isActive,
       sortBy: query.sortBy,
       order: query.order,
-      all: query.all, // 🔥 important
+      all: query.all,
     });
 
     return ok(result);
-  }, 'LIST_FAILED');
-
-// ─────────────────────────────────────────────────────────────
+  });
 
 module.exports = {
-  // Core
   createCompany,
   getCompany,
   updateCompany,
   deactivateCompany,
-  reactivateCompany,              // ✅ NEW
+  reactivateCompany,
   listCompanies,
-  // Settings
-  getCompanySettings,             // ✅ NEW
+  getCompanySettings,
   updateCompanySettings,
-  // Users
-  getCompanyUsers,                // ✅ NEW
-  addUserToCompany,               // ✅ NEW
-  removeUserFromCompany,          // ✅ NEW
-  updateUserRoleInCompany,        // ✅ NEW
-  // Logo
+  getCompanyUsers,
+  addUserToCompany,
+  removeUserFromCompany,
+  updateUserRoleInCompany,
   uploadCompanyLogo,
   deleteCompanyLogo,
-  // Dashboard
   getCompanyStats,
-  getCompanyDashboard,            // ✅ NEW
-  // Subscription
-  updateSubscription,             // ✅ NEW
-  getSubscriptionStatus,          // ✅ NEW
-  // Notifications
-  sendCompanyWideNotification,    // ✅ NEW
+  getCompanyDashboard,
+  updateSubscription,
+  getSubscriptionStatus,
+  sendCompanyWideNotification,
 };
