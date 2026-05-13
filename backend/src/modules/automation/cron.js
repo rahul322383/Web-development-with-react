@@ -1,7 +1,6 @@
 'use strict';
 
 const cron = require('node-cron');
-const logger = require('../../config/logger');
 const { Attendance, User } = require('../../database/initModels');
 const { Op } = require('sequelize');
 const { notify, templates } = require('./notification.service');
@@ -11,17 +10,10 @@ const { assignMissingShifts } = require('./shiftAssignment.service');
 
 const todayDate = () => new Date().toISOString().slice(0, 10);
 
-
-// ─────────────────────────────────────────────
-// ✅ 1. MARK ABSENT (OPTIMIZED + FIXED)
-// ─────────────────────────────────────────────
 cron.schedule('55 23 * * 1-5', async () => {
-    logger.info({ event: 'CRON_ABSENT_START' });
-
     try {
         const date = todayDate();
 
-        // ✅ fetch all active employees WITH companyId
         const employees = await User.findAll({
             where: { isActive: true },
             attributes: ['id', 'email', 'firstName', 'lastName', 'companyId'],
@@ -29,7 +21,6 @@ cron.schedule('55 23 * * 1-5', async () => {
 
         if (!employees.length) return;
 
-        // ✅ fetch all today's attendance in ONE QUERY
         const attendances = await Attendance.findAll({
             where: { date },
             attributes: ['employeeId', 'checkIn'],
@@ -48,13 +39,12 @@ cron.schedule('55 23 * * 1-5', async () => {
             if (!record || !record.checkIn) {
                 absentRecords.push({
                     employeeId: emp.id,
-                    companyId: emp.companyId, // ✅ FIXED
+                    companyId: emp.companyId,
                     date,
                     status: 'absent',
                     checkInIp: null,
                 });
 
-                // 🔔 notification
                 const name = `${emp.firstName} ${emp.lastName}`;
                 const tmpl = templates.absentAlert({ name, date });
 
@@ -73,35 +63,19 @@ cron.schedule('55 23 * * 1-5', async () => {
             }
         }
 
-        // ✅ BULK UPSERT (FAST 🚀)
         if (absentRecords.length) {
             await Attendance.bulkCreate(absentRecords, {
                 updateOnDuplicate: ['status', 'checkInIp'],
             });
         }
 
-        logger.info({
-            event: 'CRON_ABSENT_DONE',
-            total: absentRecords.length,
-        });
-
     } catch (err) {
-        logger.error({
-            event: 'CRON_ABSENT_ERROR',
-            error: err.message,
-            stack: err.stack,
-        });
+        // silent
     }
 
 }, { timezone: 'Asia/Kolkata' });
 
-
-// ─────────────────────────────────────────────
-// ✅ 2. PAYROLL GENERATION (SAFE)
-// ─────────────────────────────────────────────
 cron.schedule('0 2 28 * *', async () => {
-    logger.info({ event: 'CRON_PAYROLL_START' });
-
     try {
         const now = new Date();
         const month = now.getMonth() + 1;
@@ -113,7 +87,7 @@ cron.schedule('0 2 28 * *', async () => {
             include: [{
                 association: 'role',
                 where: { name: 'Admin' },
-                required: true
+                required: true,
             }],
             attributes: ['id', 'email', 'firstName', 'lastName'],
         });
@@ -140,90 +114,36 @@ cron.schedule('0 2 28 * *', async () => {
             });
         }
 
-        logger.info({ event: 'CRON_PAYROLL_DONE', ...result });
-
     } catch (err) {
-        logger.error({
-            event: 'CRON_PAYROLL_ERROR',
-            error: err.message,
-        });
+        // silent
     }
 
 }, { timezone: 'Asia/Kolkata' });
 
-
-// ─────────────────────────────────────────────
-// ✅ 3. YEAR END RESET
-// ─────────────────────────────────────────────
 cron.schedule('0 0 1 1 *', async () => {
-    logger.info({ event: 'CRON_YEAR_END_RESET_START' });
-
     try {
         const lastYear = new Date().getFullYear() - 1;
-        const result = await yearEndReset(lastYear);
-
-        logger.info({ event: 'CRON_YEAR_END_RESET_DONE', ...result });
-
+        await yearEndReset(lastYear);
     } catch (err) {
-        logger.error({
-            event: 'CRON_YEAR_END_RESET_ERROR',
-            error: err.message,
-        });
+        // silent
     }
 
 }, { timezone: 'Asia/Kolkata' });
 
-
-// ─────────────────────────────────────────────
-// ✅ 4. LEAVE PROVISION
-// ─────────────────────────────────────────────
 cron.schedule('0 1 2 1 *', async () => {
-    logger.info({ event: 'CRON_LEAVE_PROVISION_START' });
-
     try {
-        const result = await provisionAllEmployees();
-
-        logger.info({ event: 'CRON_LEAVE_PROVISION_DONE', ...result });
-
+        await provisionAllEmployees();
     } catch (err) {
-        logger.error({
-            event: 'CRON_LEAVE_PROVISION_ERROR',
-            error: err.message,
-        });
+        // silent
     }
 
 }, { timezone: 'Asia/Kolkata' });
 
-
-// ─────────────────────────────────────────────
-// ✅ 5. SHIFT AUTO ASSIGN
-// ─────────────────────────────────────────────
 cron.schedule('0 1 * * 0', async () => {
-    logger.info({ event: 'CRON_SHIFT_ASSIGN_START' });
-
     try {
-        const result = await assignMissingShifts();
-
-        logger.info({ event: 'CRON_SHIFT_ASSIGN_DONE', ...result });
-
+        await assignMissingShifts();
     } catch (err) {
-        logger.error({
-            event: 'CRON_SHIFT_ASSIGN_ERROR',
-            error: err.message,
-        });
+        // silent
     }
 
 }, { timezone: 'Asia/Kolkata' });
-
-
-// ─────────────────────────────────────────────
-logger.info({
-    event: 'CRON_JOBS_REGISTERED',
-    jobs: [
-        'ABSENT_MARKING',
-        'PAYROLL',
-        'YEAR_RESET',
-        'LEAVE_PROVISION',
-        'SHIFT_ASSIGN',
-    ],
-});
