@@ -2,11 +2,15 @@
 
 const asyncHandler = require('../../utils/asyncHandler');
 const authService = require('./auth.service');
+const { buildAccessToken, buildRefreshToken } = require('../../utils/tokenUtils');
+const { v4: uuidv4 } = require('uuid');
+
 
 const register = asyncHandler(async (req, res) => {
   const result = await authService.register(req.body, req);
   return res.status(result.success ? 201 : (result.statusCode || 400)).json(result);
 });
+
 
 const login = asyncHandler(async (req, res) => {
   const result = await authService.login(req.body, req);
