@@ -286,6 +286,7 @@ const getLeaveTrends = async (query = {}) => {
             },
         };
     } catch (error) {
+        console.error('Error in getLeaveTrends:', error);
         logger.error({ event: 'LEAVE_FAILED', error: error.message });
         return { success: false, message: error.message, statusCode: 500 };
     }
