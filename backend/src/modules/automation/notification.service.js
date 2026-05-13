@@ -2,7 +2,6 @@
 
 const nodemailer = require('nodemailer');
 const env = require('../../config/env');
-const logger = require('../../config/logger');
 const { sendNotification } = require('../../config/socket');
 
 const transporter = nodemailer.createTransport({
@@ -15,21 +14,15 @@ const transporter = nodemailer.createTransport({
     },
 });
 
-/**
- * Send email + in-app socket notification together.
- * Either channel failing won't crash the other.
- */
 const notify = async ({ userId, email, subject, html, socketPayload }) => {
-    // 1. In-app socket notification
     if (userId && socketPayload) {
         try {
             sendNotification(userId, socketPayload);
         } catch (err) {
-            logger.warn({ event: 'SOCKET_NOTIFY_FAILED', userId, error: err.message });
+            // silent
         }
     }
 
-    // 2. Email notification
     if (email && subject && html) {
         try {
             await transporter.sendMail({
@@ -39,12 +32,10 @@ const notify = async ({ userId, email, subject, html, socketPayload }) => {
                 html,
             });
         } catch (err) {
-            logger.warn({ event: 'EMAIL_SEND_FAILED', email, subject, error: err.message });
+            // silent
         }
     }
 };
-
-// ── Email templates ──────────────────────────────────────────────────────────
 
 const templates = {
     lateLogin: ({ name, time, lateMinutes }) => ({
