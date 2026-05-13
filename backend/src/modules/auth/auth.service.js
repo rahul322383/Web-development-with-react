@@ -1,6 +1,9 @@
 'use strict';
 
 const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+const { randomUUID } = require('crypto');
+
 const sequelize = require('../../database/sequelize');
 const env = require('../../config/env');
 const { buildAccessToken, buildRefreshToken, verifyRefreshToken } = require('../../utils/tokenUtils');
@@ -311,10 +314,71 @@ const refreshSession = async (rawRefreshToken, req = null) => {
   return toPublicResult(newTokens);
 };
 
+
+
+// const logout = async ({ refreshToken }, req = null) => {
+//   const { ip, userAgent } = extractRequestMeta(req);
+
+//   if (!refreshToken) {
+//     return {
+//       success: true,
+//       message: 'Logged out successfully',
+//     };
+//   }
+
+//   try {
+//     const payload = verifyRefreshToken(refreshToken);
+
+//     await sequelize.transaction(async (transaction) => {
+
+//       // revoke refresh token
+//       await authRepository.revokeRefreshToken(
+//         { tokenId: payload.tokenId },
+//         { transaction }
+//       );
+
+//       // auto checkout user
+//       await autoCheckOut(
+//         {
+//           userId: payload.sub,
+//           ip,
+//         },
+//         transaction
+//       );
+//     });
+
+//     sendNotification(payload.sub, {
+//       event: 'LOGOUT_SUCCESS',
+//       timestamp: new Date().toISOString(),
+//     });
+
+//     sendAuditLog(
+//       buildAuditLog('USER_LOGOUT', payload.sub, {
+//         ip,
+//         userAgent,
+//       })
+//     );
+
+//   } catch (err) {
+//     console.error('Logout Error:', err.message);
+//   }
+
+//   return {
+//     success: true,
+//     message: 'Logged out successfully',
+//   };
+// };
+
 const logout = async ({ refreshToken }, req = null) => {
   const { ip, userAgent } = extractRequestMeta(req);
 
+  console.log('========== LOGOUT START ==========');
+
   if (!refreshToken) {
+    console.log('No refresh token provided');
+
+    console.log('========== LOGOUT END ==========');
+
     return {
       success: true,
       message: 'Logged out successfully',
@@ -322,28 +386,75 @@ const logout = async ({ refreshToken }, req = null) => {
   }
 
   try {
+    // Verify refresh token
     const payload = verifyRefreshToken(refreshToken);
 
-    await authRepository.revokeRefreshToken({ tokenId: payload.tokenId });
+    console.log('User ID:', payload.sub);
+    console.log('Token ID:', payload.tokenId);
 
-    await autoCheckOut({ userId: payload.sub, ip });
+    // Transaction start
+    await sequelize.transaction(async (transaction) => {
+      console.log('Revoking refresh token...');
 
+      // ✅ FIXED: pass transaction directly
+      await authRepository.revokeRefreshToken(
+        { tokenId: payload.tokenId },
+        transaction
+      );
+
+      console.log('Refresh token revoked successfully');
+
+      // Auto checkout
+      console.log('Starting auto checkout...');
+
+      const checkoutResult = await autoCheckOut(
+        {
+          userId: payload.sub,
+          ip,
+        },
+        transaction
+      );
+
+      console.log('Checkout Result:', checkoutResult);
+
+      // Only throw unexpected errors
+      if (!checkoutResult.success && checkoutResult.error) {
+        throw new Error(
+          `Auto checkout failed: ${checkoutResult.error}`
+        );
+      }
+
+      console.log('Transaction completed successfully');
+    });
+
+    // Send websocket/event notification
     sendNotification(payload.sub, {
       event: 'LOGOUT_SUCCESS',
       timestamp: new Date().toISOString(),
     });
 
-    sendAuditLog(buildAuditLog('USER_LOGOUT', payload.sub, { ip, userAgent }));
+    // Audit log
+    sendAuditLog(
+      buildAuditLog('USER_LOGOUT', payload.sub, {
+        ip,
+        userAgent,
+      })
+    );
 
+    console.log('Logout completed successfully');
   } catch (err) {
-    // silent
+    // Logout should never fail for frontend
+    console.error('Logout Error:', err);
   }
+
+  console.log('========== LOGOUT END ==========');
 
   return {
     success: true,
     message: 'Logged out successfully',
   };
 };
+
 
 const getCurrentUser = async (userId) => {
   try {
