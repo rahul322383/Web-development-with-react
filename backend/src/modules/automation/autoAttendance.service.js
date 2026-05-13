@@ -1,19 +1,14 @@
 'use strict';
 
 const { Attendance, User, Shift } = require('../../database/initModels');
-const logger = require('../../config/logger');
 const { Op } = require('sequelize');
 
-// ✅ DEFAULT SHIFT (fallback)
 const DEFAULT_SHIFT = {
     startTime: '09:00',
     endTime: '18:00',
     graceMins: 15,
 };
 
-// ======================
-// 🔧 HELPERS
-// ======================
 const todayDate = () => new Date().toISOString().slice(0, 10);
 
 const toTimeString = (date) => date.toTimeString().slice(0, 8);
@@ -31,29 +26,16 @@ const autoCheckIn = async ({ userId, ip }) => {
         });
 
         if (!user || !user.isActive) return;
-
-        if (!user.companyId) {
-            logger.warn({ event: 'NO_COMPANY_ID', userId });
-            return;
-        }
+        if (!user.companyId) return;
 
         const now = new Date();
         const hour = now.getHours();
 
-        // ❌ block unrealistic login times
-        if (hour < 5 || hour > 23) {
-            logger.warn({
-                event: 'AUTO_CHECKIN_BLOCKED',
-                userId,
-                hour,
-            });
-            return;
-        }
+        if (hour < 5 || hour > 23) return;
 
         const date = todayDate();
         const checkInTime = toTimeString(now);
 
-        // ✅ fetch existing attendance
         let record = await Attendance.findOne({
             where: {
                 employeeId: userId,
@@ -62,15 +44,9 @@ const autoCheckIn = async ({ userId, ip }) => {
             },
         });
 
-        // ✅ already checked in
-        if (record?.checkIn) {
-            logger.info({ event: 'AUTO_CHECKIN_SKIP', userId });
-            return;
-        }
+        if (record?.checkIn) return;
 
-        // ✅ SHIFT (real or fallback)
         const shift = user.shift || DEFAULT_SHIFT;
-
         const nowM = toMinutes(checkInTime);
         const shiftStartM = toMinutes(shift.startTime);
 
@@ -86,7 +62,6 @@ const autoCheckIn = async ({ userId, ip }) => {
             status = 'late';
         }
 
-        // ❗ too late → half day
         if (lateMinutes > 120) {
             status = 'half_day';
         }
@@ -102,10 +77,6 @@ const autoCheckIn = async ({ userId, ip }) => {
             checkInIp: ip || null,
         };
 
-      
-        
-
-        // ✅ UPSERT logic (safe)
         if (record) {
             await record.update(payload);
         } else {
@@ -113,34 +84,32 @@ const autoCheckIn = async ({ userId, ip }) => {
         }
 
     } catch (err) {
-    
-        logger.error({
-            event: 'AUTO_CHECKIN_ERROR',
-            userId,
-            error: err.message,
-        });
+        // silent
     }
 };
 
-
-const autoCheckOut = async ({ userId, ip }) => {
+const autoCheckOut = async ({ userId, ip }, transaction = null) => {
     try {
-        const user = await User.findByPk(userId);
+
+        console.log('========== AUTO CHECKOUT START ==========');
+        console.log('User ID:', userId);
+
+        const user = await User.findByPk(userId, { transaction });
 
         if (!user || !user.companyId) {
-            logger.warn(
-                `AUTO_CHECKOUT_INVALID_USER: ${JSON.stringify(
-                    { userId },
-                    null,
-                    2
-                )}`
-            );
-            return;
+            console.log('User or company not found');
+
+            return {
+                success: false,
+                message: 'User not found',
+            };
         }
 
         const date = todayDate();
         const now = new Date();
         const checkOutTime = toTimeString(now);
+
+        console.log('Checkout Time:', checkOutTime);
 
         const record = await Attendance.findOne({
             where: {
@@ -148,74 +117,61 @@ const autoCheckOut = async ({ userId, ip }) => {
                 companyId: user.companyId,
                 date,
             },
+            transaction,
+            lock: transaction ? transaction.LOCK.UPDATE : undefined,
         });
 
-        // No attendance found
         if (!record) {
-            logger.warn(
-                `AUTO_CHECKOUT_NO_RECORD: ${JSON.stringify(
-                    { userId, date },
-                    null,
-                    2
-                )}`
-            );
-            return;
+            console.log('Attendance record not found');
+
+            return {
+                success: false,
+                message: 'Attendance not found',
+            };
         }
 
-        // Already checked out
         if (record.checkOut) {
-            logger.info(
-                `AUTO_CHECKOUT_SKIP: ${JSON.stringify(
-                    {
-                        userId,
-                        existingCheckOut: record.checkOut,
-                    },
-                    null,
-                    2
-                )}`
-            );
-            return;
+            console.log('Already checked out');
+
+            return {
+                success: false,
+                message: 'Already checked out',
+            };
         }
 
-        // No check-in
         if (!record.checkIn) {
-            logger.warn(
-                `AUTO_CHECKOUT_NO_CHECKIN: ${JSON.stringify(
-                    { userId },
-                    null,
-                    2
-                )}`
-            );
-            return;
+            console.log('Checkin missing');
+
+            return {
+                success: false,
+                message: 'Checkin missing',
+            };
         }
 
         const checkInM = toMinutes(record.checkIn);
         const nowM = toMinutes(checkOutTime);
 
-        // Night shift support
-        let workedMinutes =
-            nowM < checkInM
-                ? (1440 - checkInM) + nowM
-                : nowM - checkInM;
+        let workedMinutes;
 
-        // Fake session prevention
-        if (workedMinutes < 30) {
-            logger.warn(
-                `INVALID_WORK_DURATION: ${JSON.stringify(
-                    {
-                        userId,
-                        workedMinutes,
-                    },
-                    null,
-                    2
-                )}`
-            );
-            return;
+        if (nowM < checkInM) {
+            workedMinutes = (1440 - checkInM) + nowM;
+        } else {
+            workedMinutes = nowM - checkInM;
         }
 
-        let status = record.status;
+        console.log('Worked Minutes:', workedMinutes);
 
-        // Attendance status
+        if (workedMinutes < 5) {
+            console.log('Minimum work duration not completed');
+
+            return {
+                success: false,
+                message: 'Minimum work duration not completed',
+            };
+        }
+
+        let status = record.status || 'present';
+
         if (workedMinutes >= 480) {
             status = 'present';
         } else if (workedMinutes >= 240) {
@@ -224,46 +180,44 @@ const autoCheckOut = async ({ userId, ip }) => {
             status = 'absent';
         }
 
-        const overtimeMinutes = Math.max(
-            0,
-            workedMinutes - 480
+        const overtimeMinutes = Math.max(0, workedMinutes - 480);
+
+        await record.update(
+            {
+                checkOut: checkOutTime,
+                workedMinutes,
+                overtimeMinutes,
+                hasOvertime: overtimeMinutes > 0,
+                status,
+                checkOutIp: ip || null,
+            },
+            { transaction }
         );
 
-        await record.update({
-            checkOut: checkOutTime,
-            workedMinutes,
-            overtimeMinutes,
-            hasOvertime: overtimeMinutes > 0,
-            status,
-            checkOutIp: ip || null,
-        });
+        console.log('Checkout updated successfully');
 
-        logger.info(
-            `AUTO_CHECKOUT_DONE: ${JSON.stringify(
-                {
-                    userId,
-                    workedMinutes,
-                    overtimeMinutes,
-                    status,
-                    checkOutTime,
-                },
-                null,
-                2
-            )}`
-        );
+        console.log('========== AUTO CHECKOUT END ==========');
+
+        return {
+            success: true,
+            message: 'Checkout successfully',
+            data: {
+                workedMinutes,
+                overtimeMinutes,
+                status,
+                checkOutTime,
+            },
+        };
 
     } catch (err) {
-        logger.error(
-            `AUTO_CHECKOUT_ERROR: ${JSON.stringify(
-                {
-                    userId,
-                    error: err.message,
-                    stack: err.stack,
-                },
-                null,
-                2
-            )}`
-        );
+
+        console.error('Auto Checkout Error:', err);
+
+        return {
+            success: false,
+            message: 'Checkout failed',
+            error: err.message,
+        };
     }
 };
 
