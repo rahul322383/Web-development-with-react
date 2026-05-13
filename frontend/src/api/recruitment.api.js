@@ -15,7 +15,7 @@ export const recruitmentApi = {
     api.get('/recruitment', { params }).then(r => r.data),
 
   getJob: (id) =>
-    api.get(`/recruitment/${id}`).then(r => r.data),
+    api.get(`/recruitment/jobs/${id}`).then(r => r.data),
 
   createJob: (data) =>
     api.post('/recruitment', data).then(r => r.data),
