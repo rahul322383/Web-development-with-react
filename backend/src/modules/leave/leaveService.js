@@ -463,20 +463,107 @@ const listMyLeaves = async ({ employeeId, cursor, limit, actor }) => {
   }
 };
 
-const listPendingLeaves = async ({ actor, limit = 10, page = 1 }) => {
-  const denied = checkPermission(actor, 'VIEW_LEAVE');
+const listPendingLeaves = async ({
+  actor,
+  limit = 10,
+  page = 1,
+}) => {
+
+  const denied =
+    checkPermission(actor, 'VIEW_LEAVE');
+
   if (denied) return denied;
+
+  page = Math.max(Number(page) || 1, 1);
+  limit = Math.min(
+    Math.max(Number(limit) || 10, 1),
+    100
+  );
 
   const offset = (page - 1) * limit;
 
   try {
-    const where = { status: 'Pending' };
-    if (actor.primaryRole === 'Manager') where.managerId = actor.id;
 
-    const result = await leaveRepository.listPendingLeaves(where, { limit, offset });
-    return { success: true, statusCode: 200, data: result.rows, count: result.count };
+    // =========================
+    // PENDING LEAVES
+    // =========================
+
+    const pendingWhere = {
+      status: 'Pending',
+    };
+
+    if (actor.primaryRole === 'Manager') {
+      pendingWhere.managerId = actor.id;
+    }
+
+    const pendingResult =
+      await leaveRepository.listPendingLeaves(
+        pendingWhere,
+        {
+          limit,
+          offset,
+        }
+      );
+
+    // =========================
+    // RECENTLY APPROVED LEAVES
+    // =========================
+
+    const approvedWhere = {
+      status: 'Approved',
+    };
+
+    if (actor.primaryRole === 'Manager') {
+      approvedWhere.managerId = actor.id;
+    }
+
+    const recentApproved =
+      await leaveRepository.listLeaves(
+        approvedWhere,
+        {
+          limit: 5,
+          offset: 0,
+          order: [['updatedAt', 'DESC']],
+        }
+      );
+
+    // =========================
+    // RESPONSE
+    // =========================
+
+    return {
+
+      success: true,
+
+      statusCode: 200,
+
+      data: {
+
+        pending: pendingResult.rows,
+
+        recentApproved:
+          recentApproved.rows,
+      },
+
+      meta: {
+
+        pendingCount:
+          pendingResult.count,
+
+        currentPage: page,
+
+        limit,
+      },
+    };
+
   } catch (error) {
-    return fail(error.message || 'Failed to fetch pending leaves', 500);
+
+    
+    return fail(
+      error.message ||
+      'Failed to fetch leaves',
+      500
+    );
   }
 };
 
