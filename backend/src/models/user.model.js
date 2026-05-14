@@ -15,6 +15,11 @@ module.exports = (sequelize, DataTypes) => {
         unique: true,
         field: 'employee_code'
       },
+      joiningDate: {
+        type: DataTypes.DATEONLY,
+        allowNull: true,
+        field: 'joining_date',
+      },
       roleId: {
         type: DataTypes.BIGINT.UNSIGNED,
         allowNull: false,
