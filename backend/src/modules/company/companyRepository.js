@@ -431,37 +431,6 @@ const listCompanies = async ({
 };
 
 
-// const listCompanies = async ({
-//   page = 1,
-//   limit = 20,
-//   search = null,
-//   isActive = null,
-// } = {}) => {
-//   limit = Math.min(Number(limit) || 20, MAX_LIMIT);
-//   page = Math.max(Number(page) || 1, 1);
-//   const offset = (page - 1) * limit;
-//   const where = {};
-
-//   if (isActive === 'true') where.isActive = true;
-//   if (isActive === 'false') where.isActive = false;
-//   if (search) where.name = { [Op.like]: `%${search}%` };
-
-//   const { count, rows } = await Company.findAndCountAll({
-//     where,
-//     limit,
-//     offset,
-//     order: [['createdAt', 'DESC']],
-//     attributes: ['id', 'name', 'slug', 'isActive', 'subscriptionPlan', 'createdAt'],
-//   });
-
-//   return {
-//     total: count,
-//     page,
-//     limit,
-//     totalPages: Math.ceil(count / limit),
-//     companies: rows,
-//   };
-// };
 
 
 const getEmployees = async (companyId) => {
