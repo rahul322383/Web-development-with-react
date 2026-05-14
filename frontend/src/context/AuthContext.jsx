@@ -143,7 +143,8 @@ export const AuthProvider = ({ children }) => {
     isLoggingOut.current = true;
 
     try {
-      await authApi.logout();
+      const refreshToken = localStorage.getItem('refreshToken'); // ✅ grab before clear
+      await authApi.logout(refreshToken);
     } catch {
       // Ignore logout API errors — we still clear locally
     } finally {
@@ -155,13 +156,11 @@ export const AuthProvider = ({ children }) => {
       setIsAuthenticated(false);
 
       toast.success('Logged out successfully');
-
       window.location.href = '/';
     }
 
     return { success: true, message: 'Logged out', data: null };
   };
-
   // ---------------- REFRESH USER ----------------
   const refreshUserData = async () => {
     try {
