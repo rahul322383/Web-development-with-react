@@ -91,13 +91,12 @@ const autoCheckIn = async ({ userId, ip }) => {
 const autoCheckOut = async ({ userId, ip }, transaction = null) => {
     try {
 
-        console.log('========== AUTO CHECKOUT START ==========');
-        console.log('User ID:', userId);
+      
 
         const user = await User.findByPk(userId, { transaction });
 
         if (!user || !user.companyId) {
-            console.log('User or company not found');
+            
 
             return {
                 success: false,
@@ -109,7 +108,7 @@ const autoCheckOut = async ({ userId, ip }, transaction = null) => {
         const now = new Date();
         const checkOutTime = toTimeString(now);
 
-        console.log('Checkout Time:', checkOutTime);
+    
 
         const record = await Attendance.findOne({
             where: {
@@ -131,8 +130,7 @@ const autoCheckOut = async ({ userId, ip }, transaction = null) => {
         }
 
         if (record.checkOut) {
-            console.log('Already checked out');
-
+           
             return {
                 success: false,
                 message: 'Already checked out',
@@ -140,7 +138,7 @@ const autoCheckOut = async ({ userId, ip }, transaction = null) => {
         }
 
         if (!record.checkIn) {
-            console.log('Checkin missing');
+           
 
             return {
                 success: false,
@@ -159,7 +157,7 @@ const autoCheckOut = async ({ userId, ip }, transaction = null) => {
             workedMinutes = nowM - checkInM;
         }
 
-        console.log('Worked Minutes:', workedMinutes);
+    
 
         if (workedMinutes < 5) {
             console.log('Minimum work duration not completed');
@@ -194,9 +192,7 @@ const autoCheckOut = async ({ userId, ip }, transaction = null) => {
             { transaction }
         );
 
-        console.log('Checkout updated successfully');
-
-        console.log('========== AUTO CHECKOUT END ==========');
+   
 
         return {
             success: true,
@@ -210,9 +206,6 @@ const autoCheckOut = async ({ userId, ip }, transaction = null) => {
         };
 
     } catch (err) {
-
-        console.error('Auto Checkout Error:', err);
-
         return {
             success: false,
             message: 'Checkout failed',
