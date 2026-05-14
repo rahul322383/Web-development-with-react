@@ -37,11 +37,29 @@ const buildAudit = (event, userId, meta = {}) => ({
 });
 
 const assertCompanyAccess = (actor, companyId) => {
-  if (actor.companyId && Number(actor.companyId) !== Number(companyId)) {
+  // No logged-in user
+  if (!actor) {
+    const err = new Error('Unauthorized');
+    err.statusCode = 401;
+    throw err;
+  }
+  
+  
+  if (actor.role === 'Admin') {
+    return true;
+  }
+
+
+  if (
+    actor.companyId &&
+    Number(actor.companyId) !== Number(companyId)
+  ) {
     const err = new Error('Access denied to this company');
     err.statusCode = 403;
     throw err;
   }
+
+  return true;
 };
 
 const validateCompanyPayload = (payload) => {
