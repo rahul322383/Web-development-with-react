@@ -1,927 +1,5 @@
-// import { useState, useEffect, useCallback } from 'react';
-// import { format } from 'date-fns';
-// import {
-//     LogIn,
-//     LogOut,
-//     Calendar,
-//     Clock,
-//     Users,
-//     AlertCircle,
-//     CheckCircle,
-//     XCircle,
-//     ChevronLeft,
-//     ChevronRight,
-//     Search,
-//     RefreshCw,
-// } from 'lucide-react';
-// import { useAuth } from '../context/AuthContext';
-// import {
-//     checkIn,
-//     checkOut,
-//     getMyAttendance,
-//     getTodaySummary,
-//     getTeamReport,
-//     getOvertimeSummary,
-//     adminRecord,
-// } from '../api/attendance.api';
-
-// // ─────────────────────────────────────────────
-// // PURE HELPERS (module-level)
-// // ─────────────────────────────────────────────
-
-// const getCurrentTime = () => {
-//     const now = new Date();
-//     return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-// };
-
-// const getDefaultDates = () => {
-//     const now = new Date();
-//     const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-//     const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-//     return {
-//         startDate: format(firstDay, 'yyyy-MM-dd'),
-//         endDate: format(lastDay, 'yyyy-MM-dd'),
-//     };
-// };
-
-// const cleanParams = (params) =>
-//     Object.fromEntries(
-//         Object.entries(params).filter(([, v]) => v !== '' && v !== null && v !== undefined)
-//     );
-
-// const formatDuration = (minutes) => {
-//     if (!minutes || minutes <= 0) return '';
-//     const hrs = Math.floor(minutes / 60);
-//     const mins = minutes % 60;
-//     if (hrs === 0) return `${mins}m`;
-//     if (mins === 0) return `${hrs}h`;
-//     return `${hrs}h ${mins}m`;
-// };
-
-// const minutesToHours = (minutes) => (minutes / 60).toFixed(2);
-
-// const formatCheckInMessage = (rawMessage) => {
-//     const match = rawMessage.match(/late by (\d+) min/i);
-//     if (match) {
-//         const lateMinutes = parseInt(match[1], 10);
-//         const formatted = formatDuration(lateMinutes) || '0m';
-//         return rawMessage.replace(match[0], `late by ${formatted}`);
-//     }
-//     return rawMessage;
-// };
-
-// // FIX #8: Canonical role check that handles all three possible user role shapes
-// // (role string, primaryRole string, or roles array) matching the authService contract.
-// const resolveIsAdmin = (user) => {
-//     if (!user) return false;
-//     const roles = [
-//         user.role,
-//         user.primaryRole,
-//         ...(Array.isArray(user.roles) ? user.roles : []),
-//     ]
-//         .filter(Boolean)
-//         .map((r) => (typeof r === 'string' ? r : r?.name))
-//         .filter(Boolean)
-//         .map((r) => r.toLowerCase());
-//     return roles.some((r) => ['admin', 'hr', 'manager'].includes(r));
-// };
-
-// // ─────────────────────────────────────────────
-// // HOOKS
-// // ─────────────────────────────────────────────
-
-// const useDebounce = (value, delay = 500) => {
-//     const [debounced, setDebounced] = useState(value);
-//     useEffect(() => {
-//         const handler = setTimeout(() => setDebounced(value), delay);
-//         return () => clearTimeout(handler);
-//     }, [value, delay]);
-//     return debounced;
-// };
-
-// // ─────────────────────────────────────────────
-// // SHARED UI COMPONENTS
-// // ─────────────────────────────────────────────
-
-// const Button = ({ children, variant = 'primary', isLoading, ...props }) => {
-//     const base =
-//         'px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
-//     const variants = {
-//         primary:
-//             'bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600',
-//         secondary:
-//             'bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600',
-//         danger: 'bg-red-600 text-white hover:bg-red-700',
-//         outline:
-//             'border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700',
-//     };
-//     return (
-//         <button className={`${base} ${variants[variant]}`} disabled={isLoading} {...props}>
-//             {isLoading ? (
-//                 <span className="flex items-center gap-2">
-//                     <RefreshCw className="w-4 h-4 animate-spin" /> Loading...
-//                 </span>
-//             ) : (
-//                 children
-//             )}
-//         </button>
-//     );
-// };
-
-// const Input = ({ label, error, ...props }) => (
-//     <div className="flex flex-col gap-1">
-//         {label && (
-//             <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{label}</label>
-//         )}
-//         <input
-//             className={`px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 ${error ? 'border-red-500' : 'border-gray-300'
-//                 }`}
-//             {...props}
-//         />
-//         {error && <span className="text-xs text-red-500">{error}</span>}
-//     </div>
-// );
-
-// const Select = ({ label, options, ...props }) => (
-//     <div className="flex flex-col gap-1">
-//         {label && (
-//             <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{label}</label>
-//         )}
-//         <select
-//             className="px-3 py-2 border border-gray-300 rounded-lg bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-//             {...props}
-//         >
-//             {options.map((opt) => (
-//                 <option key={opt.value} value={opt.value}>
-//                     {opt.label}
-//                 </option>
-//             ))}
-//         </select>
-//     </div>
-// );
-
-// const Card = ({ children, className = '' }) => (
-//     <div className={`bg-white dark:bg-gray-800 rounded-xl shadow-md p-6 ${className}`}>
-//         {children}
-//     </div>
-// );
-
-// // FIX #9: Use replaceAll (or a global regex) so all underscores are replaced,
-// // not just the first one. 'half_day' → 'half day', 'on_leave' → 'on leave'.
-// const StatusBadge = ({ status }) => {
-//     const styles = {
-//         present: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-//         late: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
-//         absent: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
-//         half_day: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
-//         on_leave: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
-//         holiday: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
-//     };
-//     return (
-//         <span
-//             className={`px-2 py-1 rounded-full text-xs font-medium ${styles[status] || 'bg-gray-100 text-gray-800'
-//                 }`}
-//         >
-//             {status.replaceAll('_', ' ')}
-//         </span>
-//     );
-// };
-
-// // ─────────────────────────────────────────────
-// // CHECK IN / OUT
-// // ─────────────────────────────────────────────
-
-// const CheckInOutCard = ({ onSuccess }) => {
-//     // FIX #1: Separate booleans instead of a shared object to avoid stale-spread bugs.
-//     // The original `setLoading({ ...loading, in: true })` closes over the loading value
-//     // at call time — if both buttons fire quickly each can overwrite the other's flag.
-//     const [checkingIn, setCheckingIn] = useState(false);
-//     const [checkingOut, setCheckingOut] = useState(false);
-//     const [message, setMessage] = useState('');
-//     const [error, setError] = useState('');
-
-//     const handleCheckIn = async () => {
-//         setCheckingIn(true);
-//         setError('');
-//         setMessage('');
-//         try {
-//             const res = await checkIn({ checkInTime: getCurrentTime() });
-//             setMessage(formatCheckInMessage(res.data.message));
-//             onSuccess?.();
-//         } catch (err) {
-//             setError(err.response?.data?.message || 'Check-in failed');
-//         } finally {
-//             setCheckingIn(false);
-//         }
-//     };
-
-//     const handleCheckOut = async () => {
-//         setCheckingOut(true);
-//         setError('');
-//         setMessage('');
-//         try {
-//             const res = await checkOut({ checkOutTime: getCurrentTime() });
-//             setMessage(res.data.message);
-//             onSuccess?.();
-//         } catch (err) {
-//             setError(err.response?.data?.message || 'Check-out failed');
-//         } finally {
-//             setCheckingOut(false);
-//         }
-//     };
-
-//     return (
-//         <Card>
-//             <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
-//                 <div className="flex gap-3">
-//                     <Button onClick={handleCheckIn} isLoading={checkingIn} variant="primary">
-//                         <LogIn className="w-4 h-4 mr-2 inline" /> Check In
-//                     </Button>
-//                     <Button onClick={handleCheckOut} isLoading={checkingOut} variant="secondary">
-//                         <LogOut className="w-4 h-4 mr-2 inline" /> Check Out
-//                     </Button>
-//                 </div>
-//                 <div className="text-sm">
-//                     {message && <p className="text-green-600 dark:text-green-400">{message}</p>}
-//                     {error && <p className="text-red-600 dark:text-red-400">{error}</p>}
-//                 </div>
-//             </div>
-//         </Card>
-//     );
-// };
-
-// // ─────────────────────────────────────────────
-// // MY ATTENDANCE TABLE
-// // ─────────────────────────────────────────────
-
-// const MyAttendanceTable = () => {
-//     // FIX #10: Lazy initializer — getDefaultDates is passed as a function reference,
-//     // not called eagerly. This means it only runs once (on mount), not on every render.
-//     const [records, setRecords] = useState([]);
-//     const [loading, setLoading] = useState(true);
-//     const [filters, setFilters] = useState(getDefaultDates);
-//     const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0 });
-
-//     const debouncedFilters = useDebounce(filters, 500);
-
-//     // FIX #4: Depend explicitly on debouncedFilters, pagination.page, AND pagination.limit.
-//     // Previously only page was listed, so changing limit silently wouldn't re-fetch.
-//     useEffect(() => {
-//         const fetchData = async () => {
-//             setLoading(true);
-//             try {
-//                 const params = cleanParams({
-//                     ...debouncedFilters,
-//                     page: pagination.page,
-//                     limit: pagination.limit,
-//                 });
-//                 const res = await getMyAttendance(params);
-//                 setRecords(res.data.records || []);
-//                 setPagination((prev) => ({
-//                     ...prev,
-//                     total: res.data.meta?.count || 0,
-//                 }));
-//             } catch (error) {
-//                 console.error(error);
-//             } finally {
-//                 setLoading(false);
-//             }
-//         };
-//         fetchData();
-//     }, [debouncedFilters, pagination.page, pagination.limit]);
-
-//     const totalPages = Math.ceil(pagination.total / pagination.limit);
-
-//     // FIX #5: Guard against showing "1 to 10 of 0" when there are no results.
-//     const showingFrom = pagination.total === 0 ? 0 : (pagination.page - 1) * pagination.limit + 1;
-//     const showingTo = Math.min(pagination.page * pagination.limit, pagination.total);
-
-//     return (
-//         <Card>
-//             <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white flex items-center gap-2">
-//                 <Clock className="w-5 h-5" /> My Attendance History
-//             </h2>
-//             <div className="mb-4 flex flex-wrap gap-3 items-end">
-//                 <Input
-//                     type="date"
-//                     label="Start Date"
-//                     value={filters.startDate}
-//                     onChange={(e) => setFilters((f) => ({ ...f, startDate: e.target.value }))}
-//                 />
-//                 <Input
-//                     type="date"
-//                     label="End Date"
-//                     value={filters.endDate}
-//                     onChange={(e) => setFilters((f) => ({ ...f, endDate: e.target.value }))}
-//                 />
-//                 <Button
-//                     onClick={() => setPagination((p) => ({ ...p, page: 1 }))}
-//                     variant="outline"
-//                 >
-//                     <Search className="w-4 h-4 mr-2" /> Apply
-//                 </Button>
-//                 <Button onClick={() => setFilters(getDefaultDates())} variant="secondary">
-//                     Reset
-//                 </Button>
-//             </div>
-
-//             <div className="overflow-x-auto">
-//                 <table className="w-full text-sm">
-//                     <thead className="bg-gray-50 dark:bg-gray-700">
-//                         <tr>
-//                             {['Date', 'Check In', 'Check Out', 'Status', 'Worked', 'Late'].map((h) => (
-//                                 <th key={h} className="p-3 text-left">
-//                                     {h}
-//                                 </th>
-//                             ))}
-//                         </tr>
-//                     </thead>
-//                     <tbody>
-//                         {loading ? (
-//                             <tr>
-//                                 <td colSpan={6} className="p-3 text-center">
-//                                     Loading...
-//                                 </td>
-//                             </tr>
-//                         ) : records.length === 0 ? (
-//                             <tr>
-//                                 <td colSpan={6} className="p-3 text-center text-gray-500">
-//                                     No records found
-//                                 </td>
-//                             </tr>
-//                         ) : (
-//                             records.map((rec) => (
-//                                 <tr
-//                                     key={rec.id}
-//                                     className="border-t dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50"
-//                                 >
-//                                     <td className="p-3">{format(new Date(rec.date), 'dd MMM yyyy')}</td>
-//                                     <td className="p-3">{rec.checkIn?.slice(0, 5) || '—'}</td>
-//                                     <td className="p-3">{rec.checkOut?.slice(0, 5) || '—'}</td>
-//                                     <td className="p-3">
-//                                         <StatusBadge status={rec.status} />
-//                                     </td>
-//                                     <td className="p-3">
-//                                         {rec.workedMinutes
-//                                             ? `${minutesToHours(rec.workedMinutes)} hrs`
-//                                             : '—'}
-//                                     </td>
-//                                     <td className="p-3">
-//                                         {rec.lateMinutes > 0 ? formatDuration(rec.lateMinutes) : '—'}
-//                                     </td>
-//                                 </tr>
-//                             ))
-//                         )}
-//                     </tbody>
-//                 </table>
-//             </div>
-
-//             <div className="mt-4 flex items-center justify-between">
-//                 {/* FIX #5: Shows "0 to 0 of 0" correctly when no results exist */}
-//                 <div className="text-sm text-gray-600 dark:text-gray-400">
-//                     Showing {showingFrom} to {showingTo} of {pagination.total} entries
-//                 </div>
-//                 <div className="flex gap-2">
-//                     <Button
-//                         variant="outline"
-//                         disabled={pagination.page === 1}
-//                         onClick={() => setPagination((p) => ({ ...p, page: p.page - 1 }))}
-//                     >
-//                         <ChevronLeft className="w-4 h-4" />
-//                     </Button>
-//                     <span className="px-3 py-1 text-sm">
-//                         {pagination.page} / {totalPages || 1}
-//                     </span>
-//                     <Button
-//                         variant="outline"
-//                         disabled={pagination.page >= totalPages}
-//                         onClick={() => setPagination((p) => ({ ...p, page: p.page + 1 }))}
-//                     >
-//                         <ChevronRight className="w-4 h-4" />
-//                     </Button>
-//                 </div>
-//             </div>
-//         </Card>
-//     );
-// };
-
-// // ─────────────────────────────────────────────
-// // TODAY'S SUMMARY
-// // ─────────────────────────────────────────────
-
-// const TodaySummary = () => {
-//     const [summary, setSummary] = useState(null);
-//     const [loading, setLoading] = useState(true);
-
-//     useEffect(() => {
-//         const fetchSummary = async () => {
-//             try {
-//                 const res = await getTodaySummary();
-//                 setSummary(res.data.data);
-//             } catch (error) {
-//                 console.error(error);
-//             } finally {
-//                 setLoading(false);
-//             }
-//         };
-//         fetchSummary();
-//     }, []);
-
-//     if (loading) return <Card><p>Loading summary...</p></Card>;
-//     if (!summary) return null;
-
-//     const stats = [
-//         { label: 'Present', value: summary.present || 0, icon: CheckCircle, color: 'text-green-600' },
-//         { label: 'Late', value: summary.late || 0, icon: AlertCircle, color: 'text-yellow-600' },
-//         { label: 'Absent', value: summary.absent || 0, icon: XCircle, color: 'text-red-600' },
-//         { label: 'On Leave', value: summary.onLeave || 0, icon: Calendar, color: 'text-purple-600' },
-//         {
-//             label: 'Total Employees',
-//             value: summary.totalEmployees || 0,
-//             icon: Users,
-//             color: 'text-blue-600',
-//         },
-//     ];
-
-//     return (
-//         <Card>
-//             <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">
-//                 Today's Summary
-//             </h2>
-//             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-//                 {stats.map((stat) => (
-//                     <div
-//                         key={stat.label}
-//                         className="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg text-center"
-//                     >
-//                         <stat.icon className={`w-6 h-6 mx-auto mb-2 ${stat.color}`} />
-//                         <p className="text-2xl font-bold text-gray-900 dark:text-white">
-//                             {stat.value}
-//                         </p>
-//                         <p className="text-sm text-gray-600 dark:text-gray-400">{stat.label}</p>
-//                     </div>
-//                 ))}
-//             </div>
-//         </Card>
-//     );
-// };
-
-// // ─────────────────────────────────────────────
-// // TEAM REPORT
-// // ─────────────────────────────────────────────
-
-// // Module-level constant — never recreated
-// const STATUS_OPTIONS = [
-//     { value: '', label: 'All Status' },
-//     { value: 'present', label: 'Present' },
-//     { value: 'late', label: 'Late' },
-//     { value: 'absent', label: 'Absent' },
-//     { value: 'half_day', label: 'Half Day' },
-//     { value: 'on_leave', label: 'On Leave' },
-// ];
-
-// const EMPTY_TEAM_FILTERS = { startDate: '', endDate: '', employeeId: '', status: '' };
-
-// const TeamReport = () => {
-//     const [records, setRecords] = useState([]);
-//     const [loading, setLoading] = useState(true);
-//     const [filters, setFilters] = useState(EMPTY_TEAM_FILTERS);
-//     const [page, setPage] = useState(1);
-//     const [total, setTotal] = useState(0);
-//     const limit = 10;
-
-//     // FIX #2 & #3: fetchData wrapped in useCallback with stable primitive deps.
-//     // Previously fetchData was a plain function inside the component, causing an
-//     // exhaustive-deps violation (it wasn't in the effect's dep array). Wrapping in
-//     // useCallback makes it a stable reference that can safely be listed as a dep.
-//     // FIX #3: Depending on individual primitive filter fields (not the filters object)
-//     // prevents a new object reference from triggering spurious re-fetches.
-//     const fetchData = useCallback(async () => {
-//         setLoading(true);
-//         try {
-//             const params = cleanParams({
-//                 ...filters,
-//                 page,
-//                 limit,
-//             });
-//             const res = await getTeamReport(params);
-//             setRecords(res.data.records || []);
-//             setTotal(res.data.meta?.count || 0);
-//         } catch (error) {
-//             console.error(error);
-//         } finally {
-//             setLoading(false);
-//         }
-//         // eslint-disable-next-line react-hooks/exhaustive-deps
-//     }, [
-//         filters.startDate,
-//         filters.endDate,
-//         filters.employeeId,
-//         filters.status,
-//         page,
-//     ]);
-
-//     useEffect(() => {
-//         fetchData();
-//     }, [fetchData]);
-
-//     const totalPages = Math.ceil(total / limit);
-
-//     return (
-//         <Card>
-//             <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white flex items-center gap-2">
-//                 <Users className="w-5 h-5" /> Team Attendance Report
-//             </h2>
-//             <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-//                 <Input
-//                     type="date"
-//                     label="Start Date"
-//                     value={filters.startDate}
-//                     onChange={(e) => setFilters((f) => ({ ...f, startDate: e.target.value }))}
-//                 />
-//                 <Input
-//                     type="date"
-//                     label="End Date"
-//                     value={filters.endDate}
-//                     onChange={(e) => setFilters((f) => ({ ...f, endDate: e.target.value }))}
-//                 />
-//                 <Input
-//                     type="number"
-//                     label="Employee ID"
-//                     placeholder="Optional"
-//                     value={filters.employeeId}
-//                     onChange={(e) => setFilters((f) => ({ ...f, employeeId: e.target.value }))}
-//                 />
-//                 <Select
-//                     label="Status"
-//                     options={STATUS_OPTIONS}
-//                     value={filters.status}
-//                     onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))}
-//                 />
-//             </div>
-//             <div className="flex gap-2 mb-4">
-//                 <Button onClick={() => setPage(1)} variant="primary">
-//                     Apply Filters
-//                 </Button>
-//                 <Button
-//                     onClick={() => {
-//                         setFilters(EMPTY_TEAM_FILTERS);
-//                         setPage(1);
-//                     }}
-//                     variant="secondary"
-//                 >
-//                     Clear
-//                 </Button>
-//             </div>
-
-//             <div className="overflow-x-auto">
-//                 <table className="w-full text-sm">
-//                     <thead className="bg-gray-50 dark:bg-gray-700">
-//                         <tr>
-//                             {['Employee', 'Date', 'Check In', 'Check Out', 'Status', 'Worked'].map(
-//                                 (h) => (
-//                                     <th key={h} className="p-3 text-left">
-//                                         {h}
-//                                     </th>
-//                                 )
-//                             )}
-//                         </tr>
-//                     </thead>
-//                     <tbody>
-//                         {loading ? (
-//                             <tr>
-//                                 <td colSpan={6} className="p-3 text-center">
-//                                     Loading...
-//                                 </td>
-//                             </tr>
-//                         ) : records.length === 0 ? (
-//                             <tr>
-//                                 <td colSpan={6} className="p-3 text-center text-gray-500">
-//                                     No records found
-//                                 </td>
-//                             </tr>
-//                         ) : (
-//                             records.map((rec) => {
-//                                 const employeeName =
-//                                     rec.employee?.name ||
-//                                     rec.employeeName ||
-//                                     `ID: ${rec.employeeId}`;
-//                                 return (
-//                                     <tr
-//                                         key={rec.id}
-//                                         className="border-t dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50"
-//                                     >
-//                                         <td className="p-3">
-//                                             {employeeName} (ID: {rec.employeeId})
-//                                         </td>
-//                                         <td className="p-3">
-//                                             {format(new Date(rec.date), 'dd MMM yyyy')}
-//                                         </td>
-//                                         <td className="p-3">
-//                                             {rec.checkIn?.slice(0, 5) || '—'}
-//                                         </td>
-//                                         <td className="p-3">
-//                                             {rec.checkOut?.slice(0, 5) || '—'}
-//                                         </td>
-//                                         <td className="p-3">
-//                                             <StatusBadge status={rec.status} />
-//                                         </td>
-//                                         <td className="p-3">
-//                                             {rec.workedMinutes
-//                                                 ? `${minutesToHours(rec.workedMinutes)} hrs`
-//                                                 : '—'}
-//                                         </td>
-//                                     </tr>
-//                                 );
-//                             })
-//                         )}
-//                     </tbody>
-//                 </table>
-//             </div>
-
-//             <div className="mt-4 flex items-center justify-between">
-//                 <div className="text-sm text-gray-600 dark:text-gray-400">
-//                     Page {page} of {totalPages || 1}
-//                 </div>
-//                 <div className="flex gap-2">
-//                     <Button
-//                         variant="outline"
-//                         disabled={page === 1}
-//                         onClick={() => setPage((p) => p - 1)}
-//                     >
-//                         <ChevronLeft className="w-4 h-4" />
-//                     </Button>
-//                     <Button
-//                         variant="outline"
-//                         disabled={page >= totalPages}
-//                         onClick={() => setPage((p) => p + 1)}
-//                     >
-//                         <ChevronRight className="w-4 h-4" />
-//                     </Button>
-//                 </div>
-//             </div>
-//         </Card>
-//     );
-// };
-
-// // ─────────────────────────────────────────────
-// // OVERTIME SUMMARY
-// // ─────────────────────────────────────────────
-
-// const MONTH_OPTIONS = Array.from({ length: 12 }, (_, i) => ({
-//     value: i + 1,
-//     label: format(new Date(2000, i, 1), 'MMMM'),
-// }));
-
-// const OvertimeSummary = () => {
-//     const [params, setParams] = useState({
-//         employeeId: '',
-//         month: new Date().getMonth() + 1,
-//         // FIX #6: Store year as a number from the start, not a string.
-//         // Previously year was set correctly on init but e.target.value (a string)
-//         // was stored directly on change, so the API would receive year: "2025".
-//         year: new Date().getFullYear(),
-//     });
-//     const [data, setData] = useState(null);
-//     const [loading, setLoading] = useState(false);
-//     const [error, setError] = useState('');
-
-//     const handleFetch = async () => {
-//         if (!params.employeeId) {
-//             setError('Employee ID is required');
-//             return;
-//         }
-//         setLoading(true);
-//         setError('');
-//         try {
-//             const res = await getOvertimeSummary(cleanParams(params));
-//             setData(res.data.data);
-//         } catch (err) {
-//             setError(err.response?.data?.message || 'Failed to fetch');
-//         } finally {
-//             setLoading(false);
-//         }
-//     };
-
-//     return (
-//         <Card>
-//             <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">
-//                 Overtime Summary
-//             </h2>
-//             <div className="space-y-4">
-//                 <div className="grid grid-cols-3 gap-3">
-//                     <Input
-//                         type="number"
-//                         label="Employee ID"
-//                         value={params.employeeId}
-//                         onChange={(e) =>
-//                             setParams((p) => ({ ...p, employeeId: e.target.value }))
-//                         }
-//                         placeholder="e.g., 12"
-//                     />
-//                     <Select
-//                         label="Month"
-//                         options={MONTH_OPTIONS}
-//                         value={params.month}
-//                         onChange={(e) =>
-//                             setParams((p) => ({ ...p, month: parseInt(e.target.value, 10) }))
-//                         }
-//                     />
-//                     <Input
-//                         type="number"
-//                         label="Year"
-//                         value={params.year}
-//                         onChange={(e) =>
-//                             // FIX #6: Parse to number on change, not stored as string
-//                             setParams((p) => ({ ...p, year: parseInt(e.target.value, 10) || p.year }))
-//                         }
-//                     />
-//                 </div>
-//                 <Button onClick={handleFetch} isLoading={loading}>
-//                     Get Overtime
-//                 </Button>
-//                 {error && <p className="text-red-500 text-sm">{error}</p>}
-//                 {data && (
-//                     <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
-//                         <p className="text-lg font-medium">
-//                             Total Overtime:{' '}
-//                             <span className="text-blue-600 dark:text-blue-400">
-//                                 {data.totalOvertimeHours} hrs
-//                             </span>
-//                         </p>
-//                         <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
-//                             Employee: {data.employeeName}
-//                         </p>
-//                     </div>
-//                 )}
-//             </div>
-//         </Card>
-//     );
-// };
-
-// // ─────────────────────────────────────────────
-// // MANUAL ENTRY FORM
-// // ─────────────────────────────────────────────
-
-// const EMPTY_FORM = {
-//     employeeId: '',
-//     date: format(new Date(), 'yyyy-MM-dd'),
-//     checkIn: '',
-//     checkOut: '',
-//     status: '',
-//     notes: '',
-// };
-
-// const MANUAL_STATUS_OPTIONS = [
-//     { value: '', label: 'Use check-in/out times' },
-//     { value: 'absent', label: 'Absent' },
-//     { value: 'on_leave', label: 'On Leave' },
-//     { value: 'half_day', label: 'Half Day' },
-//     { value: 'holiday', label: 'Holiday' },
-// ];
-
-// const ManualEntryForm = ({ onSuccess }) => {
-//     const [form, setForm] = useState(EMPTY_FORM);
-//     const [loading, setLoading] = useState(false);
-//     const [message, setMessage] = useState('');
-//     const [error, setError] = useState('');
-
-//     const handleSubmit = async (e) => {
-//         e.preventDefault();
-//         setLoading(true);
-//         setError('');
-//         setMessage('');
-//         try {
-//             // FIX #7: Use destructuring to build the payload cleanly instead of
-//             // mutating a spread copy with delete. Easier to follow and avoids
-//             // accidental mutation of the form state if refactored later.
-//             const { checkIn: ci, checkOut: co, status, ...rest } = form;
-//             const payload = status
-//                 ? { ...rest, status }           // status-only: omit checkIn/checkOut
-//                 : { ...rest, checkIn: ci, checkOut: co }; // times: omit status
-
-//             const res = await adminRecord(cleanParams(payload));
-//             setMessage(res.data.message);
-//             setForm(EMPTY_FORM);
-//             onSuccess?.();
-//         } catch (err) {
-//             setError(err.response?.data?.message || 'Submission failed');
-//         } finally {
-//             setLoading(false);
-//         }
-//     };
-
-//     return (
-//         <Card>
-//             <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">
-//                 Manual Entry (Admin)
-//             </h2>
-//             <form onSubmit={handleSubmit} className="space-y-4">
-//                 <div className="grid grid-cols-2 gap-3">
-//                     <Input
-//                         label="Employee ID"
-//                         type="number"
-//                         required
-//                         value={form.employeeId}
-//                         onChange={(e) => setForm((f) => ({ ...f, employeeId: e.target.value }))}
-//                     />
-//                     <Input
-//                         label="Date"
-//                         type="date"
-//                         required
-//                         value={form.date}
-//                         onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
-//                     />
-//                 </div>
-//                 <Select
-//                     label="Status (optional)"
-//                     options={MANUAL_STATUS_OPTIONS}
-//                     value={form.status}
-//                     onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
-//                 />
-//                 {!form.status && (
-//                     <div className="grid grid-cols-2 gap-3">
-//                         <Input
-//                             label="Check In (HH:MM)"
-//                             placeholder="09:00"
-//                             value={form.checkIn}
-//                             onChange={(e) => setForm((f) => ({ ...f, checkIn: e.target.value }))}
-//                         />
-//                         <Input
-//                             label="Check Out (HH:MM)"
-//                             placeholder="18:00"
-//                             value={form.checkOut}
-//                             onChange={(e) => setForm((f) => ({ ...f, checkOut: e.target.value }))}
-//                         />
-//                     </div>
-//                 )}
-//                 <Input
-//                     label="Notes"
-//                     placeholder="Optional"
-//                     value={form.notes}
-//                     onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-//                 />
-//                 <div className="flex gap-3">
-//                     <Button type="submit" isLoading={loading}>
-//                         Submit
-//                     </Button>
-//                     {message && (
-//                         <p className="text-green-600 dark:text-green-400 self-center">{message}</p>
-//                     )}
-//                     {error && (
-//                         <p className="text-red-600 dark:text-red-400 self-center">{error}</p>
-//                     )}
-//                 </div>
-//             </form>
-//         </Card>
-//     );
-// };
-
-// // ─────────────────────────────────────────────
-// // PAGE
-// // ─────────────────────────────────────────────
-
-// export default function AttendancePage() {
-//     const { user } = useAuth();
-//     const [refreshKey, setRefreshKey] = useState(0);
-
-//     // FIX #8: Use the canonical role resolver instead of checking only user.role
-//     const isAdmin = resolveIsAdmin(user);
-
-//     return (
-//         <div className="space-y-6">
-//             <div className="flex items-center justify-between">
-//                 <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-//                     Attendance Management
-//                 </h1>
-//                 {!isAdmin && (
-//                     <p className="text-sm text-gray-600 dark:text-gray-400">
-//                         {format(new Date(), 'EEEE, dd MMMM yyyy')}
-//                     </p>
-//                 )}
-//             </div>
-
-//             {!isAdmin ? (
-//                 <>
-//                     <CheckInOutCard onSuccess={() => setRefreshKey((k) => k + 1)} />
-//                     <MyAttendanceTable key={refreshKey} />
-//                 </>
-//             ) : (
-//                 <>
-//                     <TodaySummary />
-//                     <TeamReport />
-//                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-//                         <OvertimeSummary />
-//                         <ManualEntryForm onSuccess={() => setRefreshKey((k) => k + 1)} />
-//                     </div>
-//                 </>
-//             )}
-//         </div>
-//     );
-// }
-
-import { useState, useEffect, useCallback } from 'react';
-import { format } from 'date-fns';
+import { useState, useEffect, useCallback, useMemo, memo, useRef } from 'react';
+import { parse, format } from 'date-fns';
 import {
     LogIn,
     LogOut,
@@ -935,6 +13,8 @@ import {
     ChevronRight,
     Search,
     RefreshCw,
+    UserCheck,
+    UserX,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -947,16 +27,99 @@ import {
     adminRecord,
 } from '../api/attendance.api';
 
-// ─────────────────────────────────────────────
-// PURE HELPERS
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// DATE HELPERS — all timezone-safe
+// ─────────────────────────────────────────────────────────────
 
-const getCurrentTime = () => {
-    const now = new Date();
-    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+/**
+ * Parse a "YYYY-MM-DD" string as a LOCAL date.
+ * new Date("2026-05-14") parses as UTC midnight → wrong day in IST.
+ * new Date(2026, 4, 14) uses local time → correct.
+ */
+const parseLocalDate = (dateString) => {
+    if (!dateString) return new Date();
+    const [yyyy, mm, dd] = String(dateString).slice(0, 10).split('-').map(Number);
+    return new Date(yyyy, mm - 1, dd);
 };
 
-const getDefaultDates = () => {
+/**
+ * Safely format any date value coming from the API:
+ *   - "YYYY-MM-DD" string       → parsed as local date
+ *   - ISO datetime string        → date portion extracted, then local
+ *   - Date object                → used directly
+ *   - new-backend object shape   → .readable / .iso / .date
+ */
+const formatDate = (dateValue, fmt = 'dd MMM yyyy') => {
+    if (!dateValue) return '—';
+
+    // New-backend object shape
+    if (typeof dateValue === 'object' && !(dateValue instanceof Date)) {
+        if (dateValue.readable) return dateValue.readable;
+        if (dateValue.iso) return format(parseLocalDate(dateValue.iso), fmt);
+        if (dateValue.date) return format(parseLocalDate(dateValue.date), fmt);
+    }
+
+    const str = String(dateValue);
+
+    // Plain "YYYY-MM-DD"
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+        return format(parseLocalDate(str), fmt);
+    }
+
+    // ISO datetime — extract just the date part
+    if (str.includes('T')) {
+        return format(parseLocalDate(str.slice(0, 10)), fmt);
+    }
+
+    return format(new Date(str), fmt);
+};
+
+// ─────────────────────────────────────────────────────────────
+// EMPLOYEE NAME HELPER
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Resolve a display name from an employee object.
+ * Backend returns { first_name, last_name } — there is NO .name field.
+ * This helper handles both snake_case and camelCase variants.
+ */
+const getEmployeeName = (employee, employeeId) => {
+    if (!employee) return `ID: ${employeeId ?? '?'}`;
+
+    // Pre-built .name (future-proof)
+    if (employee.name) return employee.name;
+
+    const first = employee.first_name || employee.firstName || '';
+    const last = employee.last_name || employee.lastName || '';
+    const full = `${first} ${last}`.trim();
+    return full || employee.email || `ID: ${employeeId ?? '?'}`;
+};
+
+// ─────────────────────────────────────────────────────────────
+// API PAYLOAD UNWRAPPER
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Normalise both API response shapes:
+ *   { success, data: { records, meta, summary } }   ← getTodaySummary, getMyAttendance
+ *   { success, meta, records }                       ← getTeamReport (flat)
+ */
+const unwrapPayload = (res) => {
+    const raw = res?.data ?? {};
+    // Nested shape
+    if (raw.data && typeof raw.data === 'object') return raw.data;
+    // Flat shape
+    return raw;
+};
+
+// ─────────────────────────────────────────────────────────────
+// OTHER PURE HELPERS
+// ─────────────────────────────────────────────────────────────
+
+const getCurrentTime = () =>
+    new Date().toISOString().split('T')[1].slice(0, 8);
+
+const getDefaultMonthRange = () => {
     const now = new Date();
     const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
     const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
@@ -966,30 +129,80 @@ const getDefaultDates = () => {
     };
 };
 
+/** Returns today as "YYYY-MM-DD" in LOCAL time — no UTC flip. */
+const getTodayDate = () => {
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+};
+
 const cleanParams = (params) =>
     Object.fromEntries(
         Object.entries(params).filter(([, v]) => v !== '' && v !== null && v !== undefined)
     );
 
+const safeNumber = (value, fallback = 0) => {
+    const n = Number(value);
+    return Number.isNaN(n) ? fallback : n;
+};
+
+/** Format minutes → "2h 15m", "45m", "3h", or "—". */
 const formatDuration = (minutes) => {
-    if (!minutes || minutes <= 0) return '';
-    const hrs = Math.floor(minutes / 60);
-    const mins = minutes % 60;
+    const m = safeNumber(minutes);
+    if (m <= 0) return '—';
+    const hrs = Math.floor(m / 60);
+    const mins = m % 60;
     if (hrs === 0) return `${mins}m`;
     if (mins === 0) return `${hrs}h`;
     return `${hrs}h ${mins}m`;
 };
 
-const minutesToHours = (minutes) => (minutes / 60).toFixed(2);
-
-const formatCheckInMessage = (rawMessage) => {
-    const match = rawMessage.match(/late by (\d+) min/i);
-    if (match) {
-        const lateMinutes = parseInt(match[1], 10);
-        const formatted = formatDuration(lateMinutes) || '0m';
-        return rawMessage.replace(match[0], `late by ${formatted}`);
+const formatTo12Hour = (timeString) => {
+    if (!timeString) return '—';
+    const parsed = parse(timeString, 'HH:mm:ss', new Date());
+    if (isNaN(parsed)) {
+        const fallback = parse(timeString, 'HH:mm', new Date());
+        if (isNaN(fallback)) return '—';
+        return format(fallback, 'hh:mm a');
     }
-    return rawMessage;
+    return format(parsed, 'hh:mm a');
+};
+
+const extractTime12Hour = (timeVal) => {
+    if (!timeVal) return '—';
+    if (typeof timeVal === 'string') return formatTo12Hour(timeVal);
+    // new-backend object
+    if (timeVal.dateTime?.readable) {
+        const match = timeVal.dateTime.readable.match(/(\d{1,2}:\d{2}\s[AP]M)/i);
+        return match ? match[1] : timeVal.time || '—';
+    }
+    if (timeVal.time) return formatTo12Hour(timeVal.time);
+    return '—';
+};
+
+const extractWorkedHours = (record) => {
+    if (!record) return '—';
+    if (record.workedHours) return record.workedHours.formatted || '—';
+    // Still checked in — workedMinutes will be null
+    if (record.checkIn && !record.checkOut) return 'In progress';
+    if (record.workedMinutes != null) return formatDuration(record.workedMinutes);
+    return '—';
+};
+
+const extractLateMinutes = (record) => {
+    if (!record) return '—';
+    if (record.late) return record.late.formatted || '—';
+    if (record.lateMinutes != null) return formatDuration(record.lateMinutes);
+    return '—';
+};
+
+const extractOvertime = (record) => {
+    if (!record) return '—';
+    if (record.overtime) return record.overtime.formatted || '—';
+    if (record.overtimeMinutes != null) return formatDuration(record.overtimeMinutes);
+    return '—';
 };
 
 const resolveIsAdmin = (user) => {
@@ -1006,9 +219,9 @@ const resolveIsAdmin = (user) => {
     return roles.some((r) => ['admin', 'hr', 'manager'].includes(r));
 };
 
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
 // HOOKS
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
 
 const useDebounce = (value, delay = 500) => {
     const [debounced, setDebounced] = useState(value);
@@ -1019,43 +232,32 @@ const useDebounce = (value, delay = 500) => {
     return debounced;
 };
 
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
 // SHARED UI COMPONENTS
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
 
-const Button = ({ children, variant = 'primary', isLoading, className = '', ...props }) => {
-    const base =
-        'px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
+const Button = memo(({ children, variant = 'primary', isLoading, className = '', ...props }) => {
+    const base = 'px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
     const variants = {
         primary: 'bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600',
-        secondary:
-            'bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600',
+        secondary: 'bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600',
         danger: 'bg-red-600 text-white hover:bg-red-700',
-        outline:
-            'border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700',
+        outline: 'border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700',
     };
     return (
-        <button
-            className={`${base} ${variants[variant]} ${className}`}
-            disabled={isLoading}
-            {...props}
-        >
+        <button className={`${base} ${variants[variant]} ${className}`} disabled={isLoading || props.disabled} {...props}>
             {isLoading ? (
                 <span className="flex items-center gap-2">
                     <RefreshCw className="w-4 h-4 animate-spin" /> Loading...
                 </span>
-            ) : (
-                children
-            )}
+            ) : children}
         </button>
     );
-};
+});
 
-const Input = ({ label, error, ...props }) => (
+const Input = memo(({ label, error, ...props }) => (
     <div className="flex flex-col gap-1">
-        {label && (
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{label}</label>
-        )}
+        {label && <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{label}</label>}
         <input
             className={`px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 ${error ? 'border-red-500' : 'border-gray-300'
                 }`}
@@ -1063,34 +265,32 @@ const Input = ({ label, error, ...props }) => (
         />
         {error && <span className="text-xs text-red-500">{error}</span>}
     </div>
-);
+));
 
-const Select = ({ label, options, ...props }) => (
+const Select = memo(({ label, options, ...props }) => (
     <div className="flex flex-col gap-1">
-        {label && (
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{label}</label>
-        )}
+        {label && <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{label}</label>}
         <select
             className="px-3 py-2 border border-gray-300 rounded-lg bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             {...props}
         >
             {options.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                </option>
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
         </select>
     </div>
-);
+));
 
-const Card = ({ children, className = '' }) => (
+const Card = memo(({ children, className = '' }) => (
     <div className={`bg-white dark:bg-gray-800 rounded-xl shadow-md p-6 ${className}`}>
         {children}
     </div>
-);
+));
 
-const StatusBadge = ({ status }) => {
+const StatusBadge = memo(({ status }) => {
     const styles = {
+        working: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
+        checked_in: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200',
         present: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
         late: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
         absent: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
@@ -1098,125 +298,212 @@ const StatusBadge = ({ status }) => {
         on_leave: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
         holiday: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
     };
+    const key = status || 'absent';
+    const display = key.replaceAll('_', ' ');
     return (
-        <span
-            className={`px-2 py-1 rounded-full text-xs font-medium ${styles[status] || 'bg-gray-100 text-gray-800'
-                }`}
-        >
-            {status.replaceAll('_', ' ')}
+        <span className={`px-2 py-1 rounded-full text-xs font-medium capitalize ${styles[key] || 'bg-gray-100 text-gray-800'}`}>
+            {display}
         </span>
     );
-};
+});
 
-// ─────────────────────────────────────────────
-// CHECK IN / OUT
-// ─────────────────────────────────────────────
+const SkeletonRow = ({ cols = 6 }) => (
+    <tr>
+        {Array.from({ length: cols }).map((_, i) => (
+            <td key={i} className="p-3">
+                <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+            </td>
+        ))}
+    </tr>
+);
 
-const CheckInOutCard = ({ onSuccess }) => {
+// ─────────────────────────────────────────────────────────────
+// SHARED ATTENDANCE ROW + CARD
+// Centralising rendering avoids duplication and guarantees
+// getEmployeeName() is always called correctly.
+// ─────────────────────────────────────────────────────────────
+
+/** Desktop table row */
+const AttendanceRow = memo(({ rec, showEmployee = false }) => (
+    <tr className="border-t dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+        {showEmployee && (
+            <td className="p-3 font-medium text-gray-900 dark:text-white">
+                {getEmployeeName(rec.employee, rec.employeeId)}
+            </td>
+        )}
+        <td className="p-3 text-gray-700 dark:text-gray-300">{formatDate(rec.date)}</td>
+        <td className="p-3 text-blue-600 dark:text-blue-400 font-medium">{extractTime12Hour(rec.checkIn)}</td>
+        <td className="p-3 text-blue-600 dark:text-blue-400 font-medium">{extractTime12Hour(rec.checkOut)}</td>
+        <td className="p-3"><StatusBadge status={rec.status} /></td>
+        <td className="p-3 font-medium text-gray-700 dark:text-gray-300">{extractWorkedHours(rec)}</td>
+        <td className="p-3 text-orange-600 dark:text-orange-400">{extractOvertime(rec)}</td>
+        <td className="p-3 text-red-600 dark:text-red-400">{extractLateMinutes(rec)}</td>
+    </tr>
+));
+
+/** Mobile card */
+const AttendanceCard = memo(({ rec, showEmployee = false }) => (
+    <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg border border-gray-200 dark:border-gray-600">
+        <div className="flex justify-between items-start mb-3">
+            <div>
+                {showEmployee && (
+                    <p className="font-semibold text-gray-900 dark:text-white text-sm leading-tight">
+                        {getEmployeeName(rec.employee, rec.employeeId)}
+                    </p>
+                )}
+                <p className={`${showEmployee ? 'text-xs text-gray-500 dark:text-gray-400 mt-0.5' : 'font-semibold text-gray-900 dark:text-white'}`}>
+                    {formatDate(rec.date)}
+                </p>
+            </div>
+            <StatusBadge status={rec.status} />
+        </div>
+        <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="space-y-1">
+                <p className="text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wide">Check In</p>
+                <p className="text-blue-600 dark:text-blue-400 font-medium">{extractTime12Hour(rec.checkIn)}</p>
+            </div>
+            <div className="space-y-1">
+                <p className="text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wide">Check Out</p>
+                <p className="text-blue-600 dark:text-blue-400 font-medium">{extractTime12Hour(rec.checkOut)}</p>
+            </div>
+            <div className="space-y-1">
+                <p className="text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wide">Worked</p>
+                <p className="text-green-600 dark:text-green-400 font-medium">{extractWorkedHours(rec)}</p>
+            </div>
+            <div className="space-y-1">
+                <p className="text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wide">Overtime</p>
+                <p className="text-orange-600 dark:text-orange-400 font-medium">{extractOvertime(rec)}</p>
+            </div>
+            <div className="space-y-1">
+                <p className="text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wide">Late</p>
+                <p className="text-red-600 dark:text-red-400 font-medium">{extractLateMinutes(rec)}</p>
+            </div>
+        </div>
+    </div>
+));
+
+// ─────────────────────────────────────────────────────────────
+// CHECK IN / OUT CARD
+// ─────────────────────────────────────────────────────────────
+
+const CheckInOutCard = memo(({ onSuccess, todayStatus, userId }) => {
     const [checkingIn, setCheckingIn] = useState(false);
     const [checkingOut, setCheckingOut] = useState(false);
     const [message, setMessage] = useState('');
     const [error, setError] = useState('');
+    const abortRef = useRef(null);
+
+    const canCheckIn = !todayStatus || ['absent', 'on_leave'].includes(todayStatus);
+    const canCheckOut = ['working', 'checked_in', 'present', 'late', 'half_day'].includes(todayStatus);
 
     const handleCheckIn = async () => {
-        setCheckingIn(true);
-        setError('');
-        setMessage('');
+        if (abortRef.current) abortRef.current.abort();
+        const controller = new AbortController();
+        abortRef.current = controller;
+        setCheckingIn(true); setError(''); setMessage('');
         try {
-            const res = await checkIn({ checkInTime: getCurrentTime() });
-            setMessage(formatCheckInMessage(res.data.message));
+            const res = await checkIn({ employeeId: userId, checkInTime: getCurrentTime() }, { signal: controller.signal });
+            const payload = unwrapPayload(res);
+            setMessage(payload.message ?? 'Checked in successfully');
             onSuccess?.();
         } catch (err) {
-            setError(err.response?.data?.message || 'Check-in failed');
+            if (err.name !== 'AbortError') setError(err.response?.data?.message || 'Check-in failed');
         } finally {
             setCheckingIn(false);
+            abortRef.current = null;
         }
     };
 
     const handleCheckOut = async () => {
-        setCheckingOut(true);
-        setError('');
-        setMessage('');
+        if (abortRef.current) abortRef.current.abort();
+        const controller = new AbortController();
+        abortRef.current = controller;
+        setCheckingOut(true); setError(''); setMessage('');
         try {
-            const res = await checkOut({ checkOutTime: getCurrentTime() });
-            setMessage(res.data.message);
+            const res = await checkOut({ employeeId: userId, checkOutTime: getCurrentTime() }, { signal: controller.signal });
+            const payload = unwrapPayload(res);
+            setMessage(payload.message ?? 'Checked out successfully');
             onSuccess?.();
         } catch (err) {
-            setError(err.response?.data?.message || 'Check-out failed');
+            if (err.name !== 'AbortError') setError(err.response?.data?.message || 'Check-out failed');
         } finally {
             setCheckingOut(false);
+            abortRef.current = null;
         }
     };
+
+    useEffect(() => () => { if (abortRef.current) abortRef.current.abort(); }, []);
 
     return (
         <Card>
             <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
                 <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-                    <Button
-                        onClick={handleCheckIn}
-                        isLoading={checkingIn}
-                        variant="primary"
-                        className="w-full sm:w-auto"
-                    >
+                    <Button onClick={handleCheckIn} isLoading={checkingIn} variant="primary" className="w-full sm:w-auto" disabled={!canCheckIn}>
                         <LogIn className="w-4 h-4 mr-2 inline" /> Check In
                     </Button>
-                    <Button
-                        onClick={handleCheckOut}
-                        isLoading={checkingOut}
-                        variant="secondary"
-                        className="w-full sm:w-auto"
-                    >
+                    <Button onClick={handleCheckOut} isLoading={checkingOut} variant="secondary" className="w-full sm:w-auto" disabled={!canCheckOut}>
                         <LogOut className="w-4 h-4 mr-2 inline" /> Check Out
                     </Button>
                 </div>
                 <div className="text-sm text-center sm:text-right w-full sm:w-auto">
                     {message && <p className="text-green-600 dark:text-green-400">{message}</p>}
-                    {error && <p className="text-red-600 dark:text-red-400">{error}</p>}
+                    {error && <p className="text-red-600   dark:text-red-400">{error}</p>}
                 </div>
             </div>
         </Card>
     );
-};
+});
 
-// ─────────────────────────────────────────────
-// MY ATTENDANCE TABLE
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// MY ATTENDANCE TABLE (Employee)
+// ─────────────────────────────────────────────────────────────
 
-const MyAttendanceTable = () => {
+const MY_HEADERS = ['Date', 'Check In', 'Check Out', 'Status', 'Worked', 'Overtime', 'Late'];
+
+const MyAttendanceTable = memo(() => {
     const [records, setRecords] = useState([]);
+    const [stats, setStats] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [filters, setFilters] = useState(getDefaultDates);
+    const [filters, setFilters] = useState(getDefaultMonthRange);
     const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0 });
+    const [reloadKey, setReloadKey] = useState(0);
 
     const debouncedFilters = useDebounce(filters, 500);
+    const abortControllerRef = useRef(null);
 
-    useEffect(() => {
-        const fetchData = async () => {
-            setLoading(true);
-            try {
-                const params = cleanParams({
-                    ...debouncedFilters,
-                    page: pagination.page,
-                    limit: pagination.limit,
-                });
-                const res = await getMyAttendance(params);
-                setRecords(res.data.records || []);
-                setPagination((prev) => ({
-                    ...prev,
-                    total: res.data.meta?.count || 0,
-                }));
-            } catch (error) {
-                console.error(error);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchData();
+    useEffect(() => () => { if (abortControllerRef.current) abortControllerRef.current.abort(); }, []);
+
+    const fetchData = useCallback(async () => {
+        if (abortControllerRef.current) abortControllerRef.current.abort();
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+
+        setLoading(true);
+        try {
+            const params = cleanParams({ ...debouncedFilters, page: pagination.page, limit: pagination.limit });
+            const res = await getMyAttendance(params, { signal: controller.signal });
+            const payload = unwrapPayload(res);
+            setRecords(payload?.records ?? []);
+            setStats(payload?.stats ?? null);
+            const meta = payload?.meta ?? {};
+            setPagination((prev) => ({ ...prev, total: meta.totalRecords ?? meta.count ?? 0 }));
+        } catch (error) {
+            if (error.name !== 'AbortError') console.error(error);
+        } finally {
+            if (!controller.signal.aborted) setLoading(false);
+        }
     }, [debouncedFilters, pagination.page, pagination.limit]);
+
+    useEffect(() => { fetchData(); }, [fetchData, reloadKey]);
 
     const totalPages = Math.ceil(pagination.total / pagination.limit);
     const showingFrom = pagination.total === 0 ? 0 : (pagination.page - 1) * pagination.limit + 1;
     const showingTo = Math.min(pagination.page * pagination.limit, pagination.total);
+
+    const handleApply = () => {
+        setPagination((p) => ({ ...p, page: 1 }));
+        setReloadKey((k) => k + 1);
+    };
 
     return (
         <Card>
@@ -1224,172 +511,208 @@ const MyAttendanceTable = () => {
                 <Clock className="w-5 h-5" /> My Attendance History
             </h2>
 
-            {/* Filter row – responsive grid */}
+            {/* Filters */}
             <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
-                <Input
-                    type="date"
-                    label="Start Date"
-                    value={filters.startDate}
-                    onChange={(e) => setFilters((f) => ({ ...f, startDate: e.target.value }))}
-                />
-                <Input
-                    type="date"
-                    label="End Date"
-                    value={filters.endDate}
-                    onChange={(e) => setFilters((f) => ({ ...f, endDate: e.target.value }))}
-                />
+                <Input type="date" label="Start Date" value={filters.startDate} onChange={(e) => setFilters((f) => ({ ...f, startDate: e.target.value }))} />
+                <Input type="date" label="End Date" value={filters.endDate} onChange={(e) => setFilters((f) => ({ ...f, endDate: e.target.value }))} />
                 <div className="flex gap-2 sm:col-span-2 lg:col-span-2">
-                    <Button
-                        onClick={() => setPagination((p) => ({ ...p, page: 1 }))}
-                        variant="outline"
-                        className="flex-1"
-                    >
-                        <Search className="w-4 h-4 mr-2" /> Apply
-                    </Button>
-                    <Button
-                        onClick={() => setFilters(getDefaultDates())}
-                        variant="secondary"
-                        className="flex-1"
-                    >
-                        Reset
-                    </Button>
+                    <Button onClick={handleApply} variant="outline" className="flex-1"><Search className="w-4 h-4 mr-2" />Apply</Button>
+                    <Button onClick={() => setFilters(getDefaultMonthRange())} variant="secondary" className="flex-1">Reset</Button>
                 </div>
             </div>
 
-            <div className="overflow-x-auto">
+            {/* Stats strip */}
+            {stats && !loading && (
+                <div className="mb-4 grid grid-cols-3 sm:grid-cols-6 gap-2">
+                    {[
+                        { label: 'Present', value: stats.present, color: 'text-green-600' },
+                        { label: 'Late', value: stats.late, color: 'text-yellow-600' },
+                        { label: 'Half Day', value: stats.halfDay, color: 'text-orange-600' },
+                        { label: 'Absent', value: stats.absent, color: 'text-red-600' },
+                        { label: 'Overtime', value: formatDuration(stats.overtimeMinutes), color: 'text-blue-600' },
+                        { label: 'Late Time', value: formatDuration(stats.lateMinutes), color: 'text-red-500' },
+                    ].map((s) => (
+                        <div key={s.label} className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 text-center">
+                            <p className={`text-xl font-bold ${s.color}`}>{s.value}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{s.label}</p>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {/* Desktop table */}
+            <div className="hidden md:block overflow-x-auto">
                 <table className="min-w-full text-sm">
                     <thead className="bg-gray-50 dark:bg-gray-700">
                         <tr>
-                            {['Date', 'Check In', 'Check Out', 'Status', 'Worked', 'Late'].map((h) => (
-                                <th key={h} className="p-3 text-left">
-                                    {h}
-                                </th>
+                            {MY_HEADERS.map((h) => (
+                                <th key={h} className="p-3 text-left text-gray-700 dark:text-gray-300 font-semibold">{h}</th>
                             ))}
                         </tr>
                     </thead>
                     <tbody>
                         {loading ? (
-                            <tr>
-                                <td colSpan={6} className="p-3 text-center">
-                                    Loading...
-                                </td>
-                            </tr>
+                            Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} cols={MY_HEADERS.length} />)
                         ) : records.length === 0 ? (
-                            <tr>
-                                <td colSpan={6} className="p-3 text-center text-gray-500">
-                                    No records found
-                                </td>
-                            </tr>
+                            <tr><td colSpan={MY_HEADERS.length} className="p-6 text-center text-gray-500">No records found</td></tr>
                         ) : (
-                            records.map((rec) => (
-                                <tr
-                                    key={rec.id}
-                                    className="border-t dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50"
-                                >
-                                    <td className="p-3">{format(new Date(rec.date), 'dd MMM yyyy')}</td>
-                                    <td className="p-3">{rec.checkIn?.slice(0, 5) || '—'}</td>
-                                    <td className="p-3">{rec.checkOut?.slice(0, 5) || '—'}</td>
-                                    <td className="p-3">
-                                        <StatusBadge status={rec.status} />
-                                    </td>
-                                    <td className="p-3">
-                                        {rec.workedMinutes ? `${minutesToHours(rec.workedMinutes)} hrs` : '—'}
-                                    </td>
-                                    <td className="p-3">
-                                        {rec.lateMinutes > 0 ? formatDuration(rec.lateMinutes) : '—'}
-                                    </td>
-                                </tr>
-                            ))
+                            records.map((rec) => <AttendanceRow key={rec.id} rec={rec} showEmployee={false} />)
                         )}
                     </tbody>
                 </table>
             </div>
 
+            {/* Mobile cards */}
+            <div className="md:hidden space-y-3">
+                {loading ? (
+                    <p className="text-center py-4 text-gray-500">Loading...</p>
+                ) : records.length === 0 ? (
+                    <p className="text-center py-4 text-gray-500">No records found</p>
+                ) : (
+                    records.map((rec) => <AttendanceCard key={rec.id} rec={rec} showEmployee={false} />)
+                )}
+            </div>
+
+            {/* Pagination */}
             <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-                <div className="text-sm text-gray-600 dark:text-gray-400">
-                    Showing {showingFrom} to {showingTo} of {pagination.total} entries
-                </div>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Showing {showingFrom}–{showingTo} of {pagination.total}
+                </p>
                 <div className="flex gap-2">
-                    <Button
-                        variant="outline"
-                        disabled={pagination.page === 1}
-                        onClick={() => setPagination((p) => ({ ...p, page: p.page - 1 }))}
-                    >
-                        <ChevronLeft className="w-4 h-4" />
-                    </Button>
-                    <span className="px-3 py-1 text-sm self-center">
-                        {pagination.page} / {totalPages || 1}
-                    </span>
-                    <Button
-                        variant="outline"
-                        disabled={pagination.page >= totalPages}
-                        onClick={() => setPagination((p) => ({ ...p, page: p.page + 1 }))}
-                    >
-                        <ChevronRight className="w-4 h-4" />
-                    </Button>
+                    <Button variant="outline" disabled={pagination.page === 1} onClick={() => setPagination((p) => ({ ...p, page: p.page - 1 }))}><ChevronLeft className="w-4 h-4" /></Button>
+                    <span className="px-3 py-1 text-sm self-center">{pagination.page} / {totalPages || 1}</span>
+                    <Button variant="outline" disabled={pagination.page >= totalPages} onClick={() => setPagination((p) => ({ ...p, page: p.page + 1 }))}><ChevronRight className="w-4 h-4" /></Button>
                 </div>
             </div>
         </Card>
     );
-};
+});
 
-// ─────────────────────────────────────────────
-// TODAY'S SUMMARY
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// TODAY'S SUMMARY + RECORDS (Admin)
+// ─────────────────────────────────────────────────────────────
 
-const TodaySummary = () => {
-    const [summary, setSummary] = useState(null);
+const TEAM_HEADERS = ['Employee', 'Date', 'Check In', 'Check Out', 'Status', 'Worked', 'Overtime', 'Late'];
+
+const TodaySummary = memo(() => {
+    const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
+    const abortRef = useRef(null);
 
-    useEffect(() => {
-        const fetchSummary = async () => {
-            try {
-                const res = await getTodaySummary();
-                setSummary(res.data.data);
-            } catch (error) {
-                console.error(error);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchSummary();
+    const fetchToday = useCallback(async () => {
+        if (abortRef.current) abortRef.current.abort();
+        const controller = new AbortController();
+        abortRef.current = controller;
+
+        setLoading(true);
+        try {
+            const res = await getTodaySummary({ signal: controller.signal });
+            const payload = unwrapPayload(res);
+            setData(payload);
+        } catch (error) {
+            if (error.name !== 'AbortError') console.error(error);
+        } finally {
+            if (!controller.signal.aborted) setLoading(false);
+        }
     }, []);
 
-    if (loading) return <Card><p>Loading summary...</p></Card>;
-    if (!summary) return null;
+    useEffect(() => {
+        fetchToday();
+        return () => { if (abortRef.current) abortRef.current.abort(); };
+    }, [fetchToday]);
 
-    const stats = [
-        { label: 'Present', value: summary.present || 0, icon: CheckCircle, color: 'text-green-600' },
-        { label: 'Late', value: summary.late || 0, icon: AlertCircle, color: 'text-yellow-600' },
-        { label: 'Absent', value: summary.absent || 0, icon: XCircle, color: 'text-red-600' },
-        { label: 'On Leave', value: summary.onLeave || 0, icon: Calendar, color: 'text-purple-600' },
-        { label: 'Total Employees', value: summary.totalEmployees || 0, icon: Users, color: 'text-blue-600' },
-    ];
+    const stats = useMemo(() => {
+        if (!data?.summary) return [];
+        const s = data.summary;
+        const total =
+            (s.present || 0) +
+            (s.late || 0) +
+            (s.absent || 0) +
+            (s.half_day || 0) +
+            (s.working || 0);
+        return [
+            { label: 'Present', value: s.present || 0, icon: CheckCircle, color: 'text-green-600' },
+            { label: 'Late', value: s.late || 0, icon: AlertCircle, color: 'text-yellow-600' },
+            { label: 'Absent', value: s.absent || 0, icon: XCircle, color: 'text-red-600' },
+            { label: 'Half Day', value: s.half_day || 0, icon: UserX, color: 'text-orange-600' },
+            { label: 'Working', value: s.working || 0, icon: UserCheck, color: 'text-blue-600' },
+            { label: 'Total', value: total, icon: Users, color: 'text-gray-600 dark:text-gray-400' },
+        ];
+    }, [data]);
+
+    const dateDisplay = data?.date ? formatDate(data.date) : '...';
 
     return (
         <Card>
-            <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">
-                Today's Summary
+            <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white flex items-center gap-2">
+                <Calendar className="w-5 h-5" /> Today's Overview — {dateDisplay}
             </h2>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                {stats.map((stat) => (
-                    <div
-                        key={stat.label}
-                        className="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg text-center"
-                    >
-                        <stat.icon className={`w-6 h-6 mx-auto mb-2 ${stat.color}`} />
-                        <p className="text-2xl font-bold text-gray-900 dark:text-white">{stat.value}</p>
-                        <p className="text-sm text-gray-600 dark:text-gray-400">{stat.label}</p>
+
+            {/* Stat tiles */}
+            {loading ? (
+                <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+                    {Array.from({ length: 6 }).map((_, i) => (
+                        <div key={i} className="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg animate-pulse">
+                            <div className="h-6 w-6 mx-auto mb-2 rounded-full bg-gray-300 dark:bg-gray-600" />
+                            <div className="h-5 w-12 mx-auto mb-1 bg-gray-300 dark:bg-gray-600 rounded" />
+                            <div className="h-4 w-16 mx-auto bg-gray-300 dark:bg-gray-600 rounded" />
+                        </div>
+                    ))}
+                </div>
+            ) : (
+                <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
+                    {stats.map((stat) => (
+                        <div key={stat.label} className="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg text-center">
+                            <stat.icon className={`w-6 h-6 mx-auto mb-2 ${stat.color}`} />
+                            <p className="text-2xl font-bold text-gray-900 dark:text-white">{stat.value}</p>
+                            <p className="text-sm text-gray-600 dark:text-gray-400">{stat.label}</p>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {/* Records */}
+            {!loading && data?.records && data.records.length > 0 && (
+                <>
+                    <h3 className="text-md font-semibold mb-3 text-gray-700 dark:text-gray-300">
+                        Today's Records ({data.records.length})
+                    </h3>
+                    {/* Desktop */}
+                    <div className="hidden md:block overflow-x-auto">
+                        <table className="min-w-full text-sm">
+                            <thead className="bg-gray-50 dark:bg-gray-700">
+                                <tr>
+                                    {TEAM_HEADERS.map((h) => (
+                                        <th key={h} className="p-3 text-left text-gray-700 dark:text-gray-300 font-semibold">{h}</th>
+                                    ))}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {data.records.map((rec) => (
+                                    <AttendanceRow key={rec.id} rec={rec} showEmployee={true} />
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
-                ))}
-            </div>
+                    {/* Mobile */}
+                    <div className="md:hidden space-y-3">
+                        {data.records.map((rec) => (
+                            <AttendanceCard key={rec.id} rec={rec} showEmployee={true} />
+                        ))}
+                    </div>
+                </>
+            )}
+
+            {!loading && (!data?.records || data.records.length === 0) && (
+                <p className="text-center py-4 text-gray-500">No attendance records for today yet.</p>
+            )}
         </Card>
     );
-};
+});
 
-// ─────────────────────────────────────────────
-// TEAM REPORT
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// TEAM REPORT (Admin)
+// ─────────────────────────────────────────────────────────────
 
 const STATUS_OPTIONS = [
     { value: '', label: 'All Status' },
@@ -1398,38 +721,53 @@ const STATUS_OPTIONS = [
     { value: 'absent', label: 'Absent' },
     { value: 'half_day', label: 'Half Day' },
     { value: 'on_leave', label: 'On Leave' },
+    { value: 'working', label: 'Working' },
 ];
 
 const EMPTY_TEAM_FILTERS = { startDate: '', endDate: '', employeeId: '', status: '' };
 
-const TeamReport = () => {
+const TeamReport = memo(() => {
     const [records, setRecords] = useState([]);
     const [loading, setLoading] = useState(true);
     const [filters, setFilters] = useState(EMPTY_TEAM_FILTERS);
     const [page, setPage] = useState(1);
     const [total, setTotal] = useState(0);
+    const [reloadKey, setReloadKey] = useState(0);
     const limit = 10;
+    const abortRef = useRef(null);
+    const debouncedFilters = useDebounce(filters, 400);
 
     const fetchData = useCallback(async () => {
+        if (abortRef.current) abortRef.current.abort();
+        const controller = new AbortController();
+        abortRef.current = controller;
+
         setLoading(true);
         try {
-            const params = cleanParams({ ...filters, page, limit });
-            const res = await getTeamReport(params);
-            setRecords(res.data.records || []);
-            setTotal(res.data.meta?.count || 0);
+            const params = cleanParams({ ...debouncedFilters, page, limit });
+            const res = await getTeamReport(params, { signal: controller.signal });
+
+            // Team report returns { success, meta, records } — flat, no nested .data
+            const raw = res?.data ?? {};
+            const records = raw.records ?? raw.data?.records ?? [];
+            const meta = raw.meta ?? raw.data?.meta ?? {};
+
+            setRecords(records);
+            setTotal(meta.count ?? meta.totalRecords ?? 0);
         } catch (error) {
-            console.error(error);
+            if (error.name !== 'AbortError') console.error(error);
         } finally {
-            setLoading(false);
+            if (!controller.signal.aborted) setLoading(false);
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [filters.startDate, filters.endDate, filters.employeeId, filters.status, page]);
+    }, [debouncedFilters, page]);
 
     useEffect(() => {
         fetchData();
-    }, [fetchData]);
+        return () => { if (abortRef.current) abortRef.current.abort(); };
+    }, [fetchData, reloadKey]);
 
     const totalPages = Math.ceil(total / limit);
+    const handleApply = () => { setPage(1); setReloadKey((k) => k + 1); };
 
     return (
         <Card>
@@ -1438,140 +776,79 @@ const TeamReport = () => {
             </h2>
 
             <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                <Input
-                    type="date"
-                    label="Start Date"
-                    value={filters.startDate}
-                    onChange={(e) => setFilters((f) => ({ ...f, startDate: e.target.value }))}
-                />
-                <Input
-                    type="date"
-                    label="End Date"
-                    value={filters.endDate}
-                    onChange={(e) => setFilters((f) => ({ ...f, endDate: e.target.value }))}
-                />
-                <Input
-                    type="number"
-                    label="Employee ID"
-                    placeholder="Optional"
-                    value={filters.employeeId}
-                    onChange={(e) => setFilters((f) => ({ ...f, employeeId: e.target.value }))}
-                />
-                <Select
-                    label="Status"
-                    options={STATUS_OPTIONS}
-                    value={filters.status}
-                    onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))}
-                />
+                <Input type="date" label="Start Date" value={filters.startDate} onChange={(e) => setFilters((f) => ({ ...f, startDate: e.target.value }))} />
+                <Input type="date" label="End Date" value={filters.endDate} onChange={(e) => setFilters((f) => ({ ...f, endDate: e.target.value }))} />
+                <Input type="number" label="Employee ID" value={filters.employeeId} onChange={(e) => setFilters((f) => ({ ...f, employeeId: e.target.value }))} placeholder="Optional" />
+                <Select label="Status" options={STATUS_OPTIONS} value={filters.status} onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))} />
             </div>
 
             <div className="flex flex-col sm:flex-row gap-2 mb-4">
-                <Button onClick={() => setPage(1)} variant="primary" className="w-full sm:w-auto">
-                    Apply Filters
-                </Button>
+                <Button onClick={handleApply} variant="primary" className="w-full sm:w-auto">Apply Filters</Button>
                 <Button
-                    onClick={() => {
-                        setFilters(EMPTY_TEAM_FILTERS);
-                        setPage(1);
-                    }}
-                    variant="secondary"
-                    className="w-full sm:w-auto"
+                    onClick={() => { setFilters(EMPTY_TEAM_FILTERS); setPage(1); setReloadKey((k) => k + 1); }}
+                    variant="secondary" className="w-full sm:w-auto"
                 >
                     Clear
                 </Button>
             </div>
 
-            <div className="overflow-x-auto">
+            {/* Desktop */}
+            <div className="hidden md:block overflow-x-auto">
                 <table className="min-w-full text-sm">
                     <thead className="bg-gray-50 dark:bg-gray-700">
                         <tr>
-                            {['Employee', 'Date', 'Check In', 'Check Out', 'Status', 'Worked'].map((h) => (
-                                <th key={h} className="p-3 text-left">
-                                    {h}
-                                </th>
+                            {TEAM_HEADERS.map((h) => (
+                                <th key={h} className="p-3 text-left text-gray-700 dark:text-gray-300 font-semibold">{h}</th>
                             ))}
                         </tr>
                     </thead>
                     <tbody>
                         {loading ? (
-                            <tr>
-                                <td colSpan={6} className="p-3 text-center">
-                                    Loading...
-                                </td>
-                            </tr>
+                            Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} cols={TEAM_HEADERS.length} />)
                         ) : records.length === 0 ? (
-                            <tr>
-                                <td colSpan={6} className="p-3 text-center text-gray-500">
-                                    No records found
-                                </td>
-                            </tr>
+                            <tr><td colSpan={TEAM_HEADERS.length} className="p-6 text-center text-gray-500">No records found</td></tr>
                         ) : (
-                            records.map((rec) => {
-                                const employeeName =
-                                    rec.employee?.name || rec.employeeName || `ID: ${rec.employeeId}`;
-                                return (
-                                    <tr
-                                        key={rec.id}
-                                        className="border-t dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50"
-                                    >
-                                        <td className="p-3">
-                                            {employeeName} (ID: {rec.employeeId})
-                                        </td>
-                                        <td className="p-3">
-                                            {format(new Date(rec.date), 'dd MMM yyyy')}
-                                        </td>
-                                        <td className="p-3">{rec.checkIn?.slice(0, 5) || '—'}</td>
-                                        <td className="p-3">{rec.checkOut?.slice(0, 5) || '—'}</td>
-                                        <td className="p-3">
-                                            <StatusBadge status={rec.status} />
-                                        </td>
-                                        <td className="p-3">
-                                            {rec.workedMinutes ? `${minutesToHours(rec.workedMinutes)} hrs` : '—'}
-                                        </td>
-                                    </tr>
-                                );
-                            })
+                            records.map((rec) => <AttendanceRow key={rec.id} rec={rec} showEmployee={true} />)
                         )}
                     </tbody>
                 </table>
             </div>
 
+            {/* Mobile */}
+            <div className="md:hidden space-y-3">
+                {loading ? (
+                    <p className="text-center py-4 text-gray-500">Loading...</p>
+                ) : records.length === 0 ? (
+                    <p className="text-center py-4 text-gray-500">No records found</p>
+                ) : (
+                    records.map((rec) => <AttendanceCard key={rec.id} rec={rec} showEmployee={true} />)
+                )}
+            </div>
+
             <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-                <div className="text-sm text-gray-600 dark:text-gray-400">
-                    Page {page} of {totalPages || 1}
-                </div>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Page {page} of {totalPages || 1} — Total: {total}
+                </p>
                 <div className="flex gap-2">
-                    <Button
-                        variant="outline"
-                        disabled={page === 1}
-                        onClick={() => setPage((p) => p - 1)}
-                    >
-                        <ChevronLeft className="w-4 h-4" />
-                    </Button>
+                    <Button variant="outline" disabled={page === 1} onClick={() => setPage((p) => p - 1)}><ChevronLeft className="w-4 h-4" /></Button>
                     <span className="px-3 py-1 text-sm self-center">{page}</span>
-                    <Button
-                        variant="outline"
-                        disabled={page >= totalPages}
-                        onClick={() => setPage((p) => p + 1)}
-                    >
-                        <ChevronRight className="w-4 h-4" />
-                    </Button>
+                    <Button variant="outline" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}><ChevronRight className="w-4 h-4" /></Button>
                 </div>
             </div>
         </Card>
     );
-};
+});
 
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
 // OVERTIME SUMMARY
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
 
 const MONTH_OPTIONS = Array.from({ length: 12 }, (_, i) => ({
     value: i + 1,
     label: format(new Date(2000, i, 1), 'MMMM'),
 }));
 
-const OvertimeSummary = () => {
+const OvertimeSummary = memo(() => {
     const [params, setParams] = useState({
         employeeId: '',
         month: new Date().getMonth() + 1,
@@ -1580,82 +857,74 @@ const OvertimeSummary = () => {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const abortRef = useRef(null);
 
     const handleFetch = async () => {
-        if (!params.employeeId) {
-            setError('Employee ID is required');
-            return;
-        }
-        setLoading(true);
-        setError('');
+        if (!params.employeeId) { setError('Employee ID is required'); return; }
+        if (abortRef.current) abortRef.current.abort();
+        const controller = new AbortController();
+        abortRef.current = controller;
+
+        setLoading(true); setError('');
         try {
-            const res = await getOvertimeSummary(cleanParams(params));
-            setData(res.data.data);
+            const res = await getOvertimeSummary(cleanParams(params), { signal: controller.signal });
+            const payload = unwrapPayload(res);
+            setData(payload);
         } catch (err) {
-            setError(err.response?.data?.message || 'Failed to fetch');
+            if (err.name !== 'AbortError') setError(err.response?.data?.message || 'Failed to fetch');
         } finally {
-            setLoading(false);
+            if (!controller.signal.aborted) setLoading(false);
         }
     };
 
+    useEffect(() => () => { if (abortRef.current) abortRef.current.abort(); }, []);
+
+    const totalMins = data?.totalOvertimeMinutes ?? data?.summary?.totalOvertimeMinutes ?? 0;
+    const overtimeDays = data?.overtimeDays ?? data?.summary?.overtimeDays ?? 0;
+    const displayOT = data?.summary?.formatted || formatDuration(totalMins) || '0h 0m';
+
     return (
         <Card>
-            <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">
-                Overtime Summary
-            </h2>
+            <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">Overtime Summary</h2>
             <div className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <Input
-                        type="number"
-                        label="Employee ID"
-                        value={params.employeeId}
-                        onChange={(e) => setParams((p) => ({ ...p, employeeId: e.target.value }))}
-                        placeholder="e.g., 12"
-                    />
-                    <Select
-                        label="Month"
-                        options={MONTH_OPTIONS}
-                        value={params.month}
-                        onChange={(e) => setParams((p) => ({ ...p, month: parseInt(e.target.value, 10) }))}
-                    />
-                    <Input
-                        type="number"
-                        label="Year"
-                        value={params.year}
-                        onChange={(e) =>
-                            setParams((p) => ({ ...p, year: parseInt(e.target.value, 10) || p.year }))
-                        }
-                    />
+                    <Input type="number" label="Employee ID" value={params.employeeId} onChange={(e) => setParams((p) => ({ ...p, employeeId: e.target.value }))} placeholder="e.g., 12" />
+                    <Select label="Month" options={MONTH_OPTIONS} value={params.month} onChange={(e) => setParams((p) => ({ ...p, month: parseInt(e.target.value, 10) }))} />
+                    <Input type="number" label="Year" value={params.year} onChange={(e) => setParams((p) => ({ ...p, year: parseInt(e.target.value, 10) || p.year }))} />
                 </div>
-                <Button onClick={handleFetch} isLoading={loading} className="w-full sm:w-auto">
-                    Get Overtime
-                </Button>
+                <Button onClick={handleFetch} isLoading={loading} className="w-full sm:w-auto">Get Overtime</Button>
                 {error && <p className="text-red-500 text-sm">{error}</p>}
                 {data && (
-                    <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                        <p className="text-lg font-medium">
-                            Total Overtime:{' '}
-                            <span className="text-blue-600 dark:text-blue-400">
-                                {data.totalOvertimeHours} hrs
-                            </span>
-                        </p>
-                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
-                            Employee: {data.employeeName}
-                        </p>
+                    <div className="mt-2 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/40 dark:to-indigo-900/40 rounded-lg border border-blue-200 dark:border-blue-700">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Total Overtime</p>
+                                <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">{displayOT}</p>
+                            </div>
+                            <div>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Overtime Days</p>
+                                <p className="text-3xl font-bold text-gray-900 dark:text-white">{overtimeDays}</p>
+                            </div>
+                        </div>
+                        {(data.period || data.month) && (
+                            <p className="mt-3 text-xs text-gray-500 dark:text-gray-400 pt-3 border-t border-blue-200 dark:border-blue-700">
+                                Period: {data.period?.month ?? data.month}/{data.period?.year ?? data.year}
+                            </p>
+                        )}
                     </div>
                 )}
             </div>
         </Card>
     );
-};
+});
 
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
 // MANUAL ENTRY FORM
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
 
 const EMPTY_FORM = {
     employeeId: '',
-    date: format(new Date(), 'yyyy-MM-dd'),
+    date: getTodayDate(),
     checkIn: '',
     checkOut: '',
     status: '',
@@ -1670,115 +939,99 @@ const MANUAL_STATUS_OPTIONS = [
     { value: 'holiday', label: 'Holiday' },
 ];
 
-const ManualEntryForm = ({ onSuccess }) => {
+const ManualEntryForm = memo(({ onSuccess }) => {
     const [form, setForm] = useState(EMPTY_FORM);
     const [loading, setLoading] = useState(false);
     const [message, setMessage] = useState('');
     const [error, setError] = useState('');
+    const abortRef = useRef(null);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        setLoading(true);
-        setError('');
-        setMessage('');
+        if (abortRef.current) abortRef.current.abort();
+        const controller = new AbortController();
+        abortRef.current = controller;
+
+        setLoading(true); setError(''); setMessage('');
         try {
             const { checkIn: ci, checkOut: co, status, ...rest } = form;
-            const payload = status
-                ? { ...rest, status }
-                : { ...rest, checkIn: ci, checkOut: co };
-            const res = await adminRecord(cleanParams(payload));
-            setMessage(res.data.message);
+            const payload = status ? { ...rest, status } : { ...rest, checkIn: ci, checkOut: co };
+            const res = await adminRecord(cleanParams(payload), { signal: controller.signal });
+            const resPayload = unwrapPayload(res);
+            setMessage(resPayload.message || 'Record created successfully');
             setForm(EMPTY_FORM);
             onSuccess?.();
         } catch (err) {
-            setError(err.response?.data?.message || 'Submission failed');
+            if (err.name !== 'AbortError') setError(err.response?.data?.message || 'Submission failed');
         } finally {
-            setLoading(false);
+            if (!controller.signal.aborted) setLoading(false);
         }
     };
 
+    useEffect(() => () => { if (abortRef.current) abortRef.current.abort(); }, []);
+
     return (
         <Card>
-            <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">
-                Manual Entry (Admin)
-            </h2>
+            <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">Manual Entry (Admin)</h2>
             <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <Input
-                        label="Employee ID"
-                        type="number"
-                        required
-                        value={form.employeeId}
-                        onChange={(e) => setForm((f) => ({ ...f, employeeId: e.target.value }))}
-                    />
-                    <Input
-                        label="Date"
-                        type="date"
-                        required
-                        value={form.date}
-                        onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
-                    />
+                    <Input label="Employee ID" type="number" required value={form.employeeId} onChange={(e) => setForm((f) => ({ ...f, employeeId: e.target.value }))} placeholder="e.g., 1" />
+                    <Input label="Date" type="date" required value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} />
                 </div>
-                <Select
-                    label="Status (optional)"
-                    options={MANUAL_STATUS_OPTIONS}
-                    value={form.status}
-                    onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
-                />
+                <Select label="Status (optional)" options={MANUAL_STATUS_OPTIONS} value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))} />
                 {!form.status && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <Input
-                            label="Check In (HH:MM)"
-                            placeholder="09:00"
-                            value={form.checkIn}
-                            onChange={(e) => setForm((f) => ({ ...f, checkIn: e.target.value }))}
-                        />
-                        <Input
-                            label="Check Out (HH:MM)"
-                            placeholder="18:00"
-                            value={form.checkOut}
-                            onChange={(e) => setForm((f) => ({ ...f, checkOut: e.target.value }))}
-                        />
+                        <Input label="Check In (HH:MM)" placeholder="09:00" pattern="\d{2}:\d{2}" value={form.checkIn} onChange={(e) => setForm((f) => ({ ...f, checkIn: e.target.value }))} />
+                        <Input label="Check Out (HH:MM)" placeholder="18:00" pattern="\d{2}:\d{2}" value={form.checkOut} onChange={(e) => setForm((f) => ({ ...f, checkOut: e.target.value }))} />
                     </div>
                 )}
-                <Input
-                    label="Notes"
-                    placeholder="Optional"
-                    value={form.notes}
-                    onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-                />
+                <Input label="Notes" placeholder="Optional notes" value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} />
                 <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-                    <Button type="submit" isLoading={loading}>
-                        Submit
-                    </Button>
-                    {message && (
-                        <p className="text-green-600 dark:text-green-400 text-sm">{message}</p>
-                    )}
-                    {error && (
-                        <p className="text-red-600 dark:text-red-400 text-sm">{error}</p>
-                    )}
+                    <Button type="submit" isLoading={loading} variant="primary">Submit Record</Button>
+                    {message && <p className="text-green-600 dark:text-green-400 text-sm font-medium">{message}</p>}
+                    {error && <p className="text-red-600   dark:text-red-400   text-sm font-medium">{error}</p>}
                 </div>
             </form>
         </Card>
     );
-};
+});
 
-// ─────────────────────────────────────────────
-// MAIN PAGE COMPONENT
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// MAIN PAGE
+// ─────────────────────────────────────────────────────────────
 
 export default function AttendancePage() {
     const { user } = useAuth();
     const [refreshKey, setRefreshKey] = useState(0);
+    const [todayStatus, setTodayStatus] = useState(null);
     const isAdmin = resolveIsAdmin(user);
+    const userId = user?.id;
 
-    // pt-20 accounts for a typical fixed header (adjust to your header's height)
+    useEffect(() => {
+        if (isAdmin || !userId) return;
+        const controller = new AbortController();
+
+        const fetchStatus = async () => {
+            try {
+                const today = getTodayDate();
+                const params = { startDate: today, endDate: today, page: 1, limit: 1 };
+                const res = await getMyAttendance(params, { signal: controller.signal });
+                const payload = unwrapPayload(res);
+                const records = payload?.records ?? [];
+                setTodayStatus(records.length > 0 ? records[0].status : null);
+            } catch (err) {
+                if (err.name !== 'AbortError') console.error(err);
+            }
+        };
+
+        fetchStatus();
+        return () => controller.abort();
+    }, [isAdmin, userId, refreshKey]);
+
     return (
         <div className="space-y-6 pt-20 pb-8 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-                    Attendance Management
-                </h1>
+                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Attendance Management</h1>
                 {!isAdmin && (
                     <p className="text-sm text-gray-600 dark:text-gray-400">
                         {format(new Date(), 'EEEE, dd MMMM yyyy')}
@@ -1788,7 +1041,11 @@ export default function AttendancePage() {
 
             {!isAdmin ? (
                 <>
-                    <CheckInOutCard onSuccess={() => setRefreshKey((k) => k + 1)} />
+                    <CheckInOutCard
+                        onSuccess={() => setRefreshKey((k) => k + 1)}
+                        todayStatus={todayStatus}
+                        userId={userId}
+                    />
                     <MyAttendanceTable key={refreshKey} />
                 </>
             ) : (
