@@ -567,11 +567,11 @@ const listPendingLeaves = async ({
   }
 };
 
-const listTeamLeaves = async ({ managerId, status, limit = 20, page = 1 }) => {
+const listTeamLeaves = async ({ managerId, actor, status, limit = 20, page = 1 }) => {
   const offset = (page - 1) * limit;
 
   try {
-    const result = await leaveRepository.listTeamLeaves({ managerId, status, limit, offset });
+    const result = await leaveRepository.listTeamLeaves({ managerId, actor, status, limit, offset });
     const data = Array.isArray(result?.rows) ? result.rows : [];
     const total = result?.count || 0;
 
