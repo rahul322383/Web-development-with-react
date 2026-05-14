@@ -153,9 +153,14 @@ LeaveRequest.belongsTo(User, {
   as: 'employee'
 });
 
+User.hasMany(LeaveRequest, {
+  foreignKey: 'managerId',
+  as: 'managedLeaves'
+});
+
 LeaveRequest.belongsTo(User, {
   foreignKey: 'managerId',
-  as: 'approver'
+  as: 'manager'
 });
 
 // 💰 Expense
