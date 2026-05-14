@@ -372,12 +372,10 @@ const refreshSession = async (rawRefreshToken, req = null) => {
 const logout = async ({ refreshToken }, req = null) => {
   const { ip, userAgent } = extractRequestMeta(req);
 
-  console.log('========== LOGOUT START ==========');
+  
 
   if (!refreshToken) {
-    console.log('No refresh token provided');
 
-    console.log('========== LOGOUT END ==========');
 
     return {
       success: true,
@@ -389,23 +387,15 @@ const logout = async ({ refreshToken }, req = null) => {
     // Verify refresh token
     const payload = verifyRefreshToken(refreshToken);
 
-    console.log('User ID:', payload.sub);
-    console.log('Token ID:', payload.tokenId);
 
     // Transaction start
     await sequelize.transaction(async (transaction) => {
-      console.log('Revoking refresh token...');
 
-      // ✅ FIXED: pass transaction directly
       await authRepository.revokeRefreshToken(
         { tokenId: payload.tokenId },
         transaction
       );
 
-      console.log('Refresh token revoked successfully');
-
-      // Auto checkout
-      console.log('Starting auto checkout...');
 
       const checkoutResult = await autoCheckOut(
         {
@@ -415,16 +405,14 @@ const logout = async ({ refreshToken }, req = null) => {
         transaction
       );
 
-      console.log('Checkout Result:', checkoutResult);
-
-      // Only throw unexpected errors
       if (!checkoutResult.success && checkoutResult.error) {
-        throw new Error(
-          `Auto checkout failed: ${checkoutResult.error}`
-        );
+       return res .status(500).json({
+          success: false,
+          message: 'Logout failed during auto-checkout',
+          error: checkoutResult.error.message || 'Auto-checkout error',
+        });
       }
 
-      console.log('Transaction completed successfully');
     });
 
     // Send websocket/event notification
@@ -441,13 +429,10 @@ const logout = async ({ refreshToken }, req = null) => {
       })
     );
 
-    console.log('Logout completed successfully');
   } catch (err) {
-    // Logout should never fail for frontend
-    console.error('Logout Error:', err);
+
   }
 
-  console.log('========== LOGOUT END ==========');
 
   return {
     success: true,
