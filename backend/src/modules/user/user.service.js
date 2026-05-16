@@ -6,7 +6,6 @@ const sequelize = require('../../database/sequelize');
 const userRepository = require('./userRepository');
 const { clearCacheKeys } = require('../../utils/cache');
 const { logAuditEvent } = require('../../utils/auditLogger');
-const logger = require('../../config/logger');
 const eventBus = require('../../utils/Eventbus');
 const { assertPermission } = require('../../utils/permissions');
 const { notifyUserCreated, notifyUserUpdated, notifyUserDeleted } = require('./userNotifications');
@@ -29,22 +28,13 @@ const {
   validate
 } = require('./user.validation');
 
-// ─────────────────────────────────────────────
-// HELPERS
-// ─────────────────────────────────────────────
-
 const fail = (message, statusCode = 400, data = null) => ({
   success: false, message, statusCode, data
 });
 
 const handleError = (event, error, fallback = 'Operation failed') => {
-  logger.error({ event, error: error.message, stack: error.stack });
   return fail(error.message || fallback, error.statusCode || 500);
 };
-
-// ─────────────────────────────────────────────
-// LIST USERS
-// ─────────────────────────────────────────────
 
 const listUsers = async (query, actor) => {
   const perm = assertPermission(actor, 'LIST_USERS');
@@ -75,10 +65,6 @@ const listUsers = async (query, actor) => {
   }
 };
 
-// ─────────────────────────────────────────────
-// GET USER BY ID
-// ─────────────────────────────────────────────
-
 const getUserById = async (id, actor) => {
   const perm = assertPermission(actor, 'VIEW_USER');
   if (!perm.allowed) return fail(perm.message, 403);
@@ -93,10 +79,6 @@ const getUserById = async (id, actor) => {
     return handleError('GET_USER_FAILED', error, 'Failed to fetch user');
   }
 };
-
-// ─────────────────────────────────────────────
-// CREATE USER
-// ─────────────────────────────────────────────
 
 const createUser = async (payload, actor, ipAddress) => {
   const perm = assertPermission(actor, 'CREATE_USER');
@@ -161,7 +143,7 @@ const createUser = async (payload, actor, ipAddress) => {
         ipAddress
       });
     } catch (auditErr) {
-      logger.error({ event: 'AUDIT_LOG_FAILED', error: auditErr.message });
+      // silent
     }
 
     const [adminIds, hrTeamIds] = await Promise.all([
@@ -179,45 +161,32 @@ const createUser = async (payload, actor, ipAddress) => {
   }
 };
 
-// ─────────────────────────────────────────────
-// UPDATE USER
-// ─────────────────────────────────────────────
-
 const updateUser = async (id, payload, actor, ipAddress) => {
-  // ── 1. Permission ──────────────────────────────────────────────────────────
   const perm = assertPermission(actor, 'UPDATE_USER');
   if (!perm.allowed) return fail(perm.message, 403);
 
-  // ── 2. Basic ID guard ──────────────────────────────────────────────────────
   if (!id || isNaN(Number(id))) return fail('Invalid user ID');
 
-  // ── 3. Validate payload ────────────────────────────────────────────────────
   const validation = validate(updateUserSchema, payload);
   if (!validation.valid) return fail(validation.message);
 
   const { value } = validation;
 
   try {
-    // ── 4. Existence check ───────────────────────────────────────────────────
     const userId = Number(id);
 
     const existing = await userRepository.findUserById(userId);
     if (!existing) return fail('User not found', 404);
 
-    // ── 5. Manager existence check (only when explicitly setting one) ────────
-    //       managerId === null means "clear" — skip the lookup in that case
     if (value.managerId != null) {
       const manager = await userRepository.findUserById(value.managerId);
       if (!manager) return fail('Specified manager does not exist', 400);
 
-      // Prevent circular self-assignment
       if (Number(value.managerId) === Number(id)) {
         return fail('User cannot be their own manager', 422);
       }
     }
 
-    // ── 6. Build DB-safe update payload ─────────────────────────────────────
-    //       Map every validated field; exclude `role` — handled separately via roleId
     const mappedPayload = {};
     if (value.firstName !== undefined) mappedPayload.firstName = value.firstName;
     if (value.lastName !== undefined) mappedPayload.lastName = value.lastName;
@@ -227,40 +196,23 @@ const updateUser = async (id, payload, actor, ipAddress) => {
     if (value.department !== undefined) mappedPayload.department = value.department;
     if (value.baseSalary !== undefined) mappedPayload.baseSalary = value.baseSalary;
     if (value.isActive !== undefined) mappedPayload.isActive = value.isActive;
-    // managerId: pass through as-is (null clears it, number sets it)
     if (value.managerId !== undefined) mappedPayload.managerId = value.managerId;
 
-    // ── 7. Transactional update ──────────────────────────────────────────────
     await sequelize.transaction(async (transaction) => {
-      // 7a. Update scalar fields on the users table
       if (Object.keys(mappedPayload).length > 0) {
         await userRepository.updateUserById(id, mappedPayload, transaction);
       }
 
-      // 7b. Update role FK (roleId on users table) when role name is provided
-      //     Association is belongsTo — no junction table, no magic methods
       if (value.role) {
-        const [role] = await userRepository.findOrCreateRole(
-          value.role,
-          transaction
-        );
-
-        await userRepository.updateUserRole(
-          Number(id),
-          Number(role.id),
-          transaction
-        );
+        const [role] = await userRepository.findOrCreateRole(value.role, transaction);
+        await userRepository.updateUserRole(Number(id), Number(role.id), transaction);
       }
     });
 
-    // ── 8. Fetch fresh record after update ───────────────────────────────────
     const updatedUser = await userRepository.findUserById(id);
 
-    // ── 9. Cache invalidation (non-blocking) ─────────────────────────────────
-    clearCacheKeys([`dashboard_summary:${id}:${new Date().getFullYear()}`])
-      .catch((err) => logger.error({ event: 'CACHE_BUST_FAILED', error: err.message }));
+    clearCacheKeys([`dashboard_summary:${id}:${new Date().getFullYear()}`]).catch(() => { });
 
-    // ── 10. Audit log (non-blocking — failure must not abort the response) ───
     try {
       await logAuditEvent({
         userId: actor.id,
@@ -271,10 +223,9 @@ const updateUser = async (id, payload, actor, ipAddress) => {
         ipAddress,
       });
     } catch (auditErr) {
-      logger.error({ event: 'AUDIT_LOG_FAILED', error: auditErr.message });
+      // silent
     }
 
-    // ── 11. Notifications & event bus ────────────────────────────────────────
     const changes = buildChangelog(existing, updatedUser);
     const adminIds = await userRepository.getAdminIds();
 
@@ -287,10 +238,6 @@ const updateUser = async (id, payload, actor, ipAddress) => {
     return handleError('UPDATE_USER_FAILED', error, 'Failed to update user');
   }
 };
-
-// ─────────────────────────────────────────────
-// DELETE USER (soft)
-// ─────────────────────────────────────────────
 
 const deleteUser = async (id, actor, ipAddress) => {
   const perm = assertPermission(actor, 'DELETE_USER');
@@ -315,7 +262,7 @@ const deleteUser = async (id, actor, ipAddress) => {
         ipAddress
       });
     } catch (auditErr) {
-      logger.error({ event: 'AUDIT_LOG_FAILED', error: auditErr.message });
+      // silent
     }
 
     const [adminIds, hrTeamIds] = await Promise.all([
@@ -332,10 +279,6 @@ const deleteUser = async (id, actor, ipAddress) => {
     return handleError('DELETE_USER_FAILED', error, 'Failed to delete user');
   }
 };
-
-// ─────────────────────────────────────────────
-// DASHBOARD — consolidated
-// ─────────────────────────────────────────────
 
 const getDashboardSummary = async ({ year, page, limit, user: actor }) => {
   const perm = assertPermission(actor, 'VIEW_DASHBOARD');
@@ -377,10 +320,6 @@ const getDashboardSummary = async ({ year, page, limit, user: actor }) => {
   }
 };
 
-// ─────────────────────────────────────────────
-// GET USERS BY DEPARTMENT
-// ─────────────────────────────────────────────
-
 const getUsersByDepartment = async (department, actor) => {
   const perm = assertPermission(actor, 'VIEW_DEPARTMENT');
   if (!perm.allowed) return fail(perm.message, 403);
@@ -395,10 +334,6 @@ const getUsersByDepartment = async (department, actor) => {
     return handleError('GET_USERS_BY_DEPARTMENT_FAILED', error, 'Failed to fetch department users');
   }
 };
-
-// ─────────────────────────────────────────────
-// ASSIGN MANAGER
-// ─────────────────────────────────────────────
 
 const assignManager = async ({ employeeId, managerId, actor }) => {
   if (actor) {
@@ -421,7 +356,6 @@ const assignManager = async ({ employeeId, managerId, actor }) => {
 
     const updated = await userRepository.findUserById(employeeId);
 
-    logger.info({ event: 'MANAGER_ASSIGNED', employeeId, managerId, actorId: actor?.id });
     eventBus.emit('MANAGER_ASSIGNED', { employeeId, managerId, actorId: actor?.id });
 
     return {
@@ -435,8 +369,6 @@ const assignManager = async ({ employeeId, managerId, actor }) => {
     return handleError('ASSIGN_MANAGER_FAILED', error, 'Failed to assign manager');
   }
 };
-
-// ─────────────────────────────────────────────
 
 module.exports = {
   listUsers,
