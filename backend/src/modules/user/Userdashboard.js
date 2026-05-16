@@ -318,13 +318,35 @@ const getExpenseData = async (year, page = 1, limit = 10, role) => {
 
 const getUserListData = async (page = 1, limit = 10) => {
     const offset = (page - 1) * limit;
-    const { User } = getModels();
+
+    const { User, Role } = getModels();
 
     try {
         const result = await User.findAndCountAll({
-            attributes: { exclude: ['passwordHash'] },
+            attributes: [
+                'id',
+                'firstName',
+                'lastName',
+                'email',
+                'department',
+                'baseSalary',
+                'isActive',
+                'employeeCode',
+                'roleId'
+            ],
+
+            include: [
+                {
+                    model: Role,
+                    as: 'role',
+                    attributes: ['id', 'name']
+                }
+            ],
+
             limit,
             offset,
+            distinct: true,
+
             order: [['createdAt', 'DESC']]
         });
 
@@ -333,6 +355,7 @@ const getUserListData = async (page = 1, limit = 10) => {
             data: result.rows,
             pagination: buildPagination(result.count, page, limit)
         };
+
     } catch (error) {
         return {
             success: false,
