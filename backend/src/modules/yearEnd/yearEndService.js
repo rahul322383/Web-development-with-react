@@ -4,17 +4,16 @@ const sequelize = require('../../database/sequelize');
 const yearEndRepository = require('./yearEndRepository');
 const { clearCacheKeys } = require('../../utils/cache');
 const { assertPermission } = require('../../utils/permissions');
-const logger = require('../../config/logger');
 const pLimit = require('p-limit');
 
-const fail = (message, statusCode = 400, data = null) => ({
+const response = (message, statusCode = 400, data = null) => ({
   success: false, message, statusCode, data,
 });
 
 const checkPermission = (actor, permission) => {
   const perm = assertPermission(actor, permission);
   const granted = perm.success ?? perm.allowed ?? false;
-  if (!granted) return fail(perm.message || 'Forbidden', perm.statusCode || 403);
+  if (!granted) return response(perm.message || 'Forbidden', perm.statusCode || 403);
   return null;
 };
 
@@ -48,7 +47,7 @@ const generateYearSummary = async ({ year, actor }) => {
   const denied = checkPermission(actor, 'GENERATE_YEAR_END_REPORT');
   if (denied) return denied;
 
-  if (!year) return fail('year is required');
+  if (!year) return response('year is required');
 
   const cacheKeys = [];
   const limit = pLimit(10);
@@ -72,10 +71,8 @@ const generateYearSummary = async ({ year, actor }) => {
 
     await clearCacheKeys(cacheKeys);
 
-    // ✅ FETCH SUMMARIES
     const summaries = await yearEndRepository.listYearSummaries(year);
 
-    // 🔥 ADD DETAILS (leaves + expenses)
     const enrichedSummaries = await Promise.all(
       summaries.map(async (summary) => {
         const employeeId = summary.employeeId;
@@ -87,8 +84,8 @@ const generateYearSummary = async ({ year, actor }) => {
 
         return {
           ...summary.toJSON(),
-          leaves,     // 👈 full leave records
-          expenses,   // 👈 full expense records
+          leaves,
+          expenses,
         };
       })
     );
@@ -102,16 +99,7 @@ const generateYearSummary = async ({ year, actor }) => {
     };
 
   } catch (err) {
-   
-
-    logger.error({
-      event: 'GENERATE_YEAR_SUMMARY_FAILED',
-      year,
-      error: err.message,
-      stack: err.stack,
-    });
-
-    return fail(err.message || 'Failed to generate year summaries', 500);
+    return response(err.message || 'Failed to generate year summaries', 500);
   }
 };
 
@@ -119,14 +107,13 @@ const getYearSummaries = async ({ year, actor }) => {
   const denied = checkPermission(actor, 'VIEW_YEAR_END_REPORT');
   if (denied) return denied;
 
-  if (!year) return fail('year is required');
+  if (!year) return response('year is required');
 
   try {
     const data = await yearEndRepository.listYearSummaries(year);
     return { success: true, statusCode: 200, data };
   } catch (err) {
-    logger.error({ event: 'GET_YEAR_SUMMARIES_FAILED', year, error: err.message });
-    return fail(err.message || 'Failed to fetch year summaries', 500);
+    return response(err.message || 'Failed to fetch year summaries', 500);
   }
 };
 
