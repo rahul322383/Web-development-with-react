@@ -279,13 +279,29 @@ const findUsers = async ({ limit, offset, search }) => {
     ];
   }
 
-  return await User.findAndCountAll({
-    attributes: { exclude: ['passwordHash'] },
+  const result = await User.findAndCountAll({
     where,
+
+    attributes: {
+      exclude: ['passwordHash']
+    },
+
+    include: [
+      {
+        model: Role,
+        as: 'role',
+        attributes: ['id', 'name']
+      }
+    ],
+
     limit,
     offset,
+    distinct: true,
+
     order: [['createdAt', 'DESC']],
   });
+
+  return result;
 };
 
 const getUsersByDepartment = (department) => {
