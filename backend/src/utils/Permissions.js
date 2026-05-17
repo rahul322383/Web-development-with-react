@@ -24,8 +24,11 @@ const PERMISSIONS = {
     REVIEW_EXPENSE: ['Manager', 'HR', 'Admin'],
     FINANCE_REVIEW: ['Finance', 'Admin', 'HR'],
     VIEW_MY_EXPENSES: ['Employee', 'Manager', 'HR', 'Finance', 'Admin'],
+    LIST_MY_EXPENSES: ['Employee', 'Manager', 'HR', 'Finance', 'Admin'],
     VIEW_PENDING_EXPENSES: ['Manager', 'HR', 'Finance', 'Admin'],
     DELETE_EXPENSE: ['Admin', 'HR'],
+    LIST_PENDING_MANAGER: ['Manager', 'HR', 'Admin'],
+    LIST_PENDING_FINANCE: ['Finance', 'Admin', 'HR'],
 
     VIEW_NOTIFICATIONS: ['Employee', 'Manager', 'HR', 'Finance', 'Admin'],
     LIST_NOTIFICATIONS: ['Employee', 'Manager', 'HR', 'Finance', 'Admin'],
@@ -33,9 +36,10 @@ const PERMISSIONS = {
     UPDATE_NOTIFICATION_PREFERENCES: ['Employee', 'Manager', 'HR', 'Finance', 'Admin'],
     MARK_NOTIFICATION_READ: ['Employee', 'Manager', 'HR', 'Finance', 'Admin'],
     CLEAR_NOTIFICATIONS: ['Employee', 'Manager', 'HR', 'Finance', 'Admin'],
-    SEND_NOTIFICATION: ['Admin', 'HR'],
-    DELETE_NOTIFICATION: ['Admin'],
+    SEND_NOTIFICATION: ['Employee', 'Manager', 'HR', 'Finance', 'Admin'],
+    DELETE_NOTIFICATION: ['Employee', 'Manager', 'HR', 'Finance', 'Admin'],
 
+    
     VIEW_PAYROLL: ['Admin', 'HR', 'Finance', 'Manager'],
     VIEW_PAYSLIP: ['Admin', 'HR', 'Finance', 'Manager', 'Employee'],
     VIEW_PAYROLL_BREAKDOWN: ['Admin', 'HR', 'Finance', 'Manager', 'Employee'],
@@ -71,7 +75,7 @@ const PERMISSIONS = {
     VIEW_COMPANY_STATS: ['Admin', 'HR', 'Manager', 'Finance'],
     VIEW_COMPANY_DASHBOARD: ['Admin', 'HR', 'Manager', 'Finance'],
     VIEW_COMPANY_USERS: ['Admin', 'HR', 'Manager', 'Finance'],
-    ADD_COMPANY_USER: ['Admin', 'HR'],
+    ADD_COMPANY_USER: ['Admin', 'HR', 'Manager'],
     REMOVE_COMPANY_USER: ['Admin', 'HR'],
     VIEW_SUBSCRIPTION: ['Admin', 'HR'],
     UPDATE_SUBSCRIPTION: ['Admin'],
