@@ -11,11 +11,10 @@ export const authApi = {
     return res.data; // Returns { success: true, data: { ... } }
   },
 
-  logout: async () => {
-    const res = await axiosInstance.post("/auth/logout");
+  logout: async (refreshToken) => {
+    const res = await axiosInstance.post("/auth/logout", { refreshToken });
     return res.data;
   },
-
   getMe: async () => {
     const res = await axiosInstance.get("/auth/me");
     return res.data; // Returns { success: true, data: { ... } }
