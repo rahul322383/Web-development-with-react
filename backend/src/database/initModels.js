@@ -23,6 +23,11 @@ const defineAttendance = require('../models/attendance.model');
 const defineCompany = require('../models/company.model');
 const defineShift = require('../models/shift.model');
 const defineShiftAssignment = require('../models/shiftAssignment.model');
+const definePerformanceReview = require('../models/performanceReview.model');
+const defineReviewCycle = require('../models/reviewCycle.model');
+const defineAsset = require('../models/asset.model');
+const defineAssetAssignment = require('../models/assetAssignment.model');
+const defineAssetDamageReport = require('../models/assetDamageReport.model');
 
 // ✅ Recruitment Models
 const defineJob = require('../models/job.model');
@@ -72,7 +77,11 @@ const Notification = defineNotification(sequelize, DataTypes);
 const Setting = defineSetting(sequelize, DataTypes);
 const Shift = defineShift(sequelize, DataTypes);
 const ShiftAssignment = defineShiftAssignment(sequelize, DataTypes);
-
+const PerformanceReview = definePerformanceReview(sequelize, DataTypes);
+const ReviewCycle = defineReviewCycle(sequelize, DataTypes);
+const Asset = defineAsset(sequelize, DataTypes);
+const AssetAssignment = defineAssetAssignment(sequelize, DataTypes);
+const AssetDamageReport = defineAssetDamageReport(sequelize, DataTypes);
 // ✅ Recruitment Init
 const Job = defineJob(sequelize, DataTypes);
 const Candidate = defineCandidate(sequelize, DataTypes);
@@ -414,6 +423,16 @@ User.hasMany(Offer, {
   foreignKey: 'offeredBy',
   as: 'sentOffers'
 });
+
+// Performance
+User.hasMany(PerformanceReview, { foreignKey: 'employeeId', as: 'performanceReviews' });
+User.hasMany(PerformanceReview, { foreignKey: 'reviewerId', as: 'givenReviews' });
+ReviewCycle.hasMany(PerformanceReview, { foreignKey: 'cycleId', as: 'reviews' });
+
+// Assets
+Asset.hasMany(AssetAssignment, { foreignKey: 'assetId', as: 'assignments' });
+User.hasMany(AssetAssignment, { foreignKey: 'employeeId', as: 'assets' });
+AssetAssignment.hasMany(AssetDamageReport, { foreignKey: 'assignmentId', as: 'damageReports' });
 
 // ======================
 // 🔥 EXPORT
