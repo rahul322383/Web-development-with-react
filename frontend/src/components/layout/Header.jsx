@@ -76,20 +76,22 @@ export const Header = () => {
   const headerNavItems = isAuthenticated
     ? AUTH_NAVIGATION.filter(item => {
       if (!item.showInHeader) return false;
-      if (item.name === 'Users Management') {
-        return user?.primaryRole === 'Admin' || user?.primaryRole === 'Manager';
-      }
-      if (item.name === 'Recruitment') {
-        return (
-          user?.primaryRole === 'Admin' ||
-          user?.primaryRole === 'HR' ||
-          meta?.department === 'HR'
+
+      const hasRole =
+        !item.roles ||
+        (
+          Array.isArray(item.roles) &&
+          item.roles.includes(user?.primaryRole)
         );
-      }
-      return (
-        item.roles?.includes(user?.primaryRole) ||
-        (item.department && item.department.includes(meta?.department))
-      );
+
+      const hasDepartment =
+        !item.department ||
+        (
+          Array.isArray(item.department) &&
+          item.department.includes(meta?.department)
+        );
+
+      return hasRole && hasDepartment;
     })
     : PUBLIC_NAVIGATION;
 
