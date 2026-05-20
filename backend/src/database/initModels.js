@@ -28,6 +28,13 @@ const defineReviewCycle = require('../models/reviewCycle.model');
 const defineAsset = require('../models/asset.model');
 const defineAssetAssignment = require('../models/assetAssignment.model');
 const defineAssetDamageReport = require('../models/assetDamageReport.model');
+const defineCourse = require('../models/course.model');
+const defineCourseModule = require('../models/courseModule.model');
+const defineCourseEnrollment = require('../models/courseEnrollment.model');
+const defineQuiz = require('../models/quiz.model');
+const defineQuizQuestion = require('../models/quizQuestion.model');
+const defineQuizAttempt = require('../models/quizAttempt.model');
+const defineCertification = require('../models/certification.model');
 
 // ✅ Recruitment Models
 const defineJob = require('../models/job.model');
@@ -89,6 +96,20 @@ const JobApplication = defineJobApplication(sequelize, DataTypes);
 const Interview = defineInterview(sequelize, DataTypes);
 const Offer = defineOffer(sequelize, DataTypes);
 
+const Course           = defineCourse(sequelize, DataTypes);
+const CourseModule     = defineCourseModule(sequelize, DataTypes);
+const CourseEnrollment = defineCourseEnrollment(sequelize, DataTypes);
+const Quiz             = defineQuiz(sequelize, DataTypes);
+const QuizQuestion     = defineQuizQuestion(sequelize, DataTypes);
+const QuizAttempt      = defineQuizAttempt(sequelize, DataTypes);
+const Certification    = defineCertification(sequelize, DataTypes);
+
+const defineTicketCategory = require('../models/ticketCategory.model');
+const defineTicket = require('../models/ticket.model');
+const defineTicketComment = require('../models/ticketComment.model');
+const defineTicketActivity = require('../models/ticketActivity.model');
+const defineSlaPolicy = require('../models/slaPolicy.model');
+
 // ======================
 // 🔥 PUBLIC INIT
 // ======================
@@ -112,6 +133,47 @@ ContactOffice(sequelize, DataTypes);
 // ======================
 // 🔥 ASSOCIATIONS
 // ======================
+
+
+const TicketCategory = defineTicketCategory(sequelize, DataTypes);
+const Ticket         = defineTicket(sequelize, DataTypes);
+const TicketComment  = defineTicketComment(sequelize, DataTypes);
+const TicketActivity = defineTicketActivity(sequelize, DataTypes);
+const SlaPolicy      = defineSlaPolicy(sequelize, DataTypes);
+
+
+
+
+
+Company.hasMany(TicketCategory, { foreignKey: 'companyId', as: 'ticketCategories' });
+TicketCategory.belongsTo(Company, { foreignKey: 'companyId', as: 'company' });
+
+Company.hasMany(SlaPolicy, { foreignKey: 'companyId', as: 'slaPolicies' });
+SlaPolicy.belongsTo(Company, { foreignKey: 'companyId', as: 'company' });
+
+Company.hasMany(Ticket, { foreignKey: 'companyId', as: 'tickets' });
+Ticket.belongsTo(Company, { foreignKey: 'companyId', as: 'company' });
+
+User.hasMany(Ticket, { foreignKey: 'raisedBy', as: 'raisedTickets' });
+Ticket.belongsTo(User, { foreignKey: 'raisedBy', as: 'requester' });
+
+User.hasMany(Ticket, { foreignKey: 'assignedTo', as: 'assignedTickets' });
+Ticket.belongsTo(User, { foreignKey: 'assignedTo', as: 'assignee' });
+
+TicketCategory.hasMany(Ticket, { foreignKey: 'categoryId', as: 'tickets' });
+Ticket.belongsTo(TicketCategory, { foreignKey: 'categoryId', as: 'category' });
+
+Ticket.hasMany(TicketComment, { foreignKey: 'ticketId', as: 'comments' });
+TicketComment.belongsTo(Ticket, { foreignKey: 'ticketId', as: 'ticket' });
+
+User.hasMany(TicketComment, { foreignKey: 'authorId', as: 'ticketComments' });
+TicketComment.belongsTo(User, { foreignKey: 'authorId', as: 'author' });
+
+Ticket.hasMany(TicketActivity, { foreignKey: 'ticketId', as: 'activities' });
+TicketActivity.belongsTo(Ticket, { foreignKey: 'ticketId', as: 'ticket' });
+
+User.hasMany(TicketActivity, { foreignKey: 'actorId', as: 'ticketActivities' });
+TicketActivity.belongsTo(User, { foreignKey: 'actorId', as: 'actor' });
 
 // 👤 User hierarchy
 User.belongsTo(User, { as: 'manager', foreignKey: 'managerId' });
@@ -434,12 +496,57 @@ Asset.hasMany(AssetAssignment, { foreignKey: 'assetId', as: 'assignments' });
 User.hasMany(AssetAssignment, { foreignKey: 'employeeId', as: 'assets' });
 AssetAssignment.hasMany(AssetDamageReport, { foreignKey: 'assignmentId', as: 'damageReports' });
 
-// ======================
-// 🔥 EXPORT
-// ======================
-module.exports = {
-  sequelize,
+Company.hasMany(Course, { foreignKey: 'companyId', as: 'courses' });
+Course.belongsTo(Company, { foreignKey: 'companyId', as: 'company' });
+User.hasMany(Course, { foreignKey: 'createdBy', as: 'createdCourses' });
+Course.belongsTo(User, { foreignKey: 'createdBy', as: 'author' });
 
+// Course ↔ Modules
+Course.hasMany(CourseModule, { foreignKey: 'courseId', as: 'modules' });
+CourseModule.belongsTo(Course, { foreignKey: 'courseId', as: 'course' });
+
+// Course ↔ Enrollments
+Course.hasMany(CourseEnrollment, { foreignKey: 'courseId', as: 'enrollments' });
+CourseEnrollment.belongsTo(Course, { foreignKey: 'courseId', as: 'course' });
+User.hasMany(CourseEnrollment, { foreignKey: 'employeeId', as: 'courseEnrollments' });
+CourseEnrollment.belongsTo(User, { foreignKey: 'employeeId', as: 'employee' });
+User.hasMany(CourseEnrollment, { foreignKey: 'enrolledBy', as: 'managedEnrollments' });
+CourseEnrollment.belongsTo(User, { foreignKey: 'enrolledBy', as: 'enrolledByUser' });
+
+// Module ↔ Quiz
+CourseModule.hasOne(Quiz, { foreignKey: 'moduleId', as: 'quiz' });
+Quiz.belongsTo(CourseModule, { foreignKey: 'moduleId', as: 'module' });
+Course.hasMany(Quiz, { foreignKey: 'courseId', as: 'quizzes' });
+Quiz.belongsTo(Course, { foreignKey: 'courseId', as: 'course' });
+
+// Quiz ↔ Questions
+Quiz.hasMany(QuizQuestion, { foreignKey: 'quizId', as: 'questions' });
+QuizQuestion.belongsTo(Quiz, { foreignKey: 'quizId', as: 'quiz' });
+
+// Quiz ↔ Attempts
+Quiz.hasMany(QuizAttempt, { foreignKey: 'quizId', as: 'attempts' });
+QuizAttempt.belongsTo(Quiz, { foreignKey: 'quizId', as: 'quiz' });
+CourseEnrollment.hasMany(QuizAttempt, { foreignKey: 'enrollmentId', as: 'quizAttempts' });
+QuizAttempt.belongsTo(CourseEnrollment, { foreignKey: 'enrollmentId', as: 'enrollment' });
+User.hasMany(QuizAttempt, { foreignKey: 'employeeId', as: 'quizAttempts' });
+QuizAttempt.belongsTo(User, { foreignKey: 'employeeId', as: 'employee' });
+
+// Certifications
+CourseEnrollment.hasOne(Certification, { foreignKey: 'enrollmentId', as: 'certification' });
+Certification.belongsTo(CourseEnrollment, { foreignKey: 'enrollmentId', as: 'enrollment' });
+Course.hasMany(Certification, { foreignKey: 'courseId', as: 'certifications' });
+Certification.belongsTo(Course, { foreignKey: 'courseId', as: 'course' });
+User.hasMany(Certification, { foreignKey: 'employeeId', as: 'certifications' });
+Certification.belongsTo(User, { foreignKey: 'employeeId', as: 'employee' });
+Company.hasMany(Certification, { foreignKey: 'companyId', as: 'certifications' });
+Certification.belongsTo(Company, { foreignKey: 'companyId', as: 'company' });
+
+
+
+module.exports = {
+
+  sequelize,
+  TicketCategory, Ticket, TicketComment, TicketActivity, SlaPolicy,
   Company,
   User,
   Role,
@@ -481,5 +588,22 @@ module.exports = {
   Tutorial,
   SecurityCertification,
   LegalDocument,
-  ContactOffice
+  ContactOffice,
+  PerformanceReview,
+  ReviewCycle,
+  Asset,
+  AssetAssignment,
+  AssetDamageReport,
+  Course,
+  CourseModule,
+  CourseEnrollment,
+  Quiz,
+  
+  QuizQuestion,
+  QuizAttempt,
+  Certification,
+  Course,
+  CourseModule,
+  CourseEnrollment,
+
 };
