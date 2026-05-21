@@ -109,10 +109,18 @@ const defineTicket = require('../models/ticket.model');
 const defineTicketComment = require('../models/ticketComment.model');
 const defineTicketActivity = require('../models/ticketActivity.model');
 const defineSlaPolicy = require('../models/slaPolicy.model');
+const defineSubscriptionPlan    = require('../models/subscriptionPlan.model');
+const defineCompanySubscription = require('../models/companySubscription.model');
+const definePaymentTransaction  = require('../models/paymentTransaction.model');
+const defineInvoice             = require('../models/invoice.model');
 
-// ======================
-// 🔥 PUBLIC INIT
-// ======================
+const SubscriptionPlan    = defineSubscriptionPlan(sequelize, DataTypes);
+const CompanySubscription = defineCompanySubscription(sequelize, DataTypes);
+const PaymentTransaction  = definePaymentTransaction(sequelize, DataTypes);
+const Invoice             = defineInvoice(sequelize, DataTypes);
+
+
+
 SiteStat(sequelize, DataTypes);
 Testimonial(sequelize, DataTypes);
 TeamMember(sequelize, DataTypes);
@@ -541,10 +549,36 @@ Certification.belongsTo(User, { foreignKey: 'employeeId', as: 'employee' });
 Company.hasMany(Certification, { foreignKey: 'companyId', as: 'certifications' });
 Certification.belongsTo(Company, { foreignKey: 'companyId', as: 'company' });
 
+SubscriptionPlan.hasMany(CompanySubscription, { foreignKey: 'planId', as: 'subscriptions' });
+CompanySubscription.belongsTo(SubscriptionPlan, { foreignKey: 'planId', as: 'plan' });
+
+// Company → Subscriptions
+Company.hasMany(CompanySubscription, { foreignKey: 'companyId', as: 'subscriptions' });
+CompanySubscription.belongsTo(Company, { foreignKey: 'companyId', as: 'company' });
+
+// Company → Transactions
+Company.hasMany(PaymentTransaction, { foreignKey: 'companyId', as: 'paymentTransactions' });
+PaymentTransaction.belongsTo(Company, { foreignKey: 'companyId', as: 'company' });
+
+// Subscription → Transactions
+CompanySubscription.hasMany(PaymentTransaction, { foreignKey: 'subscriptionId', as: 'transactions' });
+PaymentTransaction.belongsTo(CompanySubscription, { foreignKey: 'subscriptionId', as: 'subscription' });
+
+// Company → Invoices
+Company.hasMany(Invoice, { foreignKey: 'companyId', as: 'invoices' });
+Invoice.belongsTo(Company, { foreignKey: 'companyId', as: 'company' });
+
+// Subscription → Invoices
+CompanySubscription.hasMany(Invoice, { foreignKey: 'subscriptionId', as: 'invoices' });
+Invoice.belongsTo(CompanySubscription, { foreignKey: 'subscriptionId', as: 'subscription' });
+
+// Transaction → Invoice
+PaymentTransaction.hasOne(Invoice, { foreignKey: 'transactionId', as: 'invoice' });
+Invoice.belongsTo(PaymentTransaction, { foreignKey: 'transactionId', as: 'transaction' });
 
 
 module.exports = {
-
+  SubscriptionPlan, CompanySubscription, PaymentTransaction, Invoice,
   sequelize,
   TicketCategory, Ticket, TicketComment, TicketActivity, SlaPolicy,
   Company,
