@@ -1,159 +1,185 @@
 'use strict';
 
 module.exports = (sequelize, DataTypes) => {
-  return sequelize.define('ReviewCycle', {
+  const Company = sequelize.define('Company', {
 
-    // =========================
-    // PRIMARY KEY
-    // =========================
     id: {
       type: DataTypes.BIGINT.UNSIGNED,
-      primaryKey: true,
       autoIncrement: true,
+      primaryKey: true,
     },
 
-    // =========================
-    // COMPANY FOREIGN KEY
-    // MUST MATCH Companies.id
-    // =========================
-    companyId: {
-      type: DataTypes.BIGINT.UNSIGNED,
-      allowNull: true,
-
-      references: {
-        model: 'Companies',
-        key: 'id',
-      },
-
-      field: 'company_id',
-    },
-
-    // =========================
-    // USER FOREIGN KEY
-    // MUST MATCH Users.id
-    // =========================
-    createdBy: {
-      type: DataTypes.BIGINT.UNSIGNED,
-      allowNull: false,
-
-      references: {
-        model: 'Users',
-        key: 'id',
-      },
-
-      field: 'created_by',
-    },
-
-    // =========================
-    // BASIC DETAILS
-    // =========================
     name: {
+      type: DataTypes.STRING(150),
+      allowNull: false,
+    },
+
+    slug: {
+      type: DataTypes.STRING(160),
+      allowNull: false,
+      unique: true,
+      comment: 'URL-safe company identifier e.g. acme-corp',
+    },
+
+    email: {
+      type: DataTypes.STRING(120),
+      allowNull: true,
+      comment: 'Official company contact email',
+    },
+
+    phone: {
+      type: DataTypes.STRING(20),
+      allowNull: true,
+      field: 'phone',
+    },
+
+    website: {
       type: DataTypes.STRING(255),
-      allowNull: false,
-    },
-
-    type: {
-      type: DataTypes.ENUM(
-        'quarterly',
-        'half_yearly',
-        'annual',
-        'probation',
-        'custom'
-      ),
-
-      allowNull: false,
-      defaultValue: 'annual',
-    },
-
-    status: {
-      type: DataTypes.ENUM(
-        'draft',
-        'active',
-        'closed',
-        'archived'
-      ),
-
-      allowNull: false,
-      defaultValue: 'draft',
-    },
-
-    // =========================
-    // DATES
-    // =========================
-    startDate: {
-      type: DataTypes.DATEONLY,
-      allowNull: false,
-      field: 'start_date',
-    },
-
-    endDate: {
-      type: DataTypes.DATEONLY,
-      allowNull: false,
-      field: 'end_date',
-    },
-
-    selfReviewDeadline: {
-      type: DataTypes.DATEONLY,
       allowNull: true,
-      field: 'self_review_deadline',
     },
 
-    managerReviewDeadline: {
-      type: DataTypes.DATEONLY,
+    industry: {
+      type: DataTypes.STRING(100),
       allowNull: true,
-      field: 'manager_review_deadline',
     },
 
-    peerReviewDeadline: {
-      type: DataTypes.DATEONLY,
+    size: {
+      type: DataTypes.ENUM('1-10', '11-50', '51-200', '201-500', '500+'),
       allowNull: true,
-      field: 'peer_review_deadline',
+      comment: 'Employee headcount band',
     },
 
-    // =========================
-    // SETTINGS
-    // =========================
-    isSelfReviewEnabled: {
+    // ── address ───────────────────────────────────────────────
+    addressLine1: {
+      type: DataTypes.STRING(200),
+      allowNull: true,
+      field: 'address_line1',
+    },
+
+    addressLine2: {
+      type: DataTypes.STRING(200),
+      allowNull: true,
+      field: 'address_line2',
+    },
+
+    city: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+    },
+
+    state: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+    },
+
+    country: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+      defaultValue: 'India',
+    },
+
+    postalCode: {
+      type: DataTypes.STRING(20),
+      allowNull: true,
+      field: 'postal_code',
+    },
+
+    // ── logo (Cloudinary) ─────────────────────────────────────
+    logoUrl: {
+      type: DataTypes.STRING(500),
+      allowNull: true,
+      field: 'logo_url',
+    },
+
+    logoPublicId: {
+      type: DataTypes.STRING(300),
+      allowNull: true,
+      field: 'logo_public_id',
+      comment: 'Cloudinary public_id — needed for deletion/replacement',
+    },
+
+    // ── HR / payroll settings (company-level policy) ──────────
+    workingHoursPerDay: {
+      type: DataTypes.DECIMAL(4, 2),
+      allowNull: false,
+      defaultValue: 8.0,
+      field: 'working_hours_per_day',
+    },
+
+    workingDaysPerWeek: {
+      type: DataTypes.TINYINT.UNSIGNED,
+      allowNull: false,
+      defaultValue: 5,
+      field: 'working_days_per_week',
+    },
+
+    annualLeaveQuota: {
+      type: DataTypes.TINYINT.UNSIGNED,
+      allowNull: false,
+      defaultValue: 21,
+      field: 'annual_leave_quota',
+      comment: 'Default annual leave days for new employees',
+    },
+
+    timezone: {
+      type: DataTypes.STRING(60),
+      allowNull: false,
+      defaultValue: 'Asia/Kolkata',
+    },
+
+    currency: {
+      type: DataTypes.STRING(10),
+      allowNull: false,
+      defaultValue: 'INR',
+    },
+
+    fiscalYearStart: {
+      type: DataTypes.TINYINT.UNSIGNED,
+      allowNull: false,
+      defaultValue: 4,
+      field: 'fiscal_year_start',
+      comment: 'Month number 1-12 (4 = April, Indian FY)',
+    },
+
+    // ── status ────────────────────────────────────────────────
+    isActive: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: true,
-      field: 'is_self_review_enabled',
+      field: 'is_active',
     },
 
-    isManagerReviewEnabled: {
-      type: DataTypes.BOOLEAN,
-      allowNull: false,
-      defaultValue: true,
-      field: 'is_manager_review_enabled',
-    },
-
-    isPeerReviewEnabled: {
+    isVerified: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: false,
-      field: 'is_peer_review_enabled',
+      field: 'is_verified',
+      comment: 'Email / domain verified',
     },
 
-    // =========================
-    // DESCRIPTION
-    // =========================
-    description: {
-      type: DataTypes.TEXT,
+    subscriptionPlan: {
+      type: DataTypes.ENUM('free', 'starter', 'pro', 'enterprise'),
+      allowNull: false,
+      defaultValue: 'free',
+      field: 'subscription_plan',
+    },
+
+    subscriptionExpiresAt: {
+      type: DataTypes.DATE,
       allowNull: true,
+      field: 'subscription_expires_at',
     },
 
   }, {
-
-    // =========================
-    // MODEL OPTIONS
-    // =========================
-    tableName: 'ReviewCycles',
-
+    tableName: 'companies',
     underscored: true,
-
     timestamps: true,
-
-    paranoid: true,
-
+    paranoid: true,          // soft-delete via deleted_at
+    indexes: [
+      { unique: true, fields: ['slug'] },
+      { fields: ['is_active'] },
+    ],
   });
+
+  return Company;
 };
